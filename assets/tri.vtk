@@ -1,0 +1,11 @@
+# vtk DataFile Version 2.0
+Triangle example
+ASCII
+DATASET POLYDATA
+POINTS 3 float
+0.0 0.0 0.0
+1.0 0.0 0.0
+0.0 0.0 -1.0
+
+POLYGONS 1 4
+3 0 1 2

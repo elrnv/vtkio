@@ -1,0 +1,12 @@
+# vtk DataFile Version 2.0
+Square example
+ASCII
+DATASET POLYDATA
+POINTS 4 float
+0.0 0.0 0.0
+1.0 0.0 0.0
+1.0 0.0 -1.0
+0.0 0.0 -1.0
+
+POLYGONS 1 5
+4 0 1 2 3

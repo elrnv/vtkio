@@ -1,0 +1,119 @@
+#[macro_use] extern crate enum_primitive_derive;
+#[macro_use] extern crate nom;
+extern crate num_traits;
+extern crate byteorder;
+
+pub mod macros;
+
+#[macro_use] 
+pub mod basic;
+
+pub mod reinterpret;
+pub mod buffer;
+pub mod parser;
+pub mod writer;
+pub mod model;
+
+use std::io;
+use std::path::Path;
+
+#[derive(Debug)]
+pub enum Error {
+    IO(io::Error),
+    EmptyScene,
+    InvalidExtension,
+    Parse(nom::ErrorKind<u32>),
+    Unknown,
+}
+
+impl From<io::Error> for Error {
+    fn from(e: io::Error) -> Error {
+        Error::IO(e)
+    }
+}
+
+impl From<Error> for io::Error {
+    fn from(err: Error) -> io::Error {
+        match err {
+            Error::IO(e) => e,
+            _ => io::Error::new(io::ErrorKind::Other, format!("{:?}", err)),
+        }
+    }
+}
+
+pub fn import_vtk(file_path: &Path) -> Result<model::Vtk, Error> {
+    use std::fs::File;
+    use io::Read;
+    use nom::IResult;
+
+    let mut file = File::open(file_path)?;
+    let mut buf = Vec::new();
+    file.read_to_end(&mut buf)?;
+    match  parser::vtk(&buf) {
+        IResult::Done(_, vtk) => Ok(vtk),
+        IResult::Error(e) => Err(Error::Parse(e.into_error_kind())),
+        IResult::Incomplete(_) => Err(Error::Unknown),
+    }
+}
+
+/// Export given vtk data to the specified file in BINARY format.
+/// # Examples
+/// ```rust,no_run
+/// # extern crate vtkio;
+/// # use vtkio::model::*;
+/// # use vtkio::export_vtk;
+/// # fn main() {
+/// use std::path::PathBuf;
+/// let vtk = Vtk {
+///     version: Version::new((4,1)),
+///     title: String::from("Tetrahedron"),
+///     data: DataSet::UnstructuredGrid {
+///         points: vec![0.0f32, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, -1.0, 0.0, 1.0, 0.0].into(),
+///         cells: Cells { num_cells: 1, vertices: vec![4, 0, 1, 2, 3] },
+///         cell_types: vec![CellType::Tetra],
+///         data: Attributes::new(),
+///     }
+/// };
+/// export_vtk(vtk, &PathBuf::from("test.vtk"));
+/// # }
+/// ```
+pub fn export_vtk(data: model::Vtk, file_path: &Path) -> Result<(), Error> {
+    use std::fs::File;
+    use io::Write;
+    use writer::WriteVtk;
+
+    let mut file = File::create(file_path)?;
+    file.write_all(Vec::<u8>::new().write_vtk(data).as_slice())?;
+    Ok(())
+}
+
+/// Export given vtk data to the specified file in ASCII format.
+/// # Examples
+/// ```rust,no_run
+/// # extern crate vtkio;
+/// # use vtkio::model::*;
+/// # use vtkio::export_vtk_ascii;
+/// # fn main() {
+/// use std::path::PathBuf;
+/// let vtk = Vtk {
+///     version: Version::new((4,1)),
+///     title: String::from("Tetrahedron"),
+///     data: DataSet::UnstructuredGrid {
+///         points: vec![0.0f32, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, -1.0, 0.0, 1.0, 0.0].into(),
+///         cells: Cells { num_cells: 1, vertices: vec![4, 0, 1, 2, 3] },
+///         cell_types: vec![CellType::Tetra],
+///         data: Attributes::new(),
+///     }
+/// };
+/// export_vtk_ascii(vtk, &PathBuf::from("test.vtk"));
+/// # }
+/// ```
+pub fn export_vtk_ascii(data: model::Vtk, file_path: &Path) -> Result<(), Error> {
+    use std::fs::File;
+    use io::Write;
+    use writer::WriteVtk;
+
+    let mut file = File::create(file_path)?;
+    file.write_all(String::new().write_vtk(data).as_bytes())?;
+    Ok(())
+}

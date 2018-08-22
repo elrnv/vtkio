@@ -1,0 +1,19 @@
+# vtk DataFile Version 4.2
+Cube example
+ASCII
+DATASET UNSTRUCTURED_GRID
+POINTS 8 float
+0 0 0
+0 0 -1
+0 1 0
+0 1 -1
+1 0 0
+1 0 -1
+1 1 0
+1 1 -1
+
+CELLS 1 9
+8 0 4 5 1 2 6 7 3
+
+CELL_TYPES 1
+12

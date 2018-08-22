@@ -1,0 +1,70 @@
+# vtk DataFile Version 2.0
+Cube example
+ASCII
+DATASET POLYDATA
+POINTS 8 float
+0.0 0.0 0.0
+1.0 0.0 0.0
+1.0 1.0 0.0
+0.0 1.0 0.0
+0.0 0.0 1.0
+1.0 0.0 1.0
+1.0 1.0 1.0
+0.0 1.0 1.0
+POLYGONS 6 30
+4 0 1 2 3
+4 4 5 6 7
+4 0 1 5 4
+4 2 3 7 6
+4 0 4 7 3
+4 1 2 6 5
+VERTICES 2 6
+2 0 1
+2 2 3
+
+CELL_DATA 8
+SCALARS cell_scalars int 1
+LOOKUP_TABLE default
+0
+1
+2
+3
+4
+5
+6
+7
+NORMALS cell_normals float
+0 0 -1
+0 0 1
+0 -1 0
+0 1 0
+-1 0 0
+1 0 0
+1 0 0
+1 0 0
+FIELD FieldData 2
+cellIds 1 8 int
+0 1 2 3 4 5 7 8
+faceAttributes 2 8 float
+0.0 1.0 1.0 2.0 2.0 3.0 3.0 4.0 4.0 5.0 5.0 6.0 6.0 6.0 7.0 7.0
+
+POINT_DATA 8
+SCALARS sample_scalars float 1
+LOOKUP_TABLE my_table
+0.0
+1.0
+2.0
+3.0
+4.0
+5.0
+6.0
+7.0
+LOOKUP_TABLE my_table 8
+0.0 0.0 0.0 1.0
+1.0 0.0 0.0 1.0
+0.0 1.0 0.0 1.0
+1.0 1.0 0.0 1.0
+0.0 0.0 1.0 1.0
+1.0 0.0 1.0 1.0
+0.0 1.0 1.0 1.0
+1.0 1.0 1.0 1.0

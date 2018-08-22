@@ -1,0 +1,17 @@
+[package]
+name = "vtkio"
+version = "0.1.0"
+authors = ["Egor Larionov <egor.larionov@gmail.com>"]
+
+[dependencies]
+# need verbose errors because of feature leak in dependencies:
+# https://github.com/rust-lang/cargo/issues/1796
+# remove this feature after the above issue is resolved
+nom = { version = "3", features = ["verbose-errors"] }
+num-traits = "0.2"
+enum-primitive-derive = "^0.1"
+byteorder = "1.2"
+
+[dev-dependencies]
+rand = "0.5"
+lazy_static = "1"
