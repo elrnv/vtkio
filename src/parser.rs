@@ -1,6 +1,5 @@
 use std::marker::PhantomData;
 use std::str;
-use buffer::{IOBuffer};
 use num_traits::{FromPrimitive};
 use nom::{
     self,
@@ -12,6 +11,8 @@ use byteorder::{ByteOrder, BigEndian, LittleEndian, NativeEndian};
 
 pub use basic::*;
 use model::*;
+
+use IOBuffer;
 
 /**
  * Parsing routines

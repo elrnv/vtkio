@@ -7,8 +7,8 @@ use nom::{
 use std::str::{self, FromStr};
 use std::any::Any;
 use num_traits::Zero;
-use buffer::IOBuffer;
 use byteorder::{ByteOrder, NativeEndian};
+use IOBuffer;
 
 /// This enum indicates if bulk data is saved in binary.
 /// NOTE: VTK files are saved in ASCII format with bulk data optionally saved in

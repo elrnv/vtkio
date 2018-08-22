@@ -6,7 +6,7 @@ use nom::IResult;
 use vtkio::model::*;
 use vtkio::parser::*;
 use vtkio::writer::*;
-use vtkio::buffer::IOBuffer;
+use vtkio::IOBuffer;
 
 macro_rules! test {
     ($fn:ident ($in:expr, $($args:expr),*) => ($rem:expr, $out:expr)) => {

@@ -1,6 +1,6 @@
-use buffer::IOBuffer;
 use std::any::TypeId;
 use std::fmt;
+use IOBuffer;
 
 /**
  * Vtk Data Model

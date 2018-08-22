@@ -2,20 +2,23 @@
 #[macro_use] extern crate nom;
 extern crate num_traits;
 extern crate byteorder;
+extern crate buffer;
 
-pub mod macros;
+//pub mod macros;
 
 #[macro_use] 
 pub mod basic;
 
-pub mod reinterpret;
-pub mod buffer;
+//pub mod reinterpret;
+//pub mod buffer;
 pub mod parser;
 pub mod writer;
 pub mod model;
 
 use std::io;
 use std::path::Path;
+
+pub type IOBuffer = buffer::DataBuffer;
 
 #[derive(Debug)]
 pub enum Error {
@@ -122,7 +125,7 @@ pub fn export(data: model::Vtk, file_path: &Path) -> Result<(), Error> {
 
 /// Export given vtk data to the specified file in ASCII format.
 /// # Examples
-/// ```rust,no_rnu
+/// ```rust,no_run
 /// # extern crate vtkio;
 /// # use vtkio::model::*;
 /// # use vtkio::export_ascii;

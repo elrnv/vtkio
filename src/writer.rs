@@ -1,7 +1,7 @@
 use byteorder::{NativeEndian};
 use std::fmt::Arguments;
-use buffer::IOBuffer;
 use model::*;
+use IOBuffer;
 
 mod write_vtk_impl {
     use super::*;
