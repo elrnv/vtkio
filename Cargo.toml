@@ -2,6 +2,15 @@
 name = "vtkio"
 version = "0.1.0"
 authors = ["Egor Larionov <egor.larionov@gmail.com>"]
+license = "Apache-2.0"
+description = "Parser and writer for the legacy VTK file format"
+readme = "README.md"
+
+homepage = "https://github.com/elrnv/vtkio"
+repository = "https://github.com/elrnv/vtkio"
+documentation = "https://docs.rs/vtkio"
+
+keywords = ["vtk", "parser", "writer", "io", "mesh"]
 
 [dependencies]
 # need verbose errors because of feature leak in dependencies:
