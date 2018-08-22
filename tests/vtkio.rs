@@ -46,11 +46,11 @@ macro_rules! test_b {
             data: Attributes::new(),
         }
     };
-    test!(vtk_le(in1) => out1);
-    test_b!(vtk_le(in2) => out1);
-    test_b!(vtk_be(in3) => out1);
-    test_b!(vtk(String::new().write_vtk(out1.clone()).as_bytes()) => out1);
-    test_b!(vtk(Vec::<u8>::new().write_vtk(out1.clone())) => out1);
+    test!(parse_le(in1) => out1);
+    test_b!(parse_le(in2) => out1);
+    test_b!(parse_be(in3) => out1);
+    test_b!(parse(String::new().write_vtk(out1.clone()).as_bytes()) => out1);
+    test_b!(parse(Vec::<u8>::new().write_vtk(out1.clone())) => out1);
 }
 
 #[test] fn tri_test() {
@@ -64,9 +64,9 @@ macro_rules! test_b {
             data: Attributes::new(),
         }
     };
-    test!(vtk(in1) => out1);
-    test_b!(vtk(String::new().write_vtk(out1.clone()).as_bytes()) => out1);
-    test_b!(vtk(Vec::<u8>::new().write_vtk(out1.clone())) => out1);
+    test!(parse(in1) => out1);
+    test_b!(parse(String::new().write_vtk(out1.clone()).as_bytes()) => out1);
+    test_b!(parse(Vec::<u8>::new().write_vtk(out1.clone())) => out1);
 }
 
 #[test] fn tri_attrib_test() {
@@ -93,8 +93,8 @@ macro_rules! test_b {
             },
         }
     };
-    test!(vtk(in1) => out1);
-    test_b!(vtk(String::new().write_vtk(out1.clone()).as_bytes()) => out1);
+    test!(parse(in1) => out1);
+    test_b!(parse(String::new().write_vtk(out1.clone()).as_bytes()) => out1);
 }
 
 #[test] fn square_test() {
@@ -108,9 +108,9 @@ macro_rules! test_b {
             data: Attributes::new(),
         }
     };
-    test!(vtk(in1) => out1);
-    test_b!(vtk(String::new().write_vtk(out1.clone()).as_bytes()) => out1);
-    test_b!(vtk(Vec::<u8>::new().write_vtk(out1.clone())) => out1);
+    test!(parse(in1) => out1);
+    test_b!(parse(String::new().write_vtk(out1.clone()).as_bytes()) => out1);
+    test_b!(parse(Vec::<u8>::new().write_vtk(out1.clone())) => out1);
 }
 
 #[test] fn cube_test() {
@@ -133,9 +133,9 @@ macro_rules! test_b {
             data: Attributes::new(),
         }
     };
-    test!(vtk(in1) => out1);
-    test_b!(vtk(String::new().write_vtk(out1.clone()).as_bytes()) => out1);
-    test_b!(vtk(Vec::<u8>::new().write_vtk(out1.clone())) => out1);
+    test!(parse(in1) => out1);
+    test_b!(parse(String::new().write_vtk(out1.clone()).as_bytes()) => out1);
+    test_b!(parse(Vec::<u8>::new().write_vtk(out1.clone())) => out1);
 }
 
 #[test] fn structured_grid_test() {
@@ -173,9 +173,9 @@ macro_rules! test_b {
             },
         }
     };
-    test!(vtk(in1) => out1);
-    test_b!(vtk(String::new().write_vtk(out1.clone()).as_bytes()) => out1);
-    test_b!(vtk(Vec::<u8>::new().write_vtk(out1.clone())) => out1);
+    test!(parse(in1) => out1);
+    test_b!(parse(String::new().write_vtk(out1.clone()).as_bytes()) => out1);
+    test_b!(parse(Vec::<u8>::new().write_vtk(out1.clone())) => out1);
 }
 
 #[test] fn rectilinear_grid_test() {
@@ -203,14 +203,14 @@ macro_rules! test_b {
             },
         }
     };
-    test_b!(vtk_be(in1) => out1);
-    test_b!(vtk(String::new().write_vtk(out1.clone()).as_bytes()) => out1);
-    test_b!(vtk(Vec::<u8>::new().write_vtk(out1.clone())) => out1);
+    test_b!(parse_be(in1) => out1);
+    test_b!(parse(String::new().write_vtk(out1.clone()).as_bytes()) => out1);
+    test_b!(parse(Vec::<u8>::new().write_vtk(out1.clone())) => out1);
 
     // Same thing should work in binary
     let in1 = include_bytes!("../assets/rectilinear_grid_binary.vtk");
     let out2 = Vtk { version: Version::new((4,2)), ..out1 };
-    test_b!(vtk_be(in1) => out2);
+    test_b!(parse_be(in1) => out2);
 }
 
 #[test] fn field_test() {
@@ -234,9 +234,9 @@ macro_rules! test_b {
             ],
         }
     };
-    test_b!(vtk(in1) => out1);
-    test_b!(vtk(String::new().write_vtk(out1.clone()).as_bytes()) => out1);
-    test_b!(vtk(Vec::<u8>::new().write_vtk(out1.clone())) => out1);
+    test_b!(parse(in1) => out1);
+    test_b!(parse(String::new().write_vtk(out1.clone()).as_bytes()) => out1);
+    test_b!(parse(Vec::<u8>::new().write_vtk(out1.clone())) => out1);
 }
 
 #[test] fn cube_complex_test() {
@@ -362,12 +362,12 @@ macro_rules! test_b {
         ..out1.clone()
     };
 
-    test!(vtk(in1) => out1);
-    test_b!(vtk(String::new().write_vtk(out1.clone()).as_bytes()) => out1);
-    test_b!(vtk(Vec::<u8>::new().write_vtk(out1.clone())) => out1);
-    test_b!(vtk(in2) => out2);
-    test_b!(vtk(String::new().write_vtk(out2.clone()).as_bytes()) => out2);
-    test_b!(vtk(Vec::<u8>::new().write_vtk(out2.clone())) => out2);
+    test!(parse(in1) => out1);
+    test_b!(parse(String::new().write_vtk(out1.clone()).as_bytes()) => out1);
+    test_b!(parse(Vec::<u8>::new().write_vtk(out1.clone())) => out1);
+    test_b!(parse(in2) => out2);
+    test_b!(parse(String::new().write_vtk(out2.clone()).as_bytes()) => out2);
+    test_b!(parse(Vec::<u8>::new().write_vtk(out2.clone())) => out2);
 }
 
 #[test] fn unstructured_grid_complex_test() {
@@ -423,9 +423,9 @@ macro_rules! test_b {
             },
         }
     };
-    test!(vtk(in1) => out1);
-    test_b!(vtk(String::new().write_vtk(out1.clone()).as_bytes()) => out1);
-    test_b!(vtk(Vec::<u8>::new().write_vtk(out1.clone())) => out1);
+    test!(parse(in1) => out1);
+    test_b!(parse(String::new().write_vtk(out1.clone()).as_bytes()) => out1);
+    test_b!(parse(Vec::<u8>::new().write_vtk(out1.clone())) => out1);
 }
 
 #[test] fn volume_complex_test() {
@@ -454,9 +454,9 @@ macro_rules! test_b {
             },
         }
     };
-    test!(vtk(in1) => out1);
-    test_b!(vtk(String::new().write_vtk(out1.clone()).as_bytes()) => out1);
-    test_b!(vtk(Vec::<u8>::new().write_vtk(out1.clone())) => out1);
+    test!(parse(in1) => out1);
+    test_b!(parse(String::new().write_vtk(out1.clone()).as_bytes()) => out1);
+    test_b!(parse(Vec::<u8>::new().write_vtk(out1.clone())) => out1);
 }
 
 #[test] fn dodecagon_test() {
@@ -486,9 +486,9 @@ macro_rules! test_b {
         }
     };
 
-    test_b!(vtk(in1) => out1);
-    test_b!(vtk(String::new().write_vtk(out1.clone()).as_bytes()) => out1);
-    test_b!(vtk(Vec::<u8>::new().write_vtk(out1.clone())) => out1);
+    test_b!(parse(in1) => out1);
+    test_b!(parse(String::new().write_vtk(out1.clone()).as_bytes()) => out1);
+    test_b!(parse(Vec::<u8>::new().write_vtk(out1.clone())) => out1);
 }
 
 #[test] fn dodecagon_with_meta_test() {
@@ -518,7 +518,7 @@ macro_rules! test_b {
         }
     };
 
-    test_b!(vtk(in1) => out1);
+    test_b!(parse(in1) => out1);
 }
 
 #[test] fn binary_dodecagon_test() {
@@ -549,6 +549,6 @@ macro_rules! test_b {
     };
     let in2 = include_bytes!("../assets/dodecagon.vtk");
 
-    test_b!(vtk_be(in1) => out1);
-    test_b!(vtk_be(in2) => out1);
+    test_b!(parse_be(in1) => out1);
+    test_b!(parse_be(in2) => out1);
 }

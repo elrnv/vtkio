@@ -549,17 +549,17 @@ impl<BO: ByteOrder> VtkParser<BO> {
 }
 
 /// Parse the entire vtk file using default byte order.
-pub fn vtk(input: &[u8]) -> IResult<&[u8], Vtk> {
+pub fn parse(input: &[u8]) -> IResult<&[u8], Vtk> {
     <VtkParser>::vtk(input)
 }
 
 /// Parse the entire vtk file using little endian byte order.
-pub fn vtk_le(input: &[u8]) -> IResult<&[u8], Vtk> {
+pub fn parse_le(input: &[u8]) -> IResult<&[u8], Vtk> {
     VtkParser::<LittleEndian>::vtk(input)
 }
 
 /// Parse the entire vtk file using big endian byte order.
-pub fn vtk_be(input: &[u8]) -> IResult<&[u8], Vtk> {
+pub fn parse_be(input: &[u8]) -> IResult<&[u8], Vtk> {
     VtkParser::<BigEndian>::vtk(input)
 }
 

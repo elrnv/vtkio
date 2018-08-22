@@ -41,7 +41,10 @@ impl From<Error> for io::Error {
     }
 }
 
-pub fn import_vtk(file_path: &Path) -> Result<model::Vtk, Error> {
+/// Helper function that implements the actual importing routine.
+fn import_impl<F>(file_path: &Path, parse: F) -> Result<model::Vtk, Error>
+    where F: Fn(&[u8]) -> nom::IResult<&[u8], model::Vtk>
+{
     use std::fs::File;
     use io::Read;
     use nom::IResult;
@@ -49,11 +52,41 @@ pub fn import_vtk(file_path: &Path) -> Result<model::Vtk, Error> {
     let mut file = File::open(file_path)?;
     let mut buf = Vec::new();
     file.read_to_end(&mut buf)?;
-    match  parser::vtk(&buf) {
+    match parse(&buf) {
         IResult::Done(_, vtk) => Ok(vtk),
         IResult::Error(e) => Err(Error::Parse(e.into_error_kind())),
         IResult::Incomplete(_) => Err(Error::Unknown),
     }
+}
+
+/// Import a vtk file at the specified path.
+/// # Examples
+/// ```rust,no_run
+/// # extern crate vtkio;
+/// # use vtkio::model::*;
+/// # use vtkio::{import, export_ascii};
+/// # fn main() {
+/// #    use std::path::PathBuf;
+///     let file_path = PathBuf::from("tet.vtk");
+///     
+///     let mut vtk_file = import(&file_path)
+///         .expect(&format!("Failed to load file: {:?}", file_path));
+/// # }
+/// ```
+pub fn import(file_path: &Path) -> Result<model::Vtk, Error> {
+    import_impl(file_path, parser::parse)
+}
+
+/// Import a vtk file at the specified path. If the file is in binary, numeric types will be
+/// interpreted in little-endian format.
+pub fn import_le(file_path: &Path) -> Result<model::Vtk, Error> {
+    import_impl(file_path, parser::parse_le)
+}
+
+/// Import a vtk file at the specified path. If the file is in binary, numeric types will be
+/// interpreted in big-endian format.
+pub fn import_be(file_path: &Path) -> Result<model::Vtk, Error> {
+    import_impl(file_path, parser::parse_be)
 }
 
 /// Export given vtk data to the specified file in BINARY format.
@@ -61,7 +94,7 @@ pub fn import_vtk(file_path: &Path) -> Result<model::Vtk, Error> {
 /// ```rust,no_run
 /// # extern crate vtkio;
 /// # use vtkio::model::*;
-/// # use vtkio::export_vtk;
+/// # use vtkio::export;
 /// # fn main() {
 /// use std::path::PathBuf;
 /// let vtk = Vtk {
@@ -74,10 +107,10 @@ pub fn import_vtk(file_path: &Path) -> Result<model::Vtk, Error> {
 ///         data: Attributes::new(),
 ///     }
 /// };
-/// export_vtk(vtk, &PathBuf::from("test.vtk"));
+/// export(vtk, &PathBuf::from("test.vtk"));
 /// # }
 /// ```
-pub fn export_vtk(data: model::Vtk, file_path: &Path) -> Result<(), Error> {
+pub fn export(data: model::Vtk, file_path: &Path) -> Result<(), Error> {
     use std::fs::File;
     use io::Write;
     use writer::WriteVtk;
@@ -89,10 +122,10 @@ pub fn export_vtk(data: model::Vtk, file_path: &Path) -> Result<(), Error> {
 
 /// Export given vtk data to the specified file in ASCII format.
 /// # Examples
-/// ```rust,no_run
+/// ```rust,no_rnu
 /// # extern crate vtkio;
 /// # use vtkio::model::*;
-/// # use vtkio::export_vtk_ascii;
+/// # use vtkio::export_ascii;
 /// # fn main() {
 /// use std::path::PathBuf;
 /// let vtk = Vtk {
@@ -105,10 +138,10 @@ pub fn export_vtk(data: model::Vtk, file_path: &Path) -> Result<(), Error> {
 ///         data: Attributes::new(),
 ///     }
 /// };
-/// export_vtk_ascii(vtk, &PathBuf::from("test.vtk"));
+/// export_ascii(vtk, &PathBuf::from("test.vtk"));
 /// # }
 /// ```
-pub fn export_vtk_ascii(data: model::Vtk, file_path: &Path) -> Result<(), Error> {
+pub fn export_ascii(data: model::Vtk, file_path: &Path) -> Result<(), Error> {
     use std::fs::File;
     use io::Write;
     use writer::WriteVtk;
