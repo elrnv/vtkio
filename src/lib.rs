@@ -4,13 +4,9 @@ extern crate num_traits;
 extern crate byteorder;
 extern crate buffer;
 
-//pub mod macros;
-
 #[macro_use] 
 pub mod basic;
 
-//pub mod reinterpret;
-//pub mod buffer;
 pub mod parser;
 pub mod writer;
 pub mod model;
@@ -18,23 +14,25 @@ pub mod model;
 use std::io;
 use std::path::Path;
 
+/// Primary buffer type used to store data read from binary or ASCII files.
 pub type IOBuffer = buffer::DataBuffer;
 
+/// Error type for Import/Export operations.
 #[derive(Debug)]
 pub enum Error {
     IO(io::Error),
-    EmptyScene,
-    InvalidExtension,
     Parse(nom::ErrorKind<u32>),
     Unknown,
 }
 
+/// Convert `std::io` error into `vtkio` error.
 impl From<io::Error> for Error {
     fn from(e: io::Error) -> Error {
         Error::IO(e)
     }
 }
 
+/// Convert `vtkio` error into `std::io` error.
 impl From<Error> for io::Error {
     fn from(err: Error) -> io::Error {
         match err {
