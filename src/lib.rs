@@ -2,11 +2,11 @@
 #[macro_use] extern crate nom;
 extern crate num_traits;
 extern crate byteorder;
+extern crate data_buffer as buffer;
 
 #[macro_use] 
 pub mod basic;
 
-pub mod buffer;
 pub mod parser;
 pub mod writer;
 pub mod model;

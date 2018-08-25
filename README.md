@@ -3,6 +3,10 @@
 A parser and writer for the Visualization Toolkit (VTK) [legacy file
 format](https://www.vtk.org/wp-content/uploads/2015/04/file-formats.pdf).
 
+[![On crates.io](https://img.shields.io/crates/v/vtkio.svg)](https://crates.io/crates/vtkio)
+[![On docs.rs](https://docs.rs/vtkio/badge.svg)](https://docs.rs/vtkio/)
+[![Build status](https://travis-ci.org/elrnv/vtkio.svg?branch=master)](https://travis-ci.org/elrnv/vtkio)
+
 This is meant to be a feature complete parser of the legacy VTK file format. However, I have only
 used this parser for tetrahedral and triangle meshes, and I am still lacking real world tests. Pull
 requests welcome.
@@ -41,4 +45,9 @@ respectively.
 
 # License
 
-This work is licensed under the [Apache License 2.0](http://www.apache.org/licenses/LICENSE-2.0).
+This repository is licensed under either of
+
+ * Apache License, Version 2.0, ([LICENSE-APACHE](LICENSE-APACHE) or https://www.apache.org/licenses/LICENSE-2.0)
+ * MIT License ([LICENSE-MIT](LICENSE-MIT) or https://opensource.org/licenses/MIT)
+
+at your option.

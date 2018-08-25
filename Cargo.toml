@@ -2,7 +2,7 @@
 name = "vtkio"
 version = "0.1.1"
 authors = ["Egor Larionov <egor.larionov@gmail.com>"]
-license = "Apache-2.0"
+license = "MIT OR Apache-2.0"
 description = "Parser and writer for the legacy VTK file format"
 readme = "README.md"
 
@@ -12,6 +12,9 @@ documentation = "https://docs.rs/vtkio"
 
 keywords = ["vtk", "parser", "writer", "io", "mesh"]
 
+[badges]
+travis-ci = { repository = "elrnv/vtkio", branch = "master" }
+
 [dependencies]
 # need verbose errors because of feature leak in dependencies:
 # https://github.com/rust-lang/cargo/issues/1796
@@ -20,6 +23,7 @@ nom = { version = "3", features = ["verbose-errors"] }
 num-traits = "0.2"
 enum-primitive-derive = "^0.1"
 byteorder = "1.2"
+data-buffer = { version = "0.1", features = ["numeric"] }
 
 [dev-dependencies]
 rand = "0.5"
