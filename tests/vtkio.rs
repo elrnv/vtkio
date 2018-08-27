@@ -32,6 +32,54 @@ macro_rules! test_b {
     };
 }
 
+macro_rules! test_ignore_rem {
+    ($fn:ident ($in:expr, $($args:expr),*) => $out:expr) => {
+        {
+            let result = $fn($in, $($args),*);
+            assert!(result.is_done());
+            assert_eq!(result.unwrap().1, $out.clone());
+        }
+    };
+    ($fn:ident ($in:expr) => $out:expr) => {
+        {
+            let result = $fn($in);
+            assert!(result.is_done());
+            assert_eq!(result.unwrap().1, $out.clone());
+        }
+    };
+}
+
+// Test paraview output
+#[test] fn para_tet_test() {
+    let in1 = include_bytes!("../assets/para_tet.vtk");
+    let in2 = include_str!("../assets/para_tet_ascii.vtk").as_bytes();
+    let out1 = Vtk {
+        version: Version::new((4,2)),
+        title: String::from("vtk output"),
+        data: DataSet::UnstructuredGrid {
+            points: vec![0.0f64, 0.0, 0.0, 0.0, 0.0, -1.0, 0.0, 1.0, 0.0, 1.0, 0.0, 0.0].into(),
+            cells: Cells { num_cells: 1, vertices: vec![4, 0, 1, 2, 3] },
+            cell_types: vec![CellType::Tetra],
+            data: Attributes {
+                point: vec![],
+                cell: vec![(String::from("FieldData"), Attribute::Field {
+                    data_array: vec![
+                        FieldArray {
+                            name: String::from("FloatValue"),
+                            num_comp: 1,
+                            data: vec![0.0f32].into(),
+                        },
+                    ],
+                })],
+            },
+        }
+    };
+    test_ignore_rem!(parse_be(in1) => out1);
+    test_ignore_rem!(parse_be(in2) => out1);
+    test_b!(parse(String::new().write_vtk(out1.clone()).as_bytes()) => out1);
+    test_b!(parse(Vec::<u8>::new().write_vtk(out1.clone())) => out1);
+}
+
 #[test] fn tet_test() {
     let in1 = include_str!("../assets/tet.vtk");
     let in2 = include_bytes!("../assets/tet_test.vtk");
