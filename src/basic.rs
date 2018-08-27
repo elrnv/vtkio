@@ -141,10 +141,15 @@ pub fn unsigned<T>(input: &[u8]) -> IResult<&[u8],T> where T: FromStr {
 
 /// Parse a formatted signed integer.
 pub fn integer<T>(input: &[u8]) -> IResult<&[u8],T> where T: FromStr {
-  do_parse!(input,
-        opt!(alt!(tag!("+") | tag!("-"))) >>
-        d: unsigned >>
-        (d))
+  flat_map!(input,
+            recognize!(
+                tuple!(
+                    opt!(alt!(tag!("+") | tag!("-"))),
+                    digit
+                )
+            ),
+            parse_to!(T)
+        )
 }
 
 
@@ -174,6 +179,7 @@ impl<BO: ByteOrder> DataParser<BO> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use byteorder::{BigEndian};
     use nom::IResult;
 
     #[test] fn can_parse_float() {
@@ -184,10 +190,16 @@ mod tests {
         assert_eq!(real::<f32>(&b"3e3"[..]).unwrap().1, 3000.0);
         assert_eq!(real::<f32>(&b"-3.2e2"[..]).unwrap().1, -320.0);
     }
-    //#[test] fn can_parse_binary_float() {
-    //    assert_eq!(f32::from_binary(&[0u8,0,0,0]).unwrap().1, 0.0_f32);
-    //    assert_eq!(f32::from_binary(&[62u8,32,0,0]).unwrap().1, 0.15625_f32);
-    //}
+    #[test] fn can_parse_int() {
+        assert_eq!(integer::<i32>(&b"-1"[..]).unwrap().1, -1);
+        assert_eq!(integer::<i32>(&b"1"[..]).unwrap().1, 1);
+        assert_eq!(integer::<i32>(&b"43242"[..]).unwrap().1, 43242);
+        assert_eq!(integer::<u8>(&b"255"[..]).unwrap().1, 255);
+    }
+    #[test] fn can_parse_binary_float() {
+        assert_eq!(f32::from_binary::<BigEndian>(&[0u8,0,0,0]).unwrap().1, 0.0_f32);
+        assert_eq!(f32::from_binary::<BigEndian>(&[62u8,32,0,0]).unwrap().1, 0.15625_f32);
+    }
     #[test] fn data_test() {
         let f = <DataParser>::data_buffer::<f32>("".as_bytes(), 0, FileType::ASCII);
         assert_eq!(f, IResult::Done("".as_bytes(),  IOBuffer::from(Vec::<f32>::new())));

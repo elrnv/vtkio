@@ -49,7 +49,7 @@ macro_rules! test_ignore_rem {
     };
 }
 
-// Test paraview output
+// Test paraview output of a single tet
 #[test] fn para_tet_test() {
     let in1 = include_bytes!("../assets/para_tet.vtk");
     let in2 = include_str!("../assets/para_tet_ascii.vtk").as_bytes();
@@ -68,6 +68,94 @@ macro_rules! test_ignore_rem {
                             name: String::from("FloatValue"),
                             num_comp: 1,
                             data: vec![0.0f32].into(),
+                        },
+                    ],
+                })],
+            },
+        }
+    };
+    test_ignore_rem!(parse_be(in1) => out1);
+    test_ignore_rem!(parse_be(in2) => out1);
+    test_b!(parse(String::new().write_vtk(out1.clone()).as_bytes()) => out1);
+    test_b!(parse(Vec::<u8>::new().write_vtk(out1.clone())) => out1);
+}
+
+// Test paraview output of a few tets
+#[test] fn para_tets_test() {
+    let in1 = include_bytes!("../assets/para_test.vtk");
+    let in2 = include_str!("../assets/para_test_ascii.vtk").as_bytes();
+    let out1 = Vtk {
+        version: Version::new((4,2)),
+        title: String::from("vtk output"),
+        data: DataSet::UnstructuredGrid {
+            points: vec![
+                13.2, 135.4, -7.7,
+                13.7, 134.2, -8.7,
+                12.2, 134.7, -8.6,
+                12.7, 133.6, -7.0,
+                3.6, 119.4, -0.3,
+                -2.3, 137.0, -2.5,
+                5.4, 119.7, 0.0,
+                -2.7, 135.9, -1.2,
+                -2.9, 137.5, -1.2,
+                -1.8, 136.6, -1.7,
+                4.3, 119.7, 0.4,
+                4.6, 118.7, -0.002].into(),
+            cells: Cells {
+                num_cells: 3,
+                vertices: vec![
+                    4, 9, 5, 7, 8,
+                    4, 3, 2, 0, 1,
+                    4, 11, 6, 4, 10
+                ]
+            },
+            cell_types: vec![CellType::Tetra;3],
+            data: Attributes {
+                point: vec![(String::from("FieldData"), Attribute::Field {
+                    data_array: vec![
+                        FieldArray {
+                            name: String::from("Zeros"),
+                            num_comp: 1,
+                            data: vec![0.0f32;12].into(),
+                        },
+                        FieldArray {
+                            name: String::from("Floats"),
+                            num_comp: 1,
+                            data: vec![2.3, 2.5, 2.3, 2.1,
+                                       1.4, 0.8, 1.6, 0.7,
+                                       0.8, 0.7, 1.5, 1.6f32].into(),
+                        },
+                        FieldArray {
+                            name: String::from("Ints"),
+                            num_comp: 1,
+                            data: vec![1, 1, 1, 0, 0, 0,
+                                       0, 0, 0, 0, 0, 0i32].into(),
+                        },
+                        FieldArray {
+                            name: String::from("NegativeInts"),
+                            num_comp: 1,
+                            data: vec![-1, -1, -1, -1, -1, -1,
+                                       -1, -1, -1, -1, -1, -1i32].into(),
+                        },
+                        FieldArray {
+                            name: String::from("MixedInts"),
+                            num_comp: 1,
+                            data: vec![2, -1, 3, -1, -1, -1,
+                                       -1, -1, -1, 0, -1, 1i32].into(),
+                        },
+                    ],
+                })],
+                cell: vec![(String::from("FieldData"), Attribute::Field {
+                    data_array: vec![
+                        FieldArray {
+                            name: String::from("Ones"),
+                            num_comp: 1,
+                            data: vec![1.0f32;3].into(),
+                        },
+                        FieldArray {
+                            name: String::from("Zeros"),
+                            num_comp: 1,
+                            data: vec![0.0f32;3].into(),
                         },
                     ],
                 })],

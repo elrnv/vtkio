@@ -151,13 +151,13 @@ impl<BO: ByteOrder> VtkParser<BO> {
 
     /// Recognize and throw away `METADATA` block. Metadata is spearated by an empty line.
     fn meta(input: &[u8]) -> IResult<&[u8], ()> {
-        ws!( input, 
+        complete!( input, ws!(
              do_parse!(
                 tag_no_case!("METADATA") >>
                 take_until!("\n\n") >>
                 ()
                 )
-           )
+           ))
     }
 
 
@@ -197,6 +197,7 @@ impl<BO: ByteOrder> VtkParser<BO> {
                 num_comp: opt!( u8_b ) >>
                 lookup_tbl_name: opt!( map_res!( Self::lookup_table, str::from_utf8 ) ) >>
                 data: call!( Self::attribute_data, num_comp.unwrap_or(1) as usize*num_elements, dt, ft ) >>
+                opt!( Self::meta ) >>
                 ((String::from(name), Attribute::Scalars {
                     num_comp: num_comp.unwrap_or(1),
                     lookup_table: lookup_tbl_name
@@ -212,6 +213,7 @@ impl<BO: ByteOrder> VtkParser<BO> {
                 name: map_res!( name, str::from_utf8 ) >>
                 num_elements: u32_b >>
                 data: call!( Self::attribute_data, 4*num_elements as usize, DataType::Float, ft ) >>
+                opt!( Self::meta ) >>
                 (String::from(name), Attribute::LookupTable { data })
                 ))
     }
@@ -235,6 +237,7 @@ impl<BO: ByteOrder> VtkParser<BO> {
                 name: map_res!( name, str::from_utf8 ) >>
                 num_comp: u8_b >>
                 data: call!( Self::attribute_color_scalars_data, num_comp as usize*num_elements, ft ) >>
+                opt!( Self::meta ) >>
                 ((String::from(name), Attribute::ColorScalars {
                     num_comp,
                     data
@@ -248,6 +251,7 @@ impl<BO: ByteOrder> VtkParser<BO> {
                    name: map_res!( name, str::from_utf8 ) >>
                    dt: data_type >>
                    data: call!( Self::attribute_data, 3*num_elements, dt, ft ) >>
+                   opt!( Self::meta ) >>
                    (String::from(name), Attribute::Vectors { data })
                  ))
     }
@@ -260,6 +264,7 @@ impl<BO: ByteOrder> VtkParser<BO> {
                    name: map_res!( name, str::from_utf8 ) >>
                    dt: data_type >>
                    data: call!( Self::attribute_data, 3*num_elements, dt, ft ) >>
+                   opt!( Self::meta ) >>
                    (String::from(name), Attribute::Normals { data })
                  ))
     }
@@ -273,6 +278,7 @@ impl<BO: ByteOrder> VtkParser<BO> {
                    dim: u8_b >>
                    dt: data_type >>
                    data: call!( Self::attribute_data, dim as usize*num_elements, dt, ft ) >>
+                   opt!( Self::meta ) >>
                    (String::from(name), Attribute::TextureCoordinates { dim, data })
                  ))
     }
@@ -285,6 +291,7 @@ impl<BO: ByteOrder> VtkParser<BO> {
                    name: map_res!( name, str::from_utf8 ) >>
                    dt: data_type >>
                    data: call!( Self::attribute_data, 9*num_elements, dt, ft ) >>
+                   opt!( Self::meta ) >>
                    (String::from(name), Attribute::Tensors { data })
                  ))
     }
@@ -296,6 +303,7 @@ impl<BO: ByteOrder> VtkParser<BO> {
                    num_tuples: u32_b >>
                    dt: data_type >>
                    data: call!( Self::attribute_data, (num_comp*num_tuples) as usize, dt, ft ) >>
+                   opt!( Self::meta ) >>
                    (FieldArray { name: String::from(name), num_comp, data })
                  ))
     }
@@ -666,7 +674,7 @@ mod tests {
         // empty
         test!(attributes("\n", FileType::ASCII) => Attributes::new());
         // scalar cell attribute
-        let in1 = "CELL_DATA 6\nSCALARS cell_scalars int 1\n0 1 2 3 4 5";
+        let in1 = "CELL_DATA 6\nSCALARS cell_scalars int 1\n0 1 2 3 4 5\n";
         let scalar_attrib = Attribute::Scalars {
             num_comp: 1,
             lookup_table: None,
