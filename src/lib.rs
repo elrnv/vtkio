@@ -1,15 +1,17 @@
-#[macro_use] extern crate enum_primitive_derive;
-#[macro_use] extern crate nom;
-extern crate num_traits;
+#[macro_use]
+extern crate enum_primitive_derive;
+#[macro_use]
+extern crate nom;
 extern crate byteorder;
 extern crate data_buffer as buffer;
+extern crate num_traits;
 
-#[macro_use] 
+#[macro_use]
 pub mod basic;
 
+pub mod model;
 pub mod parser;
 pub mod writer;
-pub mod model;
 
 use std::io;
 use std::path::Path;
@@ -44,11 +46,12 @@ impl From<Error> for io::Error {
 
 /// Helper function that implements the actual importing routine.
 fn import_impl<F>(file_path: &Path, parse: F) -> Result<model::Vtk, Error>
-    where F: Fn(&[u8]) -> nom::IResult<&[u8], model::Vtk>
+where
+    F: Fn(&[u8]) -> nom::IResult<&[u8], model::Vtk>,
 {
-    use std::fs::File;
     use io::Read;
     use nom::IResult;
+    use std::fs::File;
 
     let mut file = File::open(file_path)?;
     let mut buf = Vec::new();
@@ -112,8 +115,8 @@ pub fn import_be(file_path: &Path) -> Result<model::Vtk, Error> {
 /// # }
 /// ```
 pub fn export(data: model::Vtk, file_path: &Path) -> Result<(), Error> {
-    use std::fs::File;
     use io::Write;
+    use std::fs::File;
     use writer::WriteVtk;
 
     let mut file = File::create(file_path)?;
@@ -143,8 +146,8 @@ pub fn export(data: model::Vtk, file_path: &Path) -> Result<(), Error> {
 /// # }
 /// ```
 pub fn export_ascii(data: model::Vtk, file_path: &Path) -> Result<(), Error> {
-    use std::fs::File;
     use io::Write;
+    use std::fs::File;
     use writer::WriteVtk;
 
     let mut file = File::create(file_path)?;

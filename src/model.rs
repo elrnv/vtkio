@@ -18,12 +18,15 @@ pub struct Vtk {
 #[derive(Copy, Clone, PartialEq, Debug)]
 pub struct Version {
     pub major: u8,
-    pub minor: u8
+    pub minor: u8,
 }
 
 impl Version {
     pub fn new(pair: (u8, u8)) -> Self {
-        Version { major: pair.0, minor: pair.1 }
+        Version {
+            major: pair.0,
+            minor: pair.1,
+        }
     }
 }
 
@@ -46,15 +49,31 @@ pub struct FieldArray {
 pub enum Attribute {
     /// Scalar field. `num_comp` describes how many components (1, 2, 3 or 4) there are
     /// in the field.
-    Scalars { num_comp: u8, lookup_table: Option<String>, data: IOBuffer },
+    Scalars {
+        num_comp: u8,
+        lookup_table: Option<String>,
+        data: IOBuffer,
+    },
     /// `num_comp` is called `nValues` in the Vtk documentation.
-    ColorScalars { num_comp: u8, data: IOBuffer },
-    LookupTable { data: IOBuffer },
-    Vectors { data: IOBuffer },
+    ColorScalars {
+        num_comp: u8,
+        data: IOBuffer,
+    },
+    LookupTable {
+        data: IOBuffer,
+    },
+    Vectors {
+        data: IOBuffer,
+    },
     /// Normals are assumed to be normalized.
-    Normals { data: IOBuffer },
+    Normals {
+        data: IOBuffer,
+    },
     /// 1D, 2D or 3D texture coordinates are supported by Vtk.
-    TextureCoordinates { dim: u8, data: IOBuffer },
+    TextureCoordinates {
+        dim: u8,
+        data: IOBuffer,
+    },
     /// 3x3 symmetric tensors are supported. These are given in full row major form:
     /// ```verbatim
     ///     [t^1_00, t^1_01, t^1_02,
@@ -67,9 +86,13 @@ pub enum Attribute {
     ///     ]
     /// ```
     /// Note that symmetry is assumed (`t^k_ij == t^k_ji`).
-    Tensors { data: IOBuffer },
+    Tensors {
+        data: IOBuffer,
+    },
     /// Field attribute. Essentially an array of data arrays of any size.
-    Field { data_array: Vec<FieldArray> },
+    Field {
+        data_array: Vec<FieldArray>,
+    },
 }
 
 /// Point and cell attributes.
@@ -144,12 +167,12 @@ pub enum DataSet {
         dims: [u32; 3],
         origin: [f32; 3],
         spacing: [f32; 3],
-        data: Attributes
+        data: Attributes,
     },
     StructuredGrid {
         dims: [u32; 3],
         points: IOBuffer,
-        data: Attributes
+        data: Attributes,
     },
     /// 3D Unstructured grid. Note that `cells.num_cells` must equal `cell_types.len()`.
     UnstructuredGrid {
@@ -157,7 +180,7 @@ pub enum DataSet {
         points: IOBuffer,
         cells: Cells,
         cell_types: Vec<CellType>,
-        data: Attributes
+        data: Attributes,
     },
     /// 3D Polygon data.
     PolyData {
@@ -170,13 +193,13 @@ pub enum DataSet {
         x_coords: IOBuffer,
         y_coords: IOBuffer,
         z_coords: IOBuffer,
-        data: Attributes
+        data: Attributes,
     },
     /// Same as one field attribute.
     Field {
         name: String,
-        data_array: Vec<FieldArray>
-    }
+        data_array: Vec<FieldArray>,
+    },
 }
 
 /// Types of data that can be recognized by the parser. Not all data types are supported for all
