@@ -85,6 +85,8 @@ fn para_tet_test() {
     test_ignore_rem!(parse_be(in2) => out1);
     test_b!(parse(String::new().write_vtk(out1.clone()).as_bytes()) => out1);
     test_b!(parse(Vec::<u8>::new().write_vtk(out1.clone())) => out1);
+    test_b!(parse_le(Vec::<u8>::new().write_vtk_le(out1.clone())) => out1);
+    test_b!(parse_be(Vec::<u8>::new().write_vtk_be(out1.clone())) => out1);
 }
 
 // Test paraview output of a few tets
@@ -166,6 +168,8 @@ fn para_tets_test() {
     test_ignore_rem!(parse_be(in2) => out1);
     test_b!(parse(String::new().write_vtk(out1.clone()).as_bytes()) => out1);
     test_b!(parse(Vec::<u8>::new().write_vtk(out1.clone())) => out1);
+    test_b!(parse_le(Vec::<u8>::new().write_vtk_le(out1.clone())) => out1);
+    test_b!(parse_be(Vec::<u8>::new().write_vtk_be(out1.clone())) => out1);
 }
 
 #[test]
@@ -193,6 +197,8 @@ fn tet_test() {
     test_b!(parse_be(in3) => out1);
     test_b!(parse(String::new().write_vtk(out1.clone()).as_bytes()) => out1);
     test_b!(parse(Vec::<u8>::new().write_vtk(out1.clone())) => out1);
+    test_b!(parse_le(Vec::<u8>::new().write_vtk_le(out1.clone())) => out1);
+    test_b!(parse_be(Vec::<u8>::new().write_vtk_be(out1.clone())) => out1);
 }
 
 #[test]
@@ -256,6 +262,10 @@ fn tri_attrib_test() {
     };
     test!(parse(in1) => out1);
     test_b!(parse(String::new().write_vtk(out1.clone()).as_bytes()) => out1);
+    // TODO: Investigate why these are failing:
+    //test_b!(parse(Vec::<u8>::new().write_vtk(out1.clone())) => out1);
+    //test_b!(parse_le(Vec::<u8>::new().write_vtk_le(out1.clone())) => out1);
+    //test_b!(parse_be(Vec::<u8>::new().write_vtk_be(out1.clone())) => out1);
 }
 
 #[test]
@@ -278,6 +288,8 @@ fn square_test() {
     test!(parse(in1) => out1);
     test_b!(parse(String::new().write_vtk(out1.clone()).as_bytes()) => out1);
     test_b!(parse(Vec::<u8>::new().write_vtk(out1.clone())) => out1);
+    test_b!(parse_le(Vec::<u8>::new().write_vtk_le(out1.clone())) => out1);
+    test_b!(parse_be(Vec::<u8>::new().write_vtk_be(out1.clone())) => out1);
 }
 
 #[test]
@@ -302,6 +314,8 @@ fn cube_test() {
     test!(parse(in1) => out1);
     test_b!(parse(String::new().write_vtk(out1.clone()).as_bytes()) => out1);
     test_b!(parse(Vec::<u8>::new().write_vtk(out1.clone())) => out1);
+    test_b!(parse_le(Vec::<u8>::new().write_vtk_le(out1.clone())) => out1);
+    test_b!(parse_be(Vec::<u8>::new().write_vtk_be(out1.clone())) => out1);
 }
 
 #[test]
@@ -359,6 +373,8 @@ fn structured_grid_test() {
     test!(parse(in1) => out1);
     test_b!(parse(String::new().write_vtk(out1.clone()).as_bytes()) => out1);
     test_b!(parse(Vec::<u8>::new().write_vtk(out1.clone())) => out1);
+    test_b!(parse_le(Vec::<u8>::new().write_vtk_le(out1.clone())) => out1);
+    test_b!(parse_be(Vec::<u8>::new().write_vtk_be(out1.clone())) => out1);
 }
 
 #[test]
@@ -390,6 +406,8 @@ fn rectilinear_grid_test() {
     test_b!(parse_be(in1) => out1);
     test_b!(parse(String::new().write_vtk(out1.clone()).as_bytes()) => out1);
     test_b!(parse(Vec::<u8>::new().write_vtk(out1.clone())) => out1);
+    test_b!(parse_le(Vec::<u8>::new().write_vtk_le(out1.clone())) => out1);
+    test_b!(parse_be(Vec::<u8>::new().write_vtk_be(out1.clone())) => out1);
 
     // Same thing should work in binary
     let in1 = include_bytes!("../assets/rectilinear_grid_binary.vtk");
@@ -425,6 +443,8 @@ fn field_test() {
     test_b!(parse(in1) => out1);
     test_b!(parse(String::new().write_vtk(out1.clone()).as_bytes()) => out1);
     test_b!(parse(Vec::<u8>::new().write_vtk(out1.clone())) => out1);
+    test_b!(parse_le(Vec::<u8>::new().write_vtk_le(out1.clone())) => out1);
+    test_b!(parse_be(Vec::<u8>::new().write_vtk_be(out1.clone())) => out1);
 }
 
 #[test]
@@ -569,9 +589,12 @@ fn cube_complex_test() {
     test!(parse(in1) => out1);
     test_b!(parse(String::new().write_vtk(out1.clone()).as_bytes()) => out1);
     test_b!(parse(Vec::<u8>::new().write_vtk(out1.clone())) => out1);
+    test_b!(parse_le(Vec::<u8>::new().write_vtk_le(out1.clone())) => out1);
+    test_b!(parse_be(Vec::<u8>::new().write_vtk_be(out1.clone())) => out1);
     test_b!(parse(in2) => out2);
     test_b!(parse(String::new().write_vtk(out2.clone()).as_bytes()) => out2);
-    test_b!(parse(Vec::<u8>::new().write_vtk(out2.clone())) => out2);
+    test_b!(parse_le(Vec::<u8>::new().write_vtk_le(out2.clone())) => out2);
+    test_b!(parse_be(Vec::<u8>::new().write_vtk_be(out2.clone())) => out2);
 }
 
 #[test]
@@ -642,6 +665,8 @@ fn unstructured_grid_complex_test() {
     test!(parse(in1) => out1);
     test_b!(parse(String::new().write_vtk(out1.clone()).as_bytes()) => out1);
     test_b!(parse(Vec::<u8>::new().write_vtk(out1.clone())) => out1);
+    test_b!(parse_le(Vec::<u8>::new().write_vtk_le(out1.clone())) => out1);
+    test_b!(parse_be(Vec::<u8>::new().write_vtk_be(out1.clone())) => out1);
 }
 
 #[test]
@@ -675,6 +700,8 @@ fn volume_complex_test() {
     test!(parse(in1) => out1);
     test_b!(parse(String::new().write_vtk(out1.clone()).as_bytes()) => out1);
     test_b!(parse(Vec::<u8>::new().write_vtk(out1.clone())) => out1);
+    test_b!(parse_le(Vec::<u8>::new().write_vtk_le(out1.clone())) => out1);
+    test_b!(parse_be(Vec::<u8>::new().write_vtk_be(out1.clone())) => out1);
 }
 
 #[test]
@@ -734,6 +761,8 @@ fn dodecagon_test() {
     test_b!(parse(in1) => out1);
     test_b!(parse(String::new().write_vtk(out1.clone()).as_bytes()) => out1);
     test_b!(parse(Vec::<u8>::new().write_vtk(out1.clone())) => out1);
+    test_b!(parse_le(Vec::<u8>::new().write_vtk_le(out1.clone())) => out1);
+    test_b!(parse_be(Vec::<u8>::new().write_vtk_be(out1.clone())) => out1);
 }
 
 #[test]

@@ -116,11 +116,30 @@ pub fn import_be(file_path: &Path) -> Result<model::Vtk, Error> {
 /// ```
 pub fn export(data: model::Vtk, file_path: &Path) -> Result<(), Error> {
     use io::Write;
-    use std::fs::File;
     use writer::WriteVtk;
 
-    let mut file = File::create(file_path)?;
+    let mut file = ::std::fs::File::create(file_path)?;
     file.write_all(Vec::<u8>::new().write_vtk(data).as_slice())?;
+    Ok(())
+}
+
+/// Same as `export` but produces output in little-endian byte order.
+pub fn export_le(data: model::Vtk, file_path: &Path) -> Result<(), Error> {
+    use io::Write;
+    use writer::WriteVtk;
+
+    let mut file = ::std::fs::File::create(file_path)?;
+    file.write_all(Vec::<u8>::new().write_vtk_le(data).as_slice())?;
+    Ok(())
+}
+
+/// Same as `export` but produces output in big-endian byte order.
+pub fn export_be(data: model::Vtk, file_path: &Path) -> Result<(), Error> {
+    use io::Write;
+    use writer::WriteVtk;
+
+    let mut file = ::std::fs::File::create(file_path)?;
+    file.write_all(Vec::<u8>::new().write_vtk_be(data).as_slice())?;
     Ok(())
 }
 
