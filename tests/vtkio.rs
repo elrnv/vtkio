@@ -222,7 +222,7 @@ fn tri_test() {
 }
 
 #[test]
-fn tri_attrib_test() {
+fn tri_attrib_ascii_test() {
     let in1 = include_str!("../assets/tri_attrib.vtk");
     let out1 = Vtk {
         version: Version::new((2, 0)),
@@ -262,10 +262,53 @@ fn tri_attrib_test() {
     };
     test!(parse(in1) => out1);
     test_b!(parse(String::new().write_vtk(out1.clone()).as_bytes()) => out1);
-    // TODO: Investigate why these are failing:
-    //test_b!(parse(Vec::<u8>::new().write_vtk(out1.clone())) => out1);
-    //test_b!(parse_le(Vec::<u8>::new().write_vtk_le(out1.clone())) => out1);
-    //test_b!(parse_be(Vec::<u8>::new().write_vtk_be(out1.clone())) => out1);
+    // Color scalars are floats only in the ASCII vtk file format. Thus we have another test for
+    // The same file but in binary in tri_attrib_binary_test.
+}
+
+#[test]
+fn tri_attrib_binary_test() {
+    let in1 = include_bytes!("../assets/tri_attrib_binary.vtk");
+    let out1 = Vtk {
+        version: Version::new((4, 2)),
+        title: String::from("Triangle example"),
+        data: DataSet::PolyData {
+            points: vec![0.0f32, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, -1.0].into(),
+            topo: vec![PolyDataTopology::Polygons(Cells {
+                num_cells: 1,
+                vertices: vec![3, 0, 1, 2],
+            })],
+            data: Attributes {
+                point: vec![],
+                cell: vec![
+                    (
+                        String::from("scalars"),
+                        Attribute::ColorScalars {
+                            num_comp: 3,
+                            data: vec![255u8, 0, 0].into(),
+                        },
+                    ),
+                    (
+                        String::from("tex_coords"),
+                        Attribute::TextureCoordinates {
+                            dim: 3,
+                            data: vec![1.0f32, 0.0, 0.0].into(),
+                        },
+                    ),
+                    (
+                        String::from("tensors"),
+                        Attribute::Tensors {
+                            data: vec![1.0f64, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0].into(),
+                        },
+                    ),
+                ],
+            },
+        },
+    };
+    test_ignore_rem!(parse_be(in1) => out1);
+    test_b!(parse(Vec::<u8>::new().write_vtk(out1.clone())) => out1);
+    // Color scalars are u8 only in the Binary vtk file format. ASCII style color scalars are
+    // stored as floats and are tested in tri_attrib_ascii_test.
 }
 
 #[test]

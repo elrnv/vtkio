@@ -639,6 +639,7 @@ impl<BO: ByteOrder> VtkParser<BO> {
             input,
             tag_no_case!("POLYDATA")
                 >> points: call!(Self::points, ft)
+                >> opt!(Self::meta)
                 >> topo: many_m_n!(0, 4, call!(Self::poly_data_topo, ft))
                 >> data: call!(Self::attributes, ft)
                 >> (DataSet::PolyData { points, topo, data })
