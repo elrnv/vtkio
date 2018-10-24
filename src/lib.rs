@@ -169,7 +169,11 @@ pub fn export_ascii(data: model::Vtk, file_path: &Path) -> Result<(), Error> {
     use std::fs::File;
     use writer::WriteVtk;
 
-    let mut file = File::create(file_path)?;
-    file.write_all(String::new().write_vtk(data).as_bytes())?;
+    let mut out_str = String::new();
+    out_str.write_vtk(data);
+    {
+        let mut file = File::create(file_path)?;
+        file.write_all(out_str.as_bytes())?;
+    }
     Ok(())
 }

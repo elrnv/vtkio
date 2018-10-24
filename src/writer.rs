@@ -427,7 +427,7 @@ mod write_vtk_impl {
         }
 
         fn write_buf<BO: ByteOrder>(&mut self, data: IOBuffer, err: &str) {
-            write!(self, "{}\n", data).expect(err)
+            write!(self, "{}\n", data).expect(err);
         }
     }
 }
