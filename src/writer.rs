@@ -360,7 +360,7 @@ mod write_vtk_impl {
                 W: WriteBytesExt,
                 E: Fn(&mut W, T) -> ::std::io::Result<()>,
             {
-                for elem in buf.reinterpret_as_vec::<T>() {
+                for elem in buf.reinterpret_into_vec::<T>() {
                     elem_writer(writer, elem).expect(err);
                 }
             }
