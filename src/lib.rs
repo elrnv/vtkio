@@ -16,6 +16,8 @@ pub mod writer;
 use std::io;
 use std::path::Path;
 
+pub use buffer::call_numeric_buffer_fn;
+
 /// Primary buffer type used to store data read from binary or ASCII files.
 pub type IOBuffer = buffer::DataBuffer;
 
