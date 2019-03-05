@@ -1,6 +1,6 @@
 [package]
 name = "vtkio"
-version = "0.1.6"
+version = "0.1.7"
 authors = ["Egor Larionov <egor.larionov@gmail.com>"]
 license = "MIT OR Apache-2.0"
 description = "Parser and writer for the legacy VTK file format"
@@ -23,7 +23,7 @@ nom = { version = "3", features = ["verbose-errors"] }
 num-traits = "0.2"
 enum-primitive-derive = "^0.1"
 byteorder = "1.2"
-data-buffer = { version = "0.4", features = ["numeric"] }
+data-buffer = { version = "0.5", features = ["numeric"] }
 
 [dev-dependencies]
 rand = "0.5"

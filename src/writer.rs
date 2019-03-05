@@ -48,7 +48,7 @@ mod write_vtk_impl {
                             self,
                             "SCALARS {} {} {}\n",
                             name,
-                            DataType::from(data.type_id()),
+                            DataType::from(data.element_type_id()),
                             num_comp
                         ).expect("Error writing a Scalars attribute header.");
                         write!(
@@ -73,7 +73,7 @@ mod write_vtk_impl {
                             self,
                             "VECTORS {} {}\n",
                             name,
-                            DataType::from(data.type_id())
+                            DataType::from(data.element_type_id())
                         ).expect("Error writing a Vectors attribute header.");
                         self.write_buf::<BO>(data, "Error writing Vectors attribute data.");
                     }
@@ -82,7 +82,7 @@ mod write_vtk_impl {
                             self,
                             "NORMALS {} {}\n",
                             name,
-                            DataType::from(data.type_id())
+                            DataType::from(data.element_type_id())
                         ).expect("Error writing a Normals attribute header.");
                         self.write_buf::<BO>(data, "Error writing Normals attribute data.");
                     }
@@ -92,7 +92,7 @@ mod write_vtk_impl {
                             "TEXTURE_COORDINATES {} {} {}\n",
                             name,
                             dim,
-                            DataType::from(data.type_id())
+                            DataType::from(data.element_type_id())
                         ).expect("Error writing a TextureCoordinates attribute header.");
                         self.write_buf::<BO>(
                             data,
@@ -104,7 +104,7 @@ mod write_vtk_impl {
                             self,
                             "TENSORS {} {}\n",
                             name,
-                            DataType::from(data.type_id())
+                            DataType::from(data.element_type_id())
                         ).expect("Error writing a Tensors attribute header.");
                         self.write_buf::<BO>(data, "Error writing Tensors attribute data.");
                     }
@@ -118,7 +118,7 @@ mod write_vtk_impl {
                                 field.name,
                                 field.num_comp,
                                 field.data.len() / field.num_comp as usize,
-                                DataType::from(field.data.type_id())
+                                DataType::from(field.data.element_type_id())
                             ).expect("Error writing Field attribute array header.");
                             self.write_buf::<BO>(
                                 field.data,
@@ -145,7 +145,7 @@ mod write_vtk_impl {
                             field.name,
                             field.num_comp,
                             field.data.len() / field.num_comp as usize,
-                            DataType::from(field.data.type_id())
+                            DataType::from(field.data.element_type_id())
                         ).expect("Error writing Field array data header.");
                         self.write_buf::<BO>(
                             field.data,
@@ -161,7 +161,7 @@ mod write_vtk_impl {
                         self,
                         "POINTS {} {}\n",
                         points.len() / 3,
-                        DataType::from(points.type_id())
+                        DataType::from(points.element_type_id())
                     ).expect("Error writing PolyData points.");
                     let num_points = points.len() / 3;
                     self.write_buf::<BO>(points, "Error writing PolyData points.");
@@ -211,7 +211,7 @@ mod write_vtk_impl {
                         self,
                         "POINTS {} {}\n",
                         points.len() / 3,
-                        DataType::from(points.type_id())
+                        DataType::from(points.element_type_id())
                     ).expect("Error writing UnstructuredGrid points.");
                     let num_points = points.len() / 3;
                     self.write_buf::<BO>(points, "Error writing UnstructuredGrid points.");
@@ -275,7 +275,7 @@ mod write_vtk_impl {
                         self,
                         "POINTS {} {}\n",
                         points.len() / 3,
-                        DataType::from(points.type_id())
+                        DataType::from(points.element_type_id())
                     ).expect("Error writing StructuredGrid points.");
                     let num_points = points.len() / 3;
                     self.write_buf::<BO>(points, "Error writing StructuredGrid points.");
@@ -301,7 +301,7 @@ mod write_vtk_impl {
                         self,
                         "X_COORDINATES {} {}\n",
                         x_coords.len(),
-                        DataType::from(x_coords.type_id())
+                        DataType::from(x_coords.element_type_id())
                     ).expect("Error writing RectilinearGrid x_coordinates.");
                     let num_x_coords = x_coords.len();
                     self.write_buf::<BO>(x_coords, "Error writing RectilinearGrid x_coordinates.");
@@ -309,7 +309,7 @@ mod write_vtk_impl {
                         self,
                         "Y_COORDINATES {} {}\n",
                         y_coords.len(),
-                        DataType::from(y_coords.type_id())
+                        DataType::from(y_coords.element_type_id())
                     ).expect("Error writing RectilinearGrid y_coordinates.");
                     let num_y_coords = y_coords.len();
                     self.write_buf::<BO>(y_coords, "Error writing RectilinearGrid y_coordinates.");
@@ -317,7 +317,7 @@ mod write_vtk_impl {
                         self,
                         "Z_COORDINATES {} {}\n",
                         z_coords.len(),
-                        DataType::from(z_coords.type_id())
+                        DataType::from(z_coords.element_type_id())
                     ).expect("Error writing RectilinearGrid z_coordinates.");
                     let num_z_coords = z_coords.len();
                     self.write_buf::<BO>(z_coords, "Error writing RectilinearGrid z_coordinates.");
@@ -365,7 +365,7 @@ mod write_vtk_impl {
                 }
             }
 
-            match buf.type_id() {
+            match buf.element_type_id() {
                 x if x == TypeId::of::<u8>() => write_buf_impl(buf, self, Self::write_u8, err),
                 x if x == TypeId::of::<i8>() => write_buf_impl(buf, self, Self::write_i8, err),
                 x if x == TypeId::of::<u16>() => {
