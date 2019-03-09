@@ -27,12 +27,14 @@ mod write_vtk_impl {
             num_points: usize,
             num_cells: usize,
         ) {
-            write!(self, "\nCELL_DATA {}\n", num_cells).expect("Error writing cell data header.");
-            self.write_attrib_data::<BO>(data.cell);
-
-            write!(self, "\nPOINT_DATA {}\n", num_points)
+           write!(self, "\nPOINT_DATA {}\n", num_points)
                 .expect("Error writing point data header.");
             self.write_attrib_data::<BO>(data.point);
+
+            write!(self, "\nCELL_DATA {}\n", num_cells)
+                .expect("Error writing cell data header.");
+            self.write_attrib_data::<BO>(data.cell);
+
         }
 
         fn write_attrib_data<BO: ByteOrder>(&mut self, data: Vec<(String, Attribute)>) {
