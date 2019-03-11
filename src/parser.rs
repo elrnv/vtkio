@@ -419,7 +419,7 @@ impl<BO: ByteOrder> VtkParser<BO> {
             alt_complete!(
                 do_parse!(
                     tag_no_case!("POINT_DATA") >>
-                    n: u32_b >>
+                    n: sp!(u32_b) >>
                     vec: many0!( call!( Self::attribute, n as usize, ft ) ) >>
                     (vec)
                     ) |
@@ -429,16 +429,18 @@ impl<BO: ByteOrder> VtkParser<BO> {
     }
 
     fn cell_attributes(input: &[u8], ft: FileType) -> IResult<&[u8], Vec<(String, Attribute)>> {
-        alt_complete!(input,
-                      do_parse!(
-                          ws!( tag_no_case!("CELL_DATA") ) >>
-                          n: sp!( u32_b ) >>
-                          tag!("\n") >>
-                          vec: many0!( call!( Self::attribute, n as usize, ft ) ) >>
-                          (vec)
-                          ) |
-                      ws!( eof!() ) => { |_| Vec::new() }
-                     )
+        ws!(
+            input,
+            alt_complete!(
+                do_parse!(
+                    ws!( tag_no_case!("CELL_DATA") ) >>
+                    n: sp!( u32_b ) >>
+                    vec: many0!( call!( Self::attribute, n as usize, ft ) ) >>
+                    (vec)
+                ) |
+                ws!( eof!() ) => { |_| Vec::new() }
+            )
+        )
     }
 
     fn attributes(input: &[u8], ft: FileType) -> IResult<&[u8], Attributes> {
