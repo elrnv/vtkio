@@ -25,6 +25,7 @@ pub type IOBuffer = buffer::DataBuffer;
 #[derive(Debug)]
 pub enum Error {
     IO(io::Error),
+    Write(writer::Error),
     Parse(nom::ErrorKind<u32>),
     Unknown,
 }
@@ -45,6 +46,13 @@ impl From<Error> for io::Error {
         }
     }
 }
+
+impl From<writer::Error> for Error {
+    fn from(e: writer::Error) -> Error {
+        Error::Write(e)
+    }
+}
+
 
 /// Helper function that implements the actual importing routine.
 fn import_impl<F>(file_path: &Path, parse: F) -> Result<model::Vtk, Error>
@@ -121,7 +129,7 @@ pub fn export(data: model::Vtk, file_path: &Path) -> Result<(), Error> {
     use writer::WriteVtk;
 
     let mut file = ::std::fs::File::create(file_path)?;
-    file.write_all(Vec::<u8>::new().write_vtk(data).as_slice())?;
+    file.write_all(Vec::<u8>::new().write_vtk(data)?.as_slice())?;
     Ok(())
 }
 
@@ -131,7 +139,7 @@ pub fn export_le(data: model::Vtk, file_path: &Path) -> Result<(), Error> {
     use writer::WriteVtk;
 
     let mut file = ::std::fs::File::create(file_path)?;
-    file.write_all(Vec::<u8>::new().write_vtk_le(data).as_slice())?;
+    file.write_all(Vec::<u8>::new().write_vtk_le(data)?.as_slice())?;
     Ok(())
 }
 
@@ -141,7 +149,7 @@ pub fn export_be(data: model::Vtk, file_path: &Path) -> Result<(), Error> {
     use writer::WriteVtk;
 
     let mut file = ::std::fs::File::create(file_path)?;
-    file.write_all(Vec::<u8>::new().write_vtk_be(data).as_slice())?;
+    file.write_all(Vec::<u8>::new().write_vtk_be(data)?.as_slice())?;
     Ok(())
 }
 
@@ -172,7 +180,7 @@ pub fn export_ascii(data: model::Vtk, file_path: &Path) -> Result<(), Error> {
     use writer::WriteVtk;
 
     let mut out_str = String::new();
-    out_str.write_vtk(data);
+    out_str.write_vtk(data)?;
     {
         let mut file = File::create(file_path)?;
         file.write_all(out_str.as_bytes())?;
