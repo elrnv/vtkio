@@ -176,10 +176,10 @@ impl<BO: ByteOrder> VtkParser<BO> {
     named!(
         lookup_table,
         alt_complete!(
-               sp!( do_parse!( tag_no_case!("LOOKUP_TABLE") >> n: name >> (n) ) ) |
-               eof!() => { |_| "".as_bytes() } |
-               eol
-               )
+        sp!( do_parse!( tag_no_case!("LOOKUP_TABLE") >> n: name >> (n) ) ) |
+        eof!() => { |_| "".as_bytes() } |
+        eol
+        )
     );
 
     fn attribute_scalars(
@@ -417,14 +417,14 @@ impl<BO: ByteOrder> VtkParser<BO> {
         ws!(
             input,
             alt_complete!(
-                do_parse!(
-                    tag_no_case!("POINT_DATA") >>
-                    n: sp!(u32_b) >>
-                    vec: many0!( call!( Self::attribute, n as usize, ft ) ) >>
-                    (vec)
-                    ) |
-                ws!( eof!() ) => { |_| Vec::new() }
-                )
+            do_parse!(
+                tag_no_case!("POINT_DATA") >>
+                n: sp!(u32_b) >>
+                vec: many0!( call!( Self::attribute, n as usize, ft ) ) >>
+                (vec)
+                ) |
+            ws!( eof!() ) => { |_| Vec::new() }
+            )
         )
     }
 
@@ -558,11 +558,13 @@ impl<BO: ByteOrder> VtkParser<BO> {
     fn field_data(input: &[u8], ft: FileType) -> IResult<&[u8], DataSet> {
         let res = Self::attribute_field(input, ft);
         match res {
-            IResult::Done(i, o) => if let (name, Attribute::Field { data_array }) = o {
-                IResult::Done(i, DataSet::Field { name, data_array })
-            } else {
-                IResult::Error(nom::Err::Code(ErrorKind::Custom(1u32)))
-            },
+            IResult::Done(i, o) => {
+                if let (name, Attribute::Field { data_array }) = o {
+                    IResult::Done(i, DataSet::Field { name, data_array })
+                } else {
+                    IResult::Error(nom::Err::Code(ErrorKind::Custom(1u32)))
+                }
+            }
             IResult::Incomplete(e) => IResult::Incomplete(e),
             IResult::Error(e) => IResult::Error(e),
         }

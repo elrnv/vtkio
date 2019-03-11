@@ -6,8 +6,8 @@ use nom::IResult;
 use vtkio::model::*;
 use vtkio::parser::*;
 use vtkio::writer::*;
-use vtkio::IOBuffer;
 use vtkio::Error;
+use vtkio::IOBuffer;
 
 macro_rules! test {
     ($fn:ident ($in:expr, $($args:expr),*) => ($rem:expr, $out:expr)) => {
@@ -63,7 +63,8 @@ fn para_tet_test() -> Result {
         data: DataSet::UnstructuredGrid {
             points: vec![
                 0.0f64, 0.0, 0.0, 0.0, 0.0, -1.0, 0.0, 1.0, 0.0, 1.0, 0.0, 0.0,
-            ].into(),
+            ]
+            .into(),
             cells: Cells {
                 num_cells: 1,
                 vertices: vec![4, 0, 1, 2, 3],
@@ -106,7 +107,8 @@ fn para_tets_test() -> Result {
                 13.2, 135.4, -7.7, 13.7, 134.2, -8.7, 12.2, 134.7, -8.6, 12.7, 133.6, -7.0, 3.6,
                 119.4, -0.3, -2.3, 137.0, -2.5, 5.4, 119.7, 0.0, -2.7, 135.9, -1.2, -2.9, 137.5,
                 -1.2, -1.8, 136.6, -1.7, 4.3, 119.7, 0.4, 4.6, 118.7, -0.002,
-            ].into(),
+            ]
+            .into(),
             cells: Cells {
                 num_cells: 3,
                 vertices: vec![4, 9, 5, 7, 8, 4, 3, 2, 0, 1, 4, 11, 6, 4, 10],
@@ -127,7 +129,8 @@ fn para_tets_test() -> Result {
                                 num_comp: 1,
                                 data: vec![
                                     2.3, 2.5, 2.3, 2.1, 1.4, 0.8, 1.6, 0.7, 0.8, 0.7, 1.5, 1.6f32,
-                                ].into(),
+                                ]
+                                .into(),
                             },
                             FieldArray {
                                 name: String::from("Ints"),
@@ -188,7 +191,8 @@ fn tet_test() -> Result {
         data: DataSet::UnstructuredGrid {
             points: vec![
                 0.0f32, 0.0, 0.0, 0.0, 0.0, -1.0, 0.0, 1.0, 0.0, 1.0, 0.0, 0.0,
-            ].into(),
+            ]
+            .into(),
             cells: Cells {
                 num_cells: 1,
                 vertices: vec![4, 0, 1, 2, 3],
@@ -329,7 +333,8 @@ fn square_test() -> Result {
         data: DataSet::PolyData {
             points: vec![
                 0.0f32, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, -1.0, 0.0, 0.0, -1.0,
-            ].into(),
+            ]
+            .into(),
             topo: vec![PolyDataTopology::Polygons(Cells {
                 num_cells: 1,
                 vertices: vec![4, 0, 1, 2, 3],
@@ -355,7 +360,8 @@ fn cube_test() -> Result {
             points: vec![
                 0.0, 0.0, 0.0, 0.0, 0.0, -1.0, 0.0, 1.0, 0.0, 0.0, 1.0, -1.0, 1.0, 0.0, 0.0, 1.0,
                 0.0, -1.0, 1.0, 1.0, 0.0, 1.0, 1.0, -1.0f32,
-            ].into(),
+            ]
+            .into(),
             cells: Cells {
                 num_cells: 1,
                 vertices: vec![8, 0, 4, 5, 1, 2, 6, 7, 3],
@@ -383,7 +389,8 @@ fn structured_grid_test() -> Result {
             points: vec![
                 0_f32, 0.2, 0., 0.1, 0.184843, 0., 0., 0.25, 0., 0.1, 0.234843, 0., 0., 0.2,
                 0.333333, 0.1, 0.184843, 0.333333, 0., 0.25, 0.333333, 0.1, 0.234843, 0.333333,
-            ].into(),
+            ]
+            .into(),
             data: Attributes {
                 point: vec![
                     (
@@ -401,7 +408,8 @@ fn structured_grid_test() -> Result {
                                 0_f32, 0.0287671, 0., 0., 0.0258604, 0., 0., 0.0287671, 0., 0.,
                                 0.0258604, 0., 0., 0.0287671, 0., 0., 0.0258604, 0., 0., 0.0287671,
                                 0., 0., 0.0258604, 0.,
-                            ].into(),
+                            ]
+                            .into(),
                         },
                     ),
                 ],
@@ -531,7 +539,8 @@ fn cube_complex_test() -> Result {
                         0.0f32, 0.0, 0.0, 1.0, 1.0, 0.0, 0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 1.0, 1.0,
                         0.0, 1.0, 0.0, 0.0, 1.0, 1.0, 1.0, 0.0, 1.0, 1.0, 0.0, 1.0, 1.0, 1.0, 1.0,
                         1.0, 1.0, 1.0,
-                    ].into(),
+                    ]
+                    .into(),
                 },
             ),
         ],
@@ -550,7 +559,8 @@ fn cube_complex_test() -> Result {
                     data: vec![
                         0.0f32, 0., -1., 0., 0., 1., 0., -1., 0., 0., 1., 0., -1., 0., 0., 1., 0.,
                         0.,
-                    ].into(),
+                    ]
+                    .into(),
                 },
             ),
             (
@@ -575,7 +585,8 @@ fn cube_complex_test() -> Result {
     let points: IOBuffer = vec![
         0.0, 0.0, 0.0, 1.0, 0.0, 0.0f32, 1.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 1.0, 0.0,
         1.0, 1.0, 1.0, 1.0, 0.0, 1.0, 1.0,
-    ].into();
+    ]
+    .into();
 
     let in1 = include_str!("../assets/cube_complex.vtk");
     let out1 = Vtk {
@@ -610,7 +621,8 @@ fn cube_complex_test() -> Result {
                 data: vec![
                     0.0f32, 0., -1., 0., 0., 1., 0., -1., 0., 0., 1., 0., -1., 0., 0., 1., 0., 0.,
                     1., 0., 0., 1., 0., 0.,
-                ].into(),
+                ]
+                .into(),
             },
         ),
         (
@@ -627,7 +639,8 @@ fn cube_complex_test() -> Result {
                         num_comp: 2,
                         data: vec![
                             0.0f32, 1., 1., 2., 2., 3., 3., 4., 4., 5., 5., 6., 6., 6., 7., 7.,
-                        ].into(),
+                        ]
+                        .into(),
                     },
                 ],
             },
@@ -667,7 +680,8 @@ fn unstructured_grid_complex_test() -> Result {
                 1., 1., 0., 1., 2., 0., 1., 0., 1., 1., 1., 1., 1., 2., 1., 1., 0., 1., 2., 1., 1.,
                 2., 2., 1., 2., 0., 1., 3., 1., 1., 3., 2., 1., 3., 0., 1., 4., 1., 1., 4., 2., 1.,
                 4., 0., 1., 5., 1., 1., 5., 2., 1., 5., 0., 1., 6., 1., 1., 6., 2., 1., 6.,
-            ].into(),
+            ]
+            .into(),
             cells: Cells {
                 num_cells: 11,
                 vertices: vec![
@@ -700,7 +714,8 @@ fn unstructured_grid_complex_test() -> Result {
                                 0.0f32, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0,
                                 12.0, 13.0, 14.0, 15.0, 16.0, 17.0, 18.0, 19.0, 20.0, 21.0, 22.0,
                                 23.0, 24.0, 25.0, 26.0,
-                            ].into(),
+                            ]
+                            .into(),
                         },
                     ),
                     (
@@ -712,7 +727,8 @@ fn unstructured_grid_complex_test() -> Result {
                                 0., 2., 0., 0., 0., 1., 0., 0., 1., 0., 0., 1., 0., 0., 1., 0., 0.,
                                 1., 0., 0., 1., 0., 0., 1., 0., 0., 1., 0., 0., 1., 0., 0., 1., 0.,
                                 0., 1., 0., 0., 1., 0., 0., 1., 0., 0., 1., 0., 0., 1.,
-                            ].into(),
+                            ]
+                            .into(),
                         },
                     ),
                 ],
@@ -749,7 +765,8 @@ fn volume_complex_test() -> Result {
                             10, 5, 0, 0, 10, 20, 30, 40, 50, 50, 40, 30, 20, 10, 0, 0, 10, 20, 30,
                             40, 50, 50, 40, 30, 20, 10, 0, 0, 5, 10, 15, 20, 25, 25, 20, 15, 10, 5,
                             0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-                        ].into(),
+                        ]
+                        .into(),
                     },
                 )],
                 cell: vec![],
@@ -808,7 +825,8 @@ fn dodecagon_test() -> Result {
                 0.433013,
                 0.,
                 0.25,
-            ].into(),
+            ]
+            .into(),
             cells: Cells {
                 num_cells: 1,
                 vertices: vec![12, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
@@ -870,7 +888,8 @@ fn dodecagon_with_meta_test() {
                 0.433013,
                 0.,
                 0.25,
-            ].into(),
+            ]
+            .into(),
             cells: Cells {
                 num_cells: 1,
                 vertices: vec![12, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
@@ -927,7 +946,8 @@ fn binary_dodecagon_test() {
                 0.4330127,
                 0.,
                 0.25,
-            ].into(),
+            ]
+            .into(),
             cells: Cells {
                 num_cells: 1,
                 vertices: vec![12, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],

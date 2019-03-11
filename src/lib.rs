@@ -53,7 +53,6 @@ impl From<writer::Error> for Error {
     }
 }
 
-
 /// Helper function that implements the actual importing routine.
 fn import_impl<F>(file_path: &Path, parse: F) -> Result<model::Vtk, Error>
 where
