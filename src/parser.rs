@@ -621,7 +621,7 @@ impl<BO: ByteOrder> VtkParser<BO> {
 
     /// Parse PolyData topology
     fn poly_data_topo(input: &[u8], ft: FileType) -> IResult<&[u8], PolyDataTopology> {
-        alt!(
+        alt_complete!(
             input,
             map!(
                 call!(Self::cells, "LINES", ft),
