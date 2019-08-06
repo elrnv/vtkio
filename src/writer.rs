@@ -1,7 +1,7 @@
 use byteorder::{BigEndian, ByteOrder, LittleEndian, NativeEndian};
-use model::*;
+use crate::model::*;
 use std::fmt::Arguments;
-use IOBuffer;
+use crate::IOBuffer;
 
 mod write_vtk_impl {
     use super::*;

@@ -1,10 +1,5 @@
 #[macro_use]
 extern crate nom;
-extern crate byteorder;
-extern crate data_buffer as buffer;
-extern crate num_traits;
-
-extern crate num_derive;
 
 #[macro_use]
 pub mod basic;
@@ -58,7 +53,7 @@ fn import_impl<F>(file_path: &Path, parse: F) -> Result<model::Vtk, Error>
 where
     F: Fn(&[u8]) -> nom::IResult<&[u8], model::Vtk>,
 {
-    use io::Read;
+    use crate::io::Read;
     use nom::IResult;
     use std::fs::File;
 
@@ -124,8 +119,8 @@ pub fn import_be(file_path: &Path) -> Result<model::Vtk, Error> {
 /// # }
 /// ```
 pub fn export(data: model::Vtk, file_path: &Path) -> Result<(), Error> {
-    use io::Write;
-    use writer::WriteVtk;
+    use crate::io::Write;
+    use crate::writer::WriteVtk;
 
     let mut file = ::std::fs::File::create(file_path)?;
     file.write_all(Vec::<u8>::new().write_vtk(data)?.as_slice())?;
@@ -134,8 +129,8 @@ pub fn export(data: model::Vtk, file_path: &Path) -> Result<(), Error> {
 
 /// Same as `export` but produces output in little-endian byte order.
 pub fn export_le(data: model::Vtk, file_path: &Path) -> Result<(), Error> {
-    use io::Write;
-    use writer::WriteVtk;
+    use crate::io::Write;
+    use crate::writer::WriteVtk;
 
     let mut file = ::std::fs::File::create(file_path)?;
     file.write_all(Vec::<u8>::new().write_vtk_le(data)?.as_slice())?;
@@ -144,8 +139,8 @@ pub fn export_le(data: model::Vtk, file_path: &Path) -> Result<(), Error> {
 
 /// Same as `export` but produces output in big-endian byte order.
 pub fn export_be(data: model::Vtk, file_path: &Path) -> Result<(), Error> {
-    use io::Write;
-    use writer::WriteVtk;
+    use crate::io::Write;
+    use crate::writer::WriteVtk;
 
     let mut file = ::std::fs::File::create(file_path)?;
     file.write_all(Vec::<u8>::new().write_vtk_be(data)?.as_slice())?;
@@ -174,9 +169,9 @@ pub fn export_be(data: model::Vtk, file_path: &Path) -> Result<(), Error> {
 /// # }
 /// ```
 pub fn export_ascii(data: model::Vtk, file_path: &Path) -> Result<(), Error> {
-    use io::Write;
+    use crate::io::Write;
     use std::fs::File;
-    use writer::WriteVtk;
+    use crate::writer::WriteVtk;
 
     let mut out_str = String::new();
     out_str.write_vtk(data)?;

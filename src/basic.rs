@@ -4,7 +4,7 @@ use byteorder::{ByteOrder, NativeEndian};
 use num_traits::Zero;
 use std::any::Any;
 use std::str::{self, FromStr};
-use IOBuffer;
+use crate::IOBuffer;
 
 /// This enum indicates if bulk data is saved in binary.
 /// NOTE: VTK files are saved in ASCII format with bulk data optionally saved in

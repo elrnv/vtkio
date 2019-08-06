@@ -1,6 +1,6 @@
 use std::any::TypeId;
 use std::fmt;
-use IOBuffer;
+use crate::IOBuffer;
 use num_derive::FromPrimitive;
 
 /**
