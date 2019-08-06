@@ -6,7 +6,6 @@ use IOBuffer;
 mod write_vtk_impl {
     use super::*;
     use byteorder::WriteBytesExt;
-    use num_traits::ToPrimitive;
 
     pub mod error {
         #[derive(Copy, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
@@ -590,7 +589,7 @@ mod write_vtk_impl {
             };
             let err = |e: std::io::Error| err_fn(Some(e.kind()));
             for t in data {
-                self.write_i32::<BO>(t.to_i32().ok_or(err_fn(None))?)
+                self.write_i32::<BO>(t as i32)
                     .map_err(err)?;
             }
             write!(self, "\n").map_err(|_| Error::NewLine)
@@ -660,7 +659,7 @@ mod write_vtk_impl {
                 EntryPart::Data(None),
             )));
             for t in data {
-                write!(self, "{}\n", t.to_u8().ok_or(err)?).map_err(|_| err)?;
+                write!(self, "{}\n", t as u8).map_err(|_| err)?;
             }
             write!(self, "\n").map_err(|_| err)
         }

@@ -9,11 +9,11 @@ use model::*;
 
 use IOBuffer;
 
-/**
+/*
  * Parsing routines
  */
 
-/// Parse the file version
+// Parse the file version
 named!(version<&[u8], Version>, sp!(
        do_parse!(
            tag!("#") >>

@@ -21,7 +21,7 @@ travis-ci = { repository = "elrnv/vtkio", branch = "master" }
 # remove this feature after the above issue is resolved
 nom = { version = "3", features = ["verbose-errors"] }
 num-traits = "0.2"
-enum-primitive-derive = "^0.1"
+num-derive = "0.2"
 byteorder = "1.3"
 data-buffer = { version = "0.5", features = ["numeric"] }
 

@@ -1,10 +1,10 @@
 #[macro_use]
-extern crate enum_primitive_derive;
-#[macro_use]
 extern crate nom;
 extern crate byteorder;
 extern crate data_buffer as buffer;
 extern crate num_traits;
+
+extern crate num_derive;
 
 #[macro_use]
 pub mod basic;

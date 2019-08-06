@@ -1,6 +1,7 @@
 use std::any::TypeId;
 use std::fmt;
 use IOBuffer;
+use num_derive::FromPrimitive;
 
 /**
  * Vtk Data Model
@@ -140,7 +141,7 @@ pub enum PolyDataTopology {
 /// For more details on each of these types see, the
 /// [VTK file formats](https://www.vtk.org/wp-content/uploads/2015/04/file-formats.pdf)
 /// documentation or `vtkCell.h` in the vtk SDK.
-#[derive(Copy, Clone, PartialEq, Debug, Primitive)]
+#[derive(Copy, Clone, PartialEq, Debug, FromPrimitive)]
 pub enum CellType {
     Vertex = 1,
     PolyVertex = 2,

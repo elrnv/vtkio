@@ -46,11 +46,11 @@ macro_rules! impl_real_parser {
     };
 }
 
-/**
+/*
  * Parsing routines
  */
 
-/// Consume a spaces and tabs.
+// Consume a spaces and tabs.
 named!(pub whitespace, eat_separator!(" \t"));
 
 /// Whitespace separator `sp`. Like `ws` but excludes new-lines.
@@ -60,8 +60,8 @@ macro_rules! sp (
         })
     );
 
-/// Parse a floating point number from a byte array.
-/// This extends `nom`'s implementation by allowing floats without a decimal point (e.g. `3e3`).
+// Parse a floating point number from a byte array.
+// This extends `nom`'s implementation by allowing floats without a decimal point (e.g. `3e3`).
 impl_real_parser!(real([u8]));
 
 /// Parse a number in binary form from a byte array.
