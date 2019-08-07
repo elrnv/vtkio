@@ -1,6 +1,6 @@
 [package]
 name = "vtkio"
-version = "0.2.2"
+version = "0.2.3"
 authors = ["Egor Larionov <egor.larionov@gmail.com>"]
 license = "MIT OR Apache-2.0"
 description = "Parser and writer for the legacy VTK file format"
