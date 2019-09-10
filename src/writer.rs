@@ -1,7 +1,7 @@
-use byteorder::{BigEndian, ByteOrder, LittleEndian, NativeEndian};
 use crate::model::*;
-use std::fmt::Arguments;
 use crate::IOBuffer;
+use byteorder::{BigEndian, ByteOrder, LittleEndian, NativeEndian};
+use std::fmt::Arguments;
 
 mod write_vtk_impl {
     use super::*;
@@ -589,8 +589,7 @@ mod write_vtk_impl {
             };
             let err = |e: std::io::Error| err_fn(Some(e.kind()));
             for t in data {
-                self.write_i32::<BO>(t as i32)
-                    .map_err(err)?;
+                self.write_i32::<BO>(t as i32).map_err(err)?;
             }
             write!(self, "\n").map_err(|_| Error::NewLine)
         }

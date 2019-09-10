@@ -1,7 +1,7 @@
-use std::any::TypeId;
-use std::fmt;
 use crate::IOBuffer;
 use num_derive::FromPrimitive;
+use std::any::TypeId;
+use std::fmt;
 
 /**
  * Vtk Data Model

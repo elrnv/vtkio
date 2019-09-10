@@ -25,6 +25,28 @@ pub enum Error {
     Unknown,
 }
 
+impl std::fmt::Display for Error {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match self {
+            Error::IO(source) => write!(f, "IO error: {:?}", source),
+            Error::Write(source) => write!(f, "Write error: {:?}", source),
+            Error::Parse(source) => write!(f, "Parse error: {:?}", source),
+            Error::Unknown => write!(f, "Unknown error"),
+        }
+    }
+}
+
+impl std::error::Error for Error {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Error::IO(source) => Some(source),
+            Error::Write(_) => None, // TODO: implement std::error for writer::Error
+            Error::Parse(_) => None,
+            Error::Unknown => None,
+        }
+    }
+}
+
 /// Convert `std::io` error into `vtkio` error.
 impl From<io::Error> for Error {
     fn from(e: io::Error) -> Error {
@@ -170,8 +192,8 @@ pub fn export_be(data: model::Vtk, file_path: &Path) -> Result<(), Error> {
 /// ```
 pub fn export_ascii(data: model::Vtk, file_path: &Path) -> Result<(), Error> {
     use crate::io::Write;
-    use std::fs::File;
     use crate::writer::WriteVtk;
+    use std::fs::File;
 
     let mut out_str = String::new();
     out_str.write_vtk(data)?;
