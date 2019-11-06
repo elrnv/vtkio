@@ -81,6 +81,9 @@ mod write_vtk_impl {
             DataSet(DataSetError),
             NewLine,
 
+            /// Unexpected type stored in referenced data buffer. This is most likely caused by
+            /// data corruption.
+            DataMismatchError,
             /// Generic formatting error originating from [`std::fmt::Error`].
             FormatError,
             /// Generic IO error originating from [`std::io::Error`].
@@ -604,11 +607,16 @@ mod write_vtk_impl {
             where
                 W: WriteBytesExt,
                 E: Fn(&mut W, T) -> std::io::Result<()>,
+                T: 'static,
             {
-                for elem in buf.reinterpret_into_vec::<T>() {
-                    elem_writer(writer, elem)?;
+                if let Some(vec) = buf.into_vec::<T>() {
+                    for elem in vec {
+                        elem_writer(writer, elem)?;
+                    }
+                    Ok(())
+                } else {
+                    Err(Error::DataMismatchError)
                 }
-                Ok(())
             }
 
             match buf.element_type_id() {
