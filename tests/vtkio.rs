@@ -683,14 +683,16 @@ fn unstructured_grid_complex_test() -> Result {
             ]
             .into(),
             cells: Cells {
-                num_cells: 11,
+                num_cells: 12,
                 vertices: vec![
+                    10, 0, 1, 4, 3, 6, 7, 10, 9, 2, 5,
                     8, 0, 1, 4, 3, 6, 7, 10, 9, 8, 1, 2, 5, 4, 7, 8, 11, 10, 4, 6, 10, 9, 12, 4, 5,
                     11, 10, 14, 6, 15, 16, 17, 14, 13, 12, 6, 18, 15, 19, 16, 20, 17, 4, 22, 23,
                     20, 19, 3, 21, 22, 18, 3, 22, 19, 18, 2, 26, 25, 1, 24,
                 ],
             },
             cell_types: vec![
+                CellType::QuadraticTetra,
                 CellType::Hexahedron,
                 CellType::Hexahedron,
                 CellType::Tetra,
