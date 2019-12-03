@@ -157,6 +157,11 @@ pub enum CellType {
     Hexahedron = 12,
     Wedge = 13,
     Pyramid = 14,
+    QuadraticEdge = 21,
+    QuadraticTriangle = 22,
+    QuadraticQuad = 23,
+    QuadraticTetra = 24,
+    QuadraticHexahedron = 25,
 }
 
 /// Dataset described in the file.
