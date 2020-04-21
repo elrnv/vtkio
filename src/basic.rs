@@ -165,7 +165,7 @@ impl<BO: ByteOrder> DataParser<BO> {
     where
         T: FromStr + Any + Clone + Zero + FromBinary + FromAscii + ::std::fmt::Debug,
     {
-        Self::data_vec::<T>(input, n, ft).map(|vec: Vec<T>| IOBuffer::from(vec))
+        Self::data_vec::<T>(input, n, ft).map(IOBuffer::from)
     }
 
     /// Parse a set of typed numbers into a `Vec`.

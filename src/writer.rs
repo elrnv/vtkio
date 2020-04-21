@@ -145,16 +145,16 @@ mod write_vtk_impl {
 
         fn write_attrib_data<BO: ByteOrder>(&mut self, data: Vec<(String, Attribute)>) -> Result {
             for (name, attrib) in data {
-                write!(self, "\n").map_err(|_| Error::NewLine)?;
+                writeln!(self).map_err(|_| Error::NewLine)?;
                 match attrib {
                     Attribute::Scalars {
                         num_comp,
                         lookup_table,
                         data,
                     } => {
-                        write!(
+                        writeln!(
                             self,
-                            "SCALARS {} {} {}\n",
+                            "SCALARS {} {} {}",
                             name,
                             DataType::from(data.element_type_id()),
                             num_comp
@@ -162,10 +162,10 @@ mod write_vtk_impl {
                         .map_err(|_| {
                             Error::Attribute(AttributeError::Scalars(EntryPart::Header))
                         })?;
-                        write!(
+                        writeln!(
                             self,
-                            "LOOKUP_TABLE {}\n",
-                            lookup_table.unwrap_or(String::from("default"))
+                            "LOOKUP_TABLE {}",
+                            lookup_table.unwrap_or_else(|| String::from("default"))
                         )
                         .map_err(|_| {
                             Error::Attribute(AttributeError::Scalars(EntryPart::LookupTable))
@@ -175,7 +175,7 @@ mod write_vtk_impl {
                         })?;
                     }
                     Attribute::ColorScalars { num_comp, data } => {
-                        write!(self, "COLOR_SCALARS {} {}\n", name, num_comp).map_err(|_| {
+                        writeln!(self, "COLOR_SCALARS {} {}", name, num_comp).map_err(|_| {
                             Error::Attribute(AttributeError::ColorScalars(EntryPart::Header))
                         })?;
                         self.write_buf::<BO>(data).map_err(|e| {
@@ -185,7 +185,7 @@ mod write_vtk_impl {
                         })?;
                     }
                     Attribute::LookupTable { data } => {
-                        write!(self, "LOOKUP_TABLE {} {}\n", name, data.len() / 4).map_err(
+                        writeln!(self, "LOOKUP_TABLE {} {}", name, data.len() / 4).map_err(
                             |_| Error::Attribute(AttributeError::LookupTable(EntryPart::Header)),
                         )?;
                         self.write_buf::<BO>(data).map_err(|e| {
@@ -193,9 +193,9 @@ mod write_vtk_impl {
                         })?;
                     }
                     Attribute::Vectors { data } => {
-                        write!(
+                        writeln!(
                             self,
-                            "VECTORS {} {}\n",
+                            "VECTORS {} {}",
                             name,
                             DataType::from(data.element_type_id())
                         )
@@ -207,9 +207,9 @@ mod write_vtk_impl {
                         })?;
                     }
                     Attribute::Normals { data } => {
-                        write!(
+                        writeln!(
                             self,
-                            "NORMALS {} {}\n",
+                            "NORMALS {} {}",
                             name,
                             DataType::from(data.element_type_id())
                         )
@@ -221,9 +221,9 @@ mod write_vtk_impl {
                         })?;
                     }
                     Attribute::TextureCoordinates { dim, data } => {
-                        write!(
+                        writeln!(
                             self,
-                            "TEXTURE_COORDINATES {} {} {}\n",
+                            "TEXTURE_COORDINATES {} {} {}",
                             name,
                             dim,
                             DataType::from(data.element_type_id())
@@ -238,9 +238,9 @@ mod write_vtk_impl {
                         })?;
                     }
                     Attribute::Tensors { data } => {
-                        write!(
+                        writeln!(
                             self,
-                            "TENSORS {} {}\n",
+                            "TENSORS {} {}",
                             name,
                             DataType::from(data.element_type_id())
                         )
@@ -252,13 +252,13 @@ mod write_vtk_impl {
                         })?;
                     }
                     Attribute::Field { data_array } => {
-                        write!(self, "FIELD {} {}\n", name, data_array.len()).map_err(|_| {
+                        writeln!(self, "FIELD {} {}", name, data_array.len()).map_err(|_| {
                             Error::Attribute(AttributeError::Field(EntryPart::Header))
                         })?;
                         for field in data_array {
-                            write!(
+                            writeln!(
                                 self,
-                                "{} {} {} {}\n",
+                                "{} {} {} {}",
                                 field.name,
                                 field.num_comp,
                                 field.data.len() / field.num_comp as usize,
@@ -282,18 +282,18 @@ mod write_vtk_impl {
             &mut self,
             vtk: Vtk,
         ) -> std::result::Result<&mut Self, Error> {
-            write!(self, "# vtk DataFile Version {}\n", vtk.version)
+            writeln!(self, "# vtk DataFile Version {}", vtk.version)
                 .map_err(|_| Error::Header(Header::Version))?;
-            write!(self, "{}\n", vtk.title).map_err(|_| Error::Header(Header::Version))?;
+            writeln!(self, "{}", vtk.title).map_err(|_| Error::Header(Header::Version))?;
             self.write_file_type()?;
             match vtk.data {
                 DataSet::Field { name, data_array } => {
-                    write!(self, "FIELD {} {}\n", name, data_array.len())
+                    writeln!(self, "FIELD {} {}", name, data_array.len())
                         .map_err(|_| Error::DataSet(DataSetError::FieldDataHeader))?;
                     for field in data_array {
-                        write!(
+                        writeln!(
                             self,
-                            "{} {} {} {}\n",
+                            "{} {} {} {}",
                             field.name,
                             field.num_comp,
                             field.data.len() / field.num_comp as usize,
@@ -307,12 +307,12 @@ mod write_vtk_impl {
                 }
 
                 DataSet::PolyData { points, topo, data } => {
-                    write!(self, "DATASET POLYDATA\n")
+                    writeln!(self, "DATASET POLYDATA")
                         .map_err(|_| Error::DataSet(DataSetError::PolyData(DataSetPart::Tags)))?;
 
-                    write!(
+                    writeln!(
                         self,
-                        "POINTS {} {}\n",
+                        "POINTS {} {}",
                         points.len() / 3,
                         DataType::from(points.element_type_id())
                     )
@@ -328,7 +328,7 @@ mod write_vtk_impl {
                         )))
                     })?;
 
-                    write!(self, "\n").map_err(|_| Error::NewLine)?;
+                    writeln!(self).map_err(|_| Error::NewLine)?;
 
                     let mut num_cells = 0;
                     for topo_type in topo {
@@ -351,7 +351,7 @@ mod write_vtk_impl {
                             PolyDataTopology::TriangleStrips(c) => c,
                         };
 
-                        write!(self, " {} {}\n", cells.num_cells, cells.vertices.len()).map_err(
+                        writeln!(self, " {} {}", cells.num_cells, cells.vertices.len()).map_err(
                             |_| {
                                 Error::DataSet(DataSetError::PolyData(DataSetPart::Cells(
                                     EntryPart::Sizes,
@@ -377,13 +377,13 @@ mod write_vtk_impl {
                     cell_types,
                     data,
                 } => {
-                    write!(self, "DATASET UNSTRUCTURED_GRID\n").map_err(|_| {
+                    writeln!(self, "DATASET UNSTRUCTURED_GRID").map_err(|_| {
                         Error::DataSet(DataSetError::UnstructuredGrid(DataSetPart::Tags))
                     })?;
 
-                    write!(
+                    writeln!(
                         self,
-                        "POINTS {} {}\n",
+                        "POINTS {} {}",
                         points.len() / 3,
                         DataType::from(points.element_type_id())
                     )
@@ -399,9 +399,9 @@ mod write_vtk_impl {
                         )))
                     })?;
 
-                    write!(
+                    writeln!(
                         self,
-                        "\nCELLS {} {}\n",
+                        "\nCELLS {} {}",
                         cells.num_cells,
                         cells.vertices.len()
                     )
@@ -417,7 +417,7 @@ mod write_vtk_impl {
                         )))
                     })?;
 
-                    write!(self, "\nCELL_TYPES {}\n", cell_types.len()).map_err(|_| {
+                    writeln!(self, "\nCELL_TYPES {}", cell_types.len()).map_err(|_| {
                         Error::DataSet(DataSetError::UnstructuredGrid(DataSetPart::CellTypes(
                             EntryPart::Header,
                         )))
@@ -434,15 +434,15 @@ mod write_vtk_impl {
                     spacing,
                     data,
                 } => {
-                    write!(self, "DATASET STRUCTURED_POINTS\n").map_err(|_| {
+                    writeln!(self, "DATASET STRUCTURED_POINTS").map_err(|_| {
                         Error::DataSet(DataSetError::StructuredPoints(DataSetPart::Tags))
                     })?;
 
-                    write!(self, "DIMENSIONS {} {} {}\n", dims[0], dims[1], dims[2]).map_err(
+                    writeln!(self, "DIMENSIONS {} {} {}", dims[0], dims[1], dims[2]).map_err(
                         |_| Error::DataSet(DataSetError::StructuredPoints(DataSetPart::Dimensions)),
                     )?;
 
-                    write!(self, "ORIGIN {} {} {}\n", origin[0], origin[1], origin[2]).map_err(
+                    writeln!(self, "ORIGIN {} {} {}", origin[0], origin[1], origin[2]).map_err(
                         |_| Error::DataSet(DataSetError::StructuredPoints(DataSetPart::Origin)),
                     )?;
 
@@ -456,7 +456,7 @@ mod write_vtk_impl {
                             EntryPart::Tags,
                         )))
                     })?;
-                    write!(self, " {} {} {}\n", spacing[0], spacing[1], spacing[2]).map_err(
+                    writeln!(self, " {} {} {}", spacing[0], spacing[1], spacing[2]).map_err(
                         |_| {
                             Error::DataSet(DataSetError::StructuredPoints(DataSetPart::Spacing(
                                 EntryPart::Sizes,
@@ -469,17 +469,17 @@ mod write_vtk_impl {
                 }
 
                 DataSet::StructuredGrid { dims, points, data } => {
-                    write!(self, "DATASET STRUCTURED_GRID\n").map_err(|_| {
+                    writeln!(self, "DATASET STRUCTURED_GRID").map_err(|_| {
                         Error::DataSet(DataSetError::StructuredGrid(DataSetPart::Tags))
                     })?;
 
-                    write!(self, "DIMENSIONS {} {} {}\n", dims[0], dims[1], dims[2]).map_err(
+                    writeln!(self, "DIMENSIONS {} {} {}", dims[0], dims[1], dims[2]).map_err(
                         |_| Error::DataSet(DataSetError::StructuredGrid(DataSetPart::Dimensions)),
                     )?;
 
-                    write!(
+                    writeln!(
                         self,
-                        "POINTS {} {}\n",
+                        "POINTS {} {}",
                         points.len() / 3,
                         DataType::from(points.element_type_id())
                     )
@@ -506,17 +506,17 @@ mod write_vtk_impl {
                     z_coords,
                     data,
                 } => {
-                    write!(self, "DATASET RECTILINEAR_GRID\n").map_err(|_| {
+                    writeln!(self, "DATASET RECTILINEAR_GRID").map_err(|_| {
                         Error::DataSet(DataSetError::RectilinearGrid(DataSetPart::Tags))
                     })?;
 
-                    write!(self, "DIMENSIONS {} {} {}\n", dims[0], dims[1], dims[2]).map_err(
+                    writeln!(self, "DIMENSIONS {} {} {}", dims[0], dims[1], dims[2]).map_err(
                         |_| Error::DataSet(DataSetError::RectilinearGrid(DataSetPart::Dimensions)),
                     )?;
 
-                    write!(
+                    writeln!(
                         self,
-                        "X_COORDINATES {} {}\n",
+                        "X_COORDINATES {} {}",
                         x_coords.len(),
                         DataType::from(x_coords.element_type_id())
                     )
@@ -531,9 +531,9 @@ mod write_vtk_impl {
                             EntryPart::Data(e.into()),
                         )))
                     })?;
-                    write!(
+                    writeln!(
                         self,
-                        "Y_COORDINATES {} {}\n",
+                        "Y_COORDINATES {} {}",
                         y_coords.len(),
                         DataType::from(y_coords.element_type_id())
                     )
@@ -548,9 +548,9 @@ mod write_vtk_impl {
                             EntryPart::Data(e.into()),
                         )))
                     })?;
-                    write!(
+                    writeln!(
                         self,
-                        "Z_COORDINATES {} {}\n",
+                        "Z_COORDINATES {} {}",
                         z_coords.len(),
                         DataType::from(z_coords.element_type_id())
                     )
@@ -572,7 +572,7 @@ mod write_vtk_impl {
                 }
             }
 
-            write!(self, "\n").map_err(|_| Error::NewLine)?;
+            writeln!(self).map_err(|_| Error::NewLine)?;
             Ok(self)
         }
     }
@@ -582,7 +582,7 @@ mod write_vtk_impl {
             Ok(())
         }
         fn write_file_type(&mut self) -> Result {
-            write!(self, "BINARY\n\n").map_err(|_| Error::Header(Header::FileType))
+            writeln!(self, "BINARY\n").map_err(|_| Error::Header(Header::FileType))
         }
         fn write_cell_types<BO: ByteOrder>(&mut self, data: Vec<CellType>) -> Result {
             let err_fn = |ek: Option<std::io::ErrorKind>| {
@@ -594,7 +594,7 @@ mod write_vtk_impl {
             for t in data {
                 self.write_i32::<BO>(t as i32).map_err(err)?;
             }
-            write!(self, "\n").map_err(|_| Error::NewLine)
+            writeln!(self).map_err(|_| Error::NewLine)
         }
         fn write_u32_vec<BO: ByteOrder>(&mut self, data: Vec<u32>) -> Result {
             let buf = IOBuffer::from(data);
@@ -649,7 +649,7 @@ mod write_vtk_impl {
                 _ => {}
             }
 
-            write!(self, "\n")
+            writeln!(self)
         }
     }
 
@@ -659,16 +659,16 @@ mod write_vtk_impl {
             Ok(())
         }
         fn write_file_type(&mut self) -> Result {
-            write!(self, "ASCII\n\n").map_err(|_| Error::Header(Header::FileType))
+            writeln!(self, "ASCII\n").map_err(|_| Error::Header(Header::FileType))
         }
         fn write_cell_types<BO: ByteOrder>(&mut self, data: Vec<CellType>) -> Result {
             let err = Error::DataSet(DataSetError::UnstructuredGrid(DataSetPart::CellTypes(
                 EntryPart::Data(None),
             )));
             for t in data {
-                write!(self, "{}\n", t as u8).map_err(|_| err)?;
+                writeln!(self, "{}", t as u8).map_err(|_| err)?;
             }
-            write!(self, "\n").map_err(|_| err)
+            writeln!(self).map_err(|_| err)
         }
         fn write_u32_vec<BO: ByteOrder>(&mut self, data: Vec<u32>) -> Result {
             for i in 0..data.len() {
@@ -678,11 +678,11 @@ mod write_vtk_impl {
                     write!(self, " ")?;
                 }
             }
-            write!(self, "\n") // finish with a new line
+            writeln!(self) // finish with a new line
         }
 
         fn write_buf<BO: ByteOrder>(&mut self, data: IOBuffer) -> Result {
-            write!(self, "{}\n", data)
+            writeln!(self, "{}", data)
         }
     }
 }

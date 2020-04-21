@@ -1,3 +1,7 @@
+// TODO: migrating to a newer version of nom could reduce the detected "cognitive complexity"
+// caused by macros.
+#![allow(clippy::cognitive_complexity)]
+
 use byteorder::{BigEndian, ByteOrder, LittleEndian, NativeEndian};
 use nom::{self, eol, ErrorKind, IResult};
 use num_traits::FromPrimitive;
@@ -67,7 +71,7 @@ named!(u32_b<&[u8], u32>, call!(integer) );
 named!(u8_b<&[u8], u8>, call!(integer) );
 named!(f32_b<&[u8], f32>, call!(real::<f32>) );
 
-named!(name, take_till!(|x: u8| " \t\n\r".as_bytes().contains(&x)));
+named!(name, take_till!(|x: u8| b" \t\n\r".contains(&x)));
 
 enum Axis {
     X,
@@ -177,7 +181,7 @@ impl<BO: ByteOrder> VtkParser<BO> {
         lookup_table,
         alt_complete!(
         sp!( do_parse!( tag_no_case!("LOOKUP_TABLE") >> n: name >> (n) ) ) |
-        eof!() => { |_| "".as_bytes() } |
+        eof!() => { |_| &b""[..] } |
         eol
         )
     );

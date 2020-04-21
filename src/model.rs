@@ -97,7 +97,7 @@ pub enum Attribute {
 }
 
 /// Point and cell attributes.
-#[derive(Clone, PartialEq, Debug)]
+#[derive(Clone, PartialEq, Debug, Default)]
 pub struct Attributes {
     pub point: Vec<(String, Attribute)>,
     pub cell: Vec<(String, Attribute)>,
@@ -105,10 +105,7 @@ pub struct Attributes {
 
 impl Attributes {
     pub fn new() -> Self {
-        Attributes {
-            point: Vec::new(),
-            cell: Vec::new(),
-        }
+        Default::default()
     }
 }
 
