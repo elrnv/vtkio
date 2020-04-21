@@ -5,10 +5,27 @@ rust:
   - beta
   - stable
 
+os:
+  - linux
+
 matrix:
   allow_failures:
+    - name: "Clippy"
     - rust: nightly
   fast_finish: true
+  include:
+    - os: linux
+      rust: stable
+      name: "Clippy"
+      script:
+        - rustup component add clippy
+        - cargo clippy
+    - os: linux
+      rust: stable
+      name: "Format"
+      script:
+        - rustup component add rustfmt
+        - cargo fmt -- --check
 
 cache: cargo
 
