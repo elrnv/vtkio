@@ -399,17 +399,12 @@ mod write_vtk_impl {
                         )))
                     })?;
 
-                    writeln!(
-                        self,
-                        "\nCELLS {} {}",
-                        cells.num_cells,
-                        cells.vertices.len()
-                    )
-                    .map_err(|_| {
-                        Error::DataSet(DataSetError::UnstructuredGrid(DataSetPart::Cells(
-                            EntryPart::Header,
-                        )))
-                    })?;
+                    writeln!(self, "\nCELLS {} {}", cells.num_cells, cells.vertices.len())
+                        .map_err(|_| {
+                            Error::DataSet(DataSetError::UnstructuredGrid(DataSetPart::Cells(
+                                EntryPart::Header,
+                            )))
+                        })?;
 
                     self.write_u32_vec::<BO>(cells.vertices).map_err(|e| {
                         Error::DataSet(DataSetError::UnstructuredGrid(DataSetPart::Cells(
