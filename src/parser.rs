@@ -19,39 +19,39 @@ use crate::IOBuffer;
 
 // Parse the file version
 named!(version<&[u8], Version>, sp!(
-       do_parse!(
-           tag!("#") >>
-           tag_no_case!("vtk") >>
-           tag_no_case!("DataFile") >>
-           tag_no_case!("Version") >>
-           ver: separated_pair!(u8_b, tag!("."), u8_b) >>
-           eol >>
-           (Version::new(ver))
-           )
-       )
-      );
+ do_parse!(
+     tag!("#") >>
+     tag_no_case!("vtk") >>
+     tag_no_case!("DataFile") >>
+     tag_no_case!("Version") >>
+     ver: separated_pair!(u8_b, tag!("."), u8_b) >>
+     eol >>
+     (Version::new(ver))
+     )
+ )
+);
 
 named!(file_type<&[u8], FileType>,
        alt!( tag_no_case!("ASCII") => { |_| FileType::ASCII } |
              tag_no_case!("BINARY") => { |_| FileType::Binary } ) );
 
 named!(title<&[u8], &str>, map_res!(
-        do_parse!(
-            ttl: take_until!("\n") >>
-            eol >>
-            (ttl)),
-            str::from_utf8 )
-      );
+  do_parse!(
+      ttl: take_until!("\n") >>
+      eol >>
+      (ttl)),
+      str::from_utf8 )
+);
 
 named!(header<&[u8], (Version, String, FileType)>, sp!(
-           do_parse!(
-               ver: version >>
-               ttl: title >>
-               ft:  file_type >>
-               ((ver, String::from(ttl), ft))
-               )
-          )
-      );
+     do_parse!(
+         ver: version >>
+         ttl: title >>
+         ft:  file_type >>
+         ((ver, String::from(ttl), ft))
+         )
+    )
+);
 
 named!(data_type< &[u8], DataType >, alt!(
         tag_no_case!("bit")            => { |_| DataType::Bit } |
@@ -68,7 +68,7 @@ named!(data_type< &[u8], DataType >, alt!(
 
 named!(usize_b<&[u8], usize>, call!(integer) );
 named!(u32_b<&[u8], u32>, call!(integer) );
-named!(u8_b<&[u8], u8>, call!(integer) );
+named!(pub u8_b<&[u8], u8>, call!(integer) );
 named!(f32_b<&[u8], f32>, call!(real::<f32>) );
 
 named!(name, take_till!(|x: u8| b" \t\n\r".contains(&x)));
@@ -82,7 +82,7 @@ enum Axis {
 /**
  * Mesh data parsing.
  */
-pub struct VtkParser<BO: ByteOrder = NativeEndian>(PhantomData<BO>);
+pub struct VtkParser<BO: ByteOrder>(PhantomData<BO>);
 
 impl<BO: ByteOrder> VtkParser<BO> {
     #[allow(unused_variables)]
@@ -574,14 +574,14 @@ impl<BO: ByteOrder> VtkParser<BO> {
         }
     }
 
-    /// Parse a single cell type. Essentially a byte converted to` CellType` enum.
+    // Parse a single cell type. Essentially a byte converted to` CellType` enum.
     named!(pub cell_type<&[u8], CellType>,
-           map_opt!( u8_b, |x| CellType::from_u8(x) )
-           );
+    map_opt!( u8_b, |x| CellType::from_u8(x) )
+    );
 
     named!(pub cell_type_binary<&[u8], CellType>,
-           map_opt!( i32::from_binary::<BO>, |x| CellType::from_u8(x as u8) )
-           );
+    map_opt!( i32::from_binary::<BO>, |x| CellType::from_u8(x as u8) )
+    );
 
     fn cell_type_data(input: &[u8], n: usize, ft: FileType) -> IResult<&[u8], Vec<CellType>> {
         match ft {
@@ -689,17 +689,20 @@ impl<BO: ByteOrder> VtkParser<BO> {
     }
 }
 
-/// Parse the entire vtk file using default byte order.
-pub fn parse(input: &[u8]) -> IResult<&[u8], Vtk> {
-    <VtkParser>::vtk(input)
+/// Parse the entire VTK file using native endian byte order.
+pub fn parse_ne(input: &[u8]) -> IResult<&[u8], Vtk> {
+    VtkParser::<NativeEndian>::vtk(input)
 }
 
-/// Parse the entire vtk file using little endian byte order.
+/// Parse the entire VTK file using little endian byte order.
 pub fn parse_le(input: &[u8]) -> IResult<&[u8], Vtk> {
     VtkParser::<LittleEndian>::vtk(input)
 }
 
-/// Parse the entire vtk file using big endian byte order.
+/// Parse the entire VTK file using big endian byte order.
+///
+/// This is the default VTK byte order. Binary `.vtk` files produced by ParaView are in big endian
+/// form.
 pub fn parse_be(input: &[u8]) -> IResult<&[u8], Vtk> {
     VtkParser::<BigEndian>::vtk(input)
 }
@@ -730,9 +733,9 @@ mod tests {
     fn points_test() {
         let in1 = "POINTS 0 float\n";
         let in2 = "POINTS 3 float\n2 45 2 3 4 1 46 2 0\nother";
-        let f = <VtkParser>::points(in1.as_bytes(), FileType::ASCII);
+        let f = VtkParser::<NativeEndian>::points(in1.as_bytes(), FileType::ASCII);
         assert_eq!(f, IResult::Done("".as_bytes(), Vec::<f32>::new().into()));
-        let f = <VtkParser>::points(in2.as_bytes(), FileType::ASCII);
+        let f = VtkParser::<NativeEndian>::points(in2.as_bytes(), FileType::ASCII);
         assert_eq!(
             f,
             IResult::Done(
@@ -746,7 +749,7 @@ mod tests {
         let in1 = "CELLS 0 0\n";
         let in2 = "CELLS 1 3\n2 1 2\nother";
 
-        let f = <VtkParser>::cells(in1.as_bytes(), "CELLS", FileType::ASCII);
+        let f = VtkParser::<NativeEndian>::cells(in1.as_bytes(), "CELLS", FileType::ASCII);
         assert_eq!(
             f,
             IResult::Done(
@@ -757,7 +760,7 @@ mod tests {
                 }
             )
         );
-        let f = <VtkParser>::cells(in2.as_bytes(), "CELLS", FileType::ASCII);
+        let f = VtkParser::<NativeEndian>::cells(in2.as_bytes(), "CELLS", FileType::ASCII);
         assert_eq!(
             f,
             IResult::Done(
@@ -771,18 +774,18 @@ mod tests {
     }
     #[test]
     fn cell_type_test() {
-        let f = <VtkParser>::cell_type("2".as_bytes());
+        let f = VtkParser::<NativeEndian>::cell_type("2".as_bytes());
         assert_eq!(f, IResult::Done("".as_bytes(), CellType::PolyVertex));
-        let f = <VtkParser>::cell_type("10".as_bytes());
+        let f = VtkParser::<NativeEndian>::cell_type("10".as_bytes());
         assert_eq!(f, IResult::Done("".as_bytes(), CellType::Tetra));
     }
 
     macro_rules! test {
         ($fn:ident ($in:expr, $($args:expr),*) => ($rem:expr, $out:expr)) => {
-            assert_eq!(<VtkParser>::$fn($in.as_bytes(), $($args),*), IResult::Done($rem.as_bytes(), $out.clone()));
+            assert_eq!(VtkParser::<NativeEndian>::$fn($in.as_bytes(), $($args),*), IResult::Done($rem.as_bytes(), $out.clone()));
         };
         ($fn:ident ($in:expr) => ($rem:expr, $out:expr)) => {
-            assert_eq!(<VtkParser>::$fn($in.as_bytes()), IResult::Done($rem.as_bytes(), $out.clone()));
+            assert_eq!(VtkParser::<NativeEndian>::$fn($in.as_bytes()), IResult::Done($rem.as_bytes(), $out.clone()));
         };
         ($fn:ident ($in:expr, $($args:expr),*) => $out:expr) => {
             test!($fn($in, $($args),*) => ("", $out));

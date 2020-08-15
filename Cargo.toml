@@ -25,7 +25,4 @@ num-traits = "0.2"
 num-derive = "0.3"
 byteorder = "1.3"
 buffer = { package = "data-buffer", version = "0.7", features = ["numeric"] }
-
-[dev-dependencies]
-rand = "0.7"
-lazy_static = "1"
+quick-xml = "0.18"
