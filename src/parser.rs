@@ -498,8 +498,8 @@ impl<BO: ByteOrder> VtkParser<BO> {
                             )
                         )
                     >> data: call!(Self::attributes, ft)
-                    >> (DataSet::StructuredPoints {
-                        dims: parms.0,
+                    >> (DataSet::ImageData {
+                        extent: Extent::Dims(parms.0),
                         origin: parms.1,
                         spacing: parms.2,
                         data
@@ -514,17 +514,17 @@ impl<BO: ByteOrder> VtkParser<BO> {
             input,
             do_parse!(
                 tag_no_case!("STRUCTURED_GRID")
-                    >> dims: do_parse!(
+                    >> extent: Extent::Dims(do_parse!(
                         tag_no_case!("DIMENSIONS")
                             >> nx: u32_b
                             >> ny: u32_b
                             >> nz: u32_b
                             >> ([nx, ny, nz])
-                    )
+                    ))
                     >> points: call!(Self::points, ft)
                     >> opt!(Self::meta)
                     >> data: call!(Self::attributes, ft)
-                    >> (DataSet::StructuredGrid { dims, points, data })
+                    >> (DataSet::StructuredGrid { extent, points, data })
             )
         )
     }
@@ -535,20 +535,20 @@ impl<BO: ByteOrder> VtkParser<BO> {
             input,
             do_parse!(
                 tag_no_case!("RECTILINEAR_GRID")
-                    >> dims: do_parse!(
+                    >> extent: Extent::Dims(do_parse!(
                         tag_no_case!("DIMENSIONS")
                             >> nx: u32_b
                             >> ny: u32_b
                             >> nz: u32_b
                             >> ([nx, ny, nz])
-                    )
+                    ))
                     >> x_coords: call!(Self::coordinates, Axis::X, ft)
                     >> y_coords: call!(Self::coordinates, Axis::Y, ft)
                     >> z_coords: call!(Self::coordinates, Axis::Z, ft)
                     >> data: call!(Self::attributes, ft)
                     >> opt!(complete!(Self::meta))
                     >> (DataSet::RectilinearGrid {
-                        dims,
+                        extent,
                         x_coords,
                         y_coords,
                         z_coords,
