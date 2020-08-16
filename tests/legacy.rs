@@ -1,7 +1,3 @@
-extern crate nom;
-extern crate num_traits;
-extern crate vtkio;
-
 use nom::IResult;
 use vtkio::model::*;
 use vtkio::parser::*;

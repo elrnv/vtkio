@@ -4,10 +4,10 @@ use std::any::TypeId;
 use std::fmt;
 
 /**
- * Vtk Data Model
+ * VTK Data Model
  */
 
-/// Model of the Vtk data structure.
+/// Model of the VTK data structure.
 #[derive(Clone, PartialEq, Debug)]
 pub struct Vtk {
     pub version: Version,
@@ -161,19 +161,40 @@ pub enum CellType {
     QuadraticHexahedron = 25,
 }
 
+/// The extent of the structured object being represented in 3D space.
+#[derive(Copy, Clone, PartialEq, Debug)]
+pub enum Extent {
+    /// Legacy formats use dimensions to indicate the extent of a grid.
+    Dims([u32; 3]),
+    /// In XML format, inclusive ranges are given as a 6-tuple:
+    ///
+    /// `[ x0 x1 y0 y1 z0 z1 ]`
+    ///
+    /// where the extent of the grid in say `x` is given by the inclusive range `x0..=x1`.
+    ///
+    /// These are translated into Rust's `RangeInclusive` for explicitness and convenience as
+    ///
+    /// `[ x0..=x1, y0..=y1, z0..=z1 ]`
+    ///
+    /// The equivalent extent in legacy format would be `Dims([x1-x0+1, y1-y0+1, z1-z0+1])`.
+    Ranges([RangeInclusive<u32>; 3]),
+}
+
 /// Dataset described in the file.
-/// For 2D objects, `dims[2]` will be set to `0`. For 1D objects, `dims[1]` will also be `0`.
+///
+/// For 2D objects, `dims[2]` will be set to `1`. For 1D objects, `dims[1]` will also be `1`.
 /// This enum is designed to closely represent the data as it is stored in the vtk file.
 #[derive(Clone, PartialEq, Debug)]
 pub enum DataSet {
-    StructuredPoints {
-        dims: [u32; 3],
+    /// Also referred to as `StructuredPoints` in Legacy format.
+    ImageData {
+        extent: Extent,
         origin: [f32; 3],
         spacing: [f32; 3],
         data: Attributes,
     },
     StructuredGrid {
-        dims: [u32; 3],
+        extent: Extent,
         points: IOBuffer,
         data: Attributes,
     },
@@ -192,7 +213,7 @@ pub enum DataSet {
         data: Attributes,
     },
     RectilinearGrid {
-        dims: [u32; 3],
+        extent: Extent,
         x_coords: IOBuffer,
         y_coords: IOBuffer,
         z_coords: IOBuffer,
