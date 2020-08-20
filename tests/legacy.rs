@@ -381,7 +381,7 @@ fn structured_grid_test() -> Result {
         version: Version::new((3, 0)),
         title: String::from("vtk output"),
         data: DataSet::StructuredGrid {
-            dims: [2, 2, 2],
+            extent: Extent::Dims([2, 2, 2]),
             points: vec![
                 0_f32, 0.2, 0., 0.1, 0.184843, 0., 0., 0.25, 0., 0.1, 0.234843, 0., 0., 0.2,
                 0.333333, 0.1, 0.184843, 0.333333, 0., 0.25, 0.333333, 0.1, 0.234843, 0.333333,
@@ -443,7 +443,7 @@ fn rectilinear_grid_test() -> Result {
         version: Version::new((3, 0)),
         title: String::from("vtk output"),
         data: DataSet::RectilinearGrid {
-            dims: [3, 4, 1],
+            extent: Extent::Dims([3, 4, 1]),
             x_coords: vec![0_f32, 2.0, 4.0].into(),
             y_coords: vec![1_f32, 2.0, 3.0, 4.0].into(),
             z_coords: vec![0_f32].into(),
@@ -748,8 +748,8 @@ fn volume_complex_test() -> Result {
     let out1 = Vtk {
         version: Version::new((2, 0)),
         title: String::from("Volume example"),
-        data: DataSet::StructuredPoints {
-            dims: [3, 4, 6],
+        data: DataSet::ImageData {
+            extent: Extent::Dims([3, 4, 6]),
             origin: [0.0, 0.0, 0.0],
             spacing: [1.0, 1.0, 1.0],
             data: Attributes {

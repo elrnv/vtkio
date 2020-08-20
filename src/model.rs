@@ -2,6 +2,7 @@ use crate::IOBuffer;
 use num_derive::FromPrimitive;
 use std::any::TypeId;
 use std::fmt;
+use std::ops::RangeInclusive;
 
 /**
  * VTK Data Model
@@ -162,7 +163,7 @@ pub enum CellType {
 }
 
 /// The extent of the structured object being represented in 3D space.
-#[derive(Copy, Clone, PartialEq, Debug)]
+#[derive(Clone, PartialEq, Debug)]
 pub enum Extent {
     /// Legacy formats use dimensions to indicate the extent of a grid.
     Dims([u32; 3]),
@@ -178,6 +179,26 @@ pub enum Extent {
     ///
     /// The equivalent extent in legacy format would be `Dims([x1-x0+1, y1-y0+1, z1-z0+1])`.
     Ranges([RangeInclusive<u32>; 3]),
+}
+
+impl Extent {
+    /// Convert `Extent` to a triple of dimensions.
+    ///
+    /// If the extent is stored as `Extent::Ranges` such as
+    ///
+    /// `[ x0..=x1, y0..=y1, z0..=z1 ]`
+    ///
+    /// then the equivalent extent in legacy format is returned:
+    ///
+    /// `[x1-x0+1, y1-y0+1, z1-z0+1]`
+    pub fn into_dims(self) -> [u32; 3] {
+        match self {
+            Extent::Dims(dims) => dims,
+            Extent::Ranges([x, y, z]) => {
+                [x.end()-x.start()+1, y.end()-y.start()+1, z.end()-z.start()+1]
+            }
+        }
+    }
 }
 
 /// Dataset described in the file.

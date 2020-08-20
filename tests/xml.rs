@@ -22,8 +22,7 @@ fn example() -> Result {
         </PPolyData>
     </VTKFile>";
 
-
-    <?xml version=\"1.0\"?>
+    let xmlp = "<?xml version=\"1.0\"?>
     <VTKFile type=\"PolyData\" version=\"0.1\" byte_order=\"LittleEndian\">
         <PolyData>
             <Piece NumberOfPoints=\"8\" NumberOfVerts=\"0\" NumberOfLines=\"0\"NumberOfStrips=\"0\" NumberOfPolys=\"6\">
@@ -45,4 +44,5 @@ fn example() -> Result {
         </PolyData>
     </VTKFile>
     ";
+    Ok(())
 }
