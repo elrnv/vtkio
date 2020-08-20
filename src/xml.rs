@@ -5,7 +5,7 @@
 use std::io::BufRead;
 use std::path::Path;
 
-use quick_xml::{events::Event, Reader};
+use quick_xml::{events::{BytesStart, Event}, Reader};
 
 use crate::model;
 
@@ -16,7 +16,51 @@ pub enum Error {
     TypeExtensionMismatch,
     InvalidType,
     InvalidByteOrder,
+    MissingAttribute(AttribName),
+    InvalidAttributeValueFor(AttribName),
     Unknown,
+}
+
+/// An enumeration of all possible attributes expected inside a VTK XML tag.
+#[derive(Copy, Clone, Debug)]
+pub enum AttribName {
+    Spacing,
+    Origin,
+    WholeExtent,
+    Extent,
+    Unknown,
+}
+
+impl AttribName {
+    fn as_str(&self) -> &'static str {
+        match self {
+            AttribName::Spacing => "Spacing",
+            AttribName::Origin => "Origin",
+            AttribName::WholeExtent => "WholeExtent",
+            AttribName::Extent => "Extent",
+            AttribName::Unknown => "Unknown",
+        }
+    }
+
+    fn from_byte_str(bytes: &[u8]) -> Self {
+        match bytes {
+            b"Spacing" => AttribName::Spacing,
+            b"Origin" => AttribName::Origin,
+            b"WholeExtent" => AttribName::WholeExtent,
+            b"Extent" => AttribName::Extent,
+            _ => AttribName::Unknown,
+        }
+    }
+
+    fn as_byte_str(&self) -> &'static [u8] {
+        self.as_str().as_bytes()
+    }
+}
+
+impl std::fmt::Display for AttribName {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(f, "{}", self.as_str())
+    }
 }
 
 impl std::fmt::Display for Error {
@@ -29,6 +73,8 @@ impl std::fmt::Display for Error {
                 "Byte order must be one of \"BigEndian\" or \"LittleEndian\""
             ),
             Error::InvalidType => write!(f, "Invalid VTKFile type detected"),
+            Error::InvalidAttributeValueFor(attrib) => write!(f, "Invalid attribute value for {}", attrib),
+            Error::MissingAttribute(attrib) => write!(f, "Missing attribute: {}", attrib),
             Error::TypeExtensionMismatch => write!(
                 f,
                 "The extension of the VTK file doesn't match the type specified in the VTKFile tag"
@@ -168,23 +214,25 @@ pub enum ByteOrder {
     LittleEndian,
 }
 
-fn parse_tag<B: BufRead, Out>(
+fn parse_tag<'a, B: BufRead, Tag, Data>(
     reader: &mut Reader<B>,
     buf: &mut Vec<u8>,
-    mut inner: impl FnMut(&[u8], &mut Reader<B>, &mut Vec<u8>) -> Result<Out, Error>,
-) -> Result<Out, Error> {
+    mut process_tag: impl FnMut(BytesStart) -> Result<Tag, Error>,
+    mut process_inner: impl FnMut(&mut Reader<B>, &mut Vec<u8>, Tag) -> Result<Data, Error>,
+) -> Result<Data, Error> {
     let mut out = None;
     let mut name = None;
     loop {
         match reader.read_event(buf) {
-            Ok(Event::Start(ref e)) => {
+            Ok(Event::Start(e)) => {
                 eprintln!("{:?}", String::from_utf8_lossy(e.name()));
                 if name.is_none() {
                     name = Some(e.name().to_owned());
-                    out = Some(inner(name.as_ref().unwrap(), reader, buf)?);
+                    let result = process_tag(e)?;
+                    out = Some(process_inner(reader, buf, result)?);
                 }
             }
-            Ok(Event::End(ref event)) => {
+            Ok(Event::End(event)) => {
                 eprintln!("{:?}", event);
                 if let Some(name) = name.as_ref() {
                     if event.name() == name.as_slice() {
@@ -202,29 +250,56 @@ fn parse_tag<B: BufRead, Out>(
 }
 
 fn parse_data_set<B: BufRead>(reader: &mut Reader<B>, buf: &mut Vec<u8>) -> Result<model::DataSet, Error> {
-
+    use crate::parser::{u32_b, f32_b};
     parse_tag(
         reader,
         buf,
-        |tag_name, reader, buf| {
+        |event| {
+            let tag_name = event.name();
             let file_type = DataType::try_from_byte_str(tag_name).expect("Unknown data type");
             Ok(match file_type {
                 DataType::ImageData => {
-                    use model::*;
-                    DataSet::ImageData {
-                        points: Vec::<f64>::new().into(),
-                        cells: Cells {
-                            num_cells: 0,
-                            vertices: vec![],
-                        },
-                        cell_types: vec![],
-                        data: Attributes {
-                            point: vec![],
-                            cell: vec![],
-                        },
+                    let mut extent = None;
+                    let mut origin = None;
+                    let mut spacing = None;
+                    for attr in event.attributes() {
+                        let attr = attr?;
+                        match AttribName::from_byte_str(attr.key) {
+                            AttribName::WholeExtent => {
+                                let res = ws!(&*attr.value, count_fixed!(u32, u32_b, 6));
+                                let ex = res.to_full_result().map_err(|e| Error::InvalidAttributeValueFor(AttribName::WholeExtent))?;
+                                extent = Some(model::Extent::Ranges([ex[0]..=ex[1], ex[2]..=ex[3], ex[4]..=ex[5]]));
+                            }
+                            AttribName::Origin => {
+                                let parsed = ws!(&*attr.value, count_fixed!( f32, f32_b, 3)).to_full_result();
+                                origin = Some(parsed.map_err(|e| Error::InvalidAttributeValueFor(AttribName::Origin))?);
+                            }
+                            AttribName::Spacing => {
+                                let parsed = ws!(&*attr.value, count_fixed!( f32, f32_b, 3)).to_full_result();
+                                spacing = Some(parsed.map_err(|e| Error::InvalidAttributeValueFor(AttribName::Spacing))?);
+                            }
+                            _ => {}
+                        }
                     }
+                    (
+                        extent.ok_or(Error::MissingAttribute(AttribName::WholeExtent))?,
+                        origin.ok_or(Error::MissingAttribute(AttribName::Origin))?,
+                        spacing.ok_or(Error::MissingAttribute(AttribName::Spacing))?,
+                    )
                 }
-                _ => {panic!("Unknown data type")}
+                _ => { Err(Error::InvalidType)? }
+            })
+        },
+        |reader, buf, (extent, origin, spacing)| {
+            use model::*;
+            Ok(DataSet::ImageData {
+                extent,
+                origin,
+                spacing,
+                data: Attributes {
+                    point: vec![],
+                    cell: vec![],
+                },
             })
         }
     )

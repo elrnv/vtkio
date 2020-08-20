@@ -423,8 +423,8 @@ mod write_vtk_impl {
                     self.write_attrib::<BO>(data, num_points, cells.num_cells as usize)?;
                 }
 
-                DataSet::StructuredPoints {
-                    dims,
+                DataSet::ImageData {
+                    extent,
                     origin,
                     spacing,
                     data,
@@ -432,6 +432,8 @@ mod write_vtk_impl {
                     writeln!(self, "DATASET STRUCTURED_POINTS").map_err(|_| {
                         Error::DataSet(DataSetError::StructuredPoints(DataSetPart::Tags))
                     })?;
+
+                    let dims = extent.into_dims();
 
                     writeln!(self, "DIMENSIONS {} {} {}", dims[0], dims[1], dims[2]).map_err(
                         |_| Error::DataSet(DataSetError::StructuredPoints(DataSetPart::Dimensions)),
@@ -463,10 +465,12 @@ mod write_vtk_impl {
                     self.write_attrib::<BO>(data, num_points, 0)?;
                 }
 
-                DataSet::StructuredGrid { dims, points, data } => {
+                DataSet::StructuredGrid { extent, points, data } => {
                     writeln!(self, "DATASET STRUCTURED_GRID").map_err(|_| {
                         Error::DataSet(DataSetError::StructuredGrid(DataSetPart::Tags))
                     })?;
+
+                    let dims = extent.into_dims();
 
                     writeln!(self, "DIMENSIONS {} {} {}", dims[0], dims[1], dims[2]).map_err(
                         |_| Error::DataSet(DataSetError::StructuredGrid(DataSetPart::Dimensions)),
@@ -495,7 +499,7 @@ mod write_vtk_impl {
                 }
 
                 DataSet::RectilinearGrid {
-                    dims,
+                    extent,
                     x_coords,
                     y_coords,
                     z_coords,
@@ -504,6 +508,8 @@ mod write_vtk_impl {
                     writeln!(self, "DATASET RECTILINEAR_GRID").map_err(|_| {
                         Error::DataSet(DataSetError::RectilinearGrid(DataSetPart::Tags))
                     })?;
+
+                    let dims = extent.into_dims();
 
                     writeln!(self, "DIMENSIONS {} {} {}", dims[0], dims[1], dims[2]).map_err(
                         |_| Error::DataSet(DataSetError::RectilinearGrid(DataSetPart::Dimensions)),
