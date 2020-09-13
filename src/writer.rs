@@ -69,6 +69,11 @@ mod write_vtk_impl {
             StructuredGrid(DataSetPart),
             StructuredPoints(DataSetPart),
             RectilinearGrid(DataSetPart),
+
+            /// Piece data type doesn't match data set type.
+            PieceDataMismatch,
+            /// No piece data found for this data set.
+            MissingPieceData,
         }
 
         #[derive(Copy, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
@@ -98,6 +103,12 @@ mod write_vtk_impl {
                     Error::IOError(err) => Some(err),
                     _ => None,
                 }
+            }
+        }
+
+        impl From<DataSetError> for Error {
+            fn from(e: DataSetError) -> Error {
+                Error::DataSet(e)
             }
         }
 
@@ -143,8 +154,8 @@ mod write_vtk_impl {
             self.write_attrib_data::<BO>(data.cell)
         }
 
-        fn write_attrib_data<BO: ByteOrder>(&mut self, data: Vec<(String, Attribute)>) -> Result {
-            for (name, attrib) in data {
+        fn write_attrib_data<BO: ByteOrder>(&mut self, data: Vec<DataArray>) -> Result {
+            for DataArray { name, data: attrib } in data {
                 writeln!(self).map_err(|_| Error::NewLine)?;
                 match attrib {
                     Attribute::Scalars {
@@ -306,270 +317,283 @@ mod write_vtk_impl {
                     }
                 }
 
-                DataSet::PolyData { points, topo, data } => {
-                    writeln!(self, "DATASET POLYDATA")
-                        .map_err(|_| Error::DataSet(DataSetError::PolyData(DataSetPart::Tags)))?;
+                DataSet::PolyData { pieces } => {
+                    let piece = pieces.into_iter().next().ok_or(DataSetError::MissingPieceData)?;
+                    if let Ok(PieceData::PolyData { points, topo, data }) = piece.load_into_piece_data() {
+                        writeln!(self, "DATASET POLYDATA")
+                            .map_err(|_| Error::DataSet(DataSetError::PolyData(DataSetPart::Tags)))?;
 
-                    writeln!(
-                        self,
-                        "POINTS {} {}",
-                        points.len() / 3,
-                        DataType::from(points.element_type_id())
-                    )
-                    .map_err(|_| {
-                        Error::DataSet(DataSetError::PolyData(DataSetPart::Points(
-                            EntryPart::Header,
-                        )))
-                    })?;
-                    let num_points = points.len() / 3;
-                    self.write_buf::<BO>(points).map_err(|e| {
-                        Error::DataSet(DataSetError::PolyData(DataSetPart::Points(
-                            EntryPart::Data(e.into()),
-                        )))
-                    })?;
-
-                    writeln!(self).map_err(|_| Error::NewLine)?;
-
-                    let mut num_cells = 0;
-                    for topo_type in topo {
-                        match topo_type {
-                            PolyDataTopology::Vertices(_) => write!(self, "VERTICES"),
-                            PolyDataTopology::Lines(_) => write!(self, "LINES"),
-                            PolyDataTopology::Polygons(_) => write!(self, "POLYGONS"),
-                            PolyDataTopology::TriangleStrips(_) => write!(self, "TRIANGLE_STRIPS"),
-                        }
+                        writeln!(
+                            self,
+                            "POINTS {} {}",
+                            points.len() / 3,
+                            DataType::from(points.element_type_id())
+                        )
                         .map_err(|_| {
-                            Error::DataSet(DataSetError::PolyData(DataSetPart::Cells(
-                                EntryPart::Tags,
+                            Error::DataSet(DataSetError::PolyData(DataSetPart::Points(
+                                EntryPart::Header,
                             )))
                         })?;
-
-                        let cells = match topo_type {
-                            PolyDataTopology::Vertices(c) => c,
-                            PolyDataTopology::Lines(c) => c,
-                            PolyDataTopology::Polygons(c) => c,
-                            PolyDataTopology::TriangleStrips(c) => c,
-                        };
-
-                        writeln!(self, " {} {}", cells.num_cells, cells.vertices.len()).map_err(
-                            |_| {
-                                Error::DataSet(DataSetError::PolyData(DataSetPart::Cells(
-                                    EntryPart::Sizes,
-                                )))
-                            },
-                        )?;
-
-                        self.write_u32_vec::<BO>(cells.vertices).map_err(|e| {
-                            Error::DataSet(DataSetError::PolyData(DataSetPart::Cells(
+                        let num_points = points.len() / 3;
+                        self.write_buf::<BO>(points).map_err(|e| {
+                            Error::DataSet(DataSetError::PolyData(DataSetPart::Points(
                                 EntryPart::Data(e.into()),
                             )))
                         })?;
 
-                        num_cells += cells.num_cells as usize;
-                    }
+                        writeln!(self).map_err(|_| Error::NewLine)?;
 
-                    self.write_attrib::<BO>(data, num_points, num_cells)?;
+                        let mut num_cells = 0;
+                        for topo_type in topo {
+                            match topo_type {
+                                PolyDataTopology::Vertices(_) => write!(self, "VERTICES"),
+                                PolyDataTopology::Lines(_) => write!(self, "LINES"),
+                                PolyDataTopology::Polygons(_) => write!(self, "POLYGONS"),
+                                PolyDataTopology::TriangleStrips(_) => write!(self, "TRIANGLE_STRIPS"),
+                            }
+                            .map_err(|_| {
+                                Error::DataSet(DataSetError::PolyData(DataSetPart::Cells(
+                                    EntryPart::Tags,
+                                )))
+                            })?;
+
+                            let cell_verts = match topo_type {
+                                PolyDataTopology::Vertices(c) => c,
+                                PolyDataTopology::Lines(c) => c,
+                                PolyDataTopology::Polygons(c) => c,
+                                PolyDataTopology::TriangleStrips(c) => c,
+                            };
+
+                            let cur_num_cells = cell_verts.num_cells();
+
+                            writeln!(self, " {} {}", cur_num_cells, cur_num_cells + cell_verts.num_verts()).map_err(
+                                |_| {
+                                    Error::DataSet(DataSetError::PolyData(DataSetPart::Cells(
+                                        EntryPart::Sizes,
+                                    )))
+                                },
+                            )?;
+
+                            let (_, vertices) = cell_verts.into_legacy();
+
+                            self.write_u32_vec::<BO>(vertices).map_err(|e| {
+                                Error::DataSet(DataSetError::PolyData(DataSetPart::Cells(
+                                    EntryPart::Data(e.into()),
+                                )))
+                            })?;
+
+                            num_cells += cur_num_cells as usize;
+                        }
+
+                        self.write_attrib::<BO>(data, num_points, num_cells)?;
+                    }
                 }
 
-                DataSet::UnstructuredGrid {
-                    points,
-                    cells,
-                    cell_types,
-                    data,
-                } => {
-                    writeln!(self, "DATASET UNSTRUCTURED_GRID").map_err(|_| {
-                        Error::DataSet(DataSetError::UnstructuredGrid(DataSetPart::Tags))
-                    })?;
+                DataSet::UnstructuredGrid { pieces } => {
+                    let piece = pieces.into_iter().next().ok_or(DataSetError::MissingPieceData)?;
+                    if let Ok(PieceData::UnstructuredGrid { points, cells, data }) = piece.load_into_piece_data() {
+                        writeln!(self, "DATASET UNSTRUCTURED_GRID").map_err(|_| {
+                            Error::DataSet(DataSetError::UnstructuredGrid(DataSetPart::Tags))
+                        })?;
 
-                    writeln!(
-                        self,
-                        "POINTS {} {}",
-                        points.len() / 3,
-                        DataType::from(points.element_type_id())
-                    )
-                    .map_err(|_| {
-                        Error::DataSet(DataSetError::UnstructuredGrid(DataSetPart::Points(
-                            EntryPart::Header,
-                        )))
-                    })?;
-                    let num_points = points.len() / 3;
-                    self.write_buf::<BO>(points).map_err(|e| {
-                        Error::DataSet(DataSetError::UnstructuredGrid(DataSetPart::Points(
-                            EntryPart::Data(e.into()),
-                        )))
-                    })?;
-
-                    writeln!(self, "\nCELLS {} {}", cells.num_cells, cells.vertices.len())
+                        writeln!(
+                            self,
+                            "POINTS {} {}",
+                            points.len() / 3,
+                            DataType::from(points.element_type_id())
+                        )
                         .map_err(|_| {
+                            Error::DataSet(DataSetError::UnstructuredGrid(DataSetPart::Points(
+                                EntryPart::Header,
+                            )))
+                        })?;
+                        let num_points = points.len() / 3;
+                        self.write_buf::<BO>(points).map_err(|e| {
+                            Error::DataSet(DataSetError::UnstructuredGrid(DataSetPart::Points(
+                                EntryPart::Data(e.into()),
+                            )))
+                        })?;
+
+                        let num_cells = cells.cell_verts.num_cells();
+                        let num_verts = cells.cell_verts.num_verts();
+
+                        writeln!(self, "\nCELLS {} {}", num_cells, num_cells + num_verts)
+                            .map_err(|_| {
+                                Error::DataSet(DataSetError::UnstructuredGrid(DataSetPart::Cells(
+                                            EntryPart::Header,
+                                )))
+                            })?;
+
+                        let (_, vertices) = cells.cell_verts.into_legacy();
+
+                        self.write_u32_vec::<BO>(vertices).map_err(|e| {
                             Error::DataSet(DataSetError::UnstructuredGrid(DataSetPart::Cells(
+                                        EntryPart::Data(e.into()),
+                            )))
+                        })?;
+
+                        writeln!(self, "\nCELL_TYPES {}", cells.types.len()).map_err(|_| {
+                            Error::DataSet(DataSetError::UnstructuredGrid(DataSetPart::CellTypes(
                                 EntryPart::Header,
                             )))
                         })?;
 
-                    self.write_u32_vec::<BO>(cells.vertices).map_err(|e| {
-                        Error::DataSet(DataSetError::UnstructuredGrid(DataSetPart::Cells(
-                            EntryPart::Data(e.into()),
-                        )))
-                    })?;
+                        self.write_cell_types::<BO>(cells.types)?;
 
-                    writeln!(self, "\nCELL_TYPES {}", cell_types.len()).map_err(|_| {
-                        Error::DataSet(DataSetError::UnstructuredGrid(DataSetPart::CellTypes(
-                            EntryPart::Header,
-                        )))
-                    })?;
-
-                    self.write_cell_types::<BO>(cell_types)?;
-
-                    self.write_attrib::<BO>(data, num_points, cells.num_cells as usize)?;
+                        self.write_attrib::<BO>(data, num_points, num_cells as usize)?;
+                    }
                 }
 
                 DataSet::ImageData {
                     extent,
                     origin,
                     spacing,
-                    data,
+                    pieces,
                 } => {
-                    writeln!(self, "DATASET STRUCTURED_POINTS").map_err(|_| {
-                        Error::DataSet(DataSetError::StructuredPoints(DataSetPart::Tags))
-                    })?;
+                    let piece = pieces.into_iter().next().ok_or(DataSetError::MissingPieceData)?;
+                    if let Ok(PieceData::ImageData { data, .. }) = piece.load_into_piece_data() {
+                        writeln!(self, "DATASET STRUCTURED_POINTS").map_err(|_| {
+                            Error::DataSet(DataSetError::StructuredPoints(DataSetPart::Tags))
+                        })?;
 
-                    let dims = extent.into_dims();
+                        let dims = extent.into_dims();
 
-                    writeln!(self, "DIMENSIONS {} {} {}", dims[0], dims[1], dims[2]).map_err(
-                        |_| Error::DataSet(DataSetError::StructuredPoints(DataSetPart::Dimensions)),
-                    )?;
+                        writeln!(self, "DIMENSIONS {} {} {}", dims[0], dims[1], dims[2]).map_err(
+                            |_| Error::DataSet(DataSetError::StructuredPoints(DataSetPart::Dimensions)),
+                        )?;
 
-                    writeln!(self, "ORIGIN {} {} {}", origin[0], origin[1], origin[2]).map_err(
-                        |_| Error::DataSet(DataSetError::StructuredPoints(DataSetPart::Origin)),
-                    )?;
+                        writeln!(self, "ORIGIN {} {} {}", origin[0], origin[1], origin[2]).map_err(
+                            |_| Error::DataSet(DataSetError::StructuredPoints(DataSetPart::Origin)),
+                        )?;
 
-                    if vtk.version.major < 2 {
-                        write!(self, "ASPECT_RATIO")
-                    } else {
-                        write!(self, "SPACING")
-                    }
-                    .map_err(|_| {
-                        Error::DataSet(DataSetError::StructuredPoints(DataSetPart::Spacing(
-                            EntryPart::Tags,
-                        )))
-                    })?;
-                    writeln!(self, " {} {} {}", spacing[0], spacing[1], spacing[2]).map_err(
-                        |_| {
+                        if vtk.version.major < 2 {
+                            write!(self, "ASPECT_RATIO")
+                        } else {
+                            write!(self, "SPACING")
+                        }
+                        .map_err(|_| {
                             Error::DataSet(DataSetError::StructuredPoints(DataSetPart::Spacing(
-                                EntryPart::Sizes,
+                                EntryPart::Tags,
                             )))
-                        },
-                    )?;
+                        })?;
+                        writeln!(self, " {} {} {}", spacing[0], spacing[1], spacing[2]).map_err(
+                            |_| {
+                                Error::DataSet(DataSetError::StructuredPoints(DataSetPart::Spacing(
+                                    EntryPart::Sizes,
+                                )))
+                            },
+                        )?;
 
-                    let num_points = (dims[0] * dims[1] * dims[2]) as usize;
-                    self.write_attrib::<BO>(data, num_points, 0)?;
+                        let num_points = (dims[0] * dims[1] * dims[2]) as usize;
+                        self.write_attrib::<BO>(data, num_points, 0)?;
+                    }
                 }
 
-                DataSet::StructuredGrid { extent, points, data } => {
-                    writeln!(self, "DATASET STRUCTURED_GRID").map_err(|_| {
-                        Error::DataSet(DataSetError::StructuredGrid(DataSetPart::Tags))
-                    })?;
+                DataSet::StructuredGrid { extent, pieces } => {
+                    let piece = pieces.into_iter().next().ok_or(DataSetError::MissingPieceData)?;
+                    if let Ok(PieceData::StructuredGrid { points, data, .. }) = piece.load_into_piece_data() {
+                        writeln!(self, "DATASET STRUCTURED_GRID").map_err(|_| {
+                            Error::DataSet(DataSetError::StructuredGrid(DataSetPart::Tags))
+                        })?;
 
-                    let dims = extent.into_dims();
+                        let dims = extent.into_dims();
 
-                    writeln!(self, "DIMENSIONS {} {} {}", dims[0], dims[1], dims[2]).map_err(
-                        |_| Error::DataSet(DataSetError::StructuredGrid(DataSetPart::Dimensions)),
-                    )?;
+                        writeln!(self, "DIMENSIONS {} {} {}", dims[0], dims[1], dims[2]).map_err(
+                            |_| Error::DataSet(DataSetError::StructuredGrid(DataSetPart::Dimensions)),
+                        )?;
 
-                    writeln!(
-                        self,
-                        "POINTS {} {}",
-                        points.len() / 3,
-                        DataType::from(points.element_type_id())
-                    )
-                    .map_err(|_| {
-                        Error::DataSet(DataSetError::StructuredGrid(DataSetPart::Points(
-                            EntryPart::Header,
-                        )))
-                    })?;
-                    let num_points = points.len() / 3;
-                    self.write_buf::<BO>(points).map_err(|e| {
-                        Error::DataSet(DataSetError::StructuredGrid(DataSetPart::Points(
-                            EntryPart::Data(e.into()),
-                        )))
-                    })?;
+                        writeln!(
+                            self,
+                            "POINTS {} {}",
+                            points.len() / 3,
+                            DataType::from(points.element_type_id())
+                        )
+                        .map_err(|_| {
+                            Error::DataSet(DataSetError::StructuredGrid(DataSetPart::Points(
+                                EntryPart::Header,
+                            )))
+                        })?;
+                        let num_points = points.len() / 3;
+                        self.write_buf::<BO>(points).map_err(|e| {
+                            Error::DataSet(DataSetError::StructuredGrid(DataSetPart::Points(
+                                EntryPart::Data(e.into()),
+                            )))
+                        })?;
 
-                    assert_eq!((dims[0] * dims[1] * dims[2]) as usize, num_points);
-                    self.write_attrib::<BO>(data, num_points, 1)?;
+                        assert_eq!((dims[0] * dims[1] * dims[2]) as usize, num_points);
+                        self.write_attrib::<BO>(data, num_points, 1)?;
+                    }
                 }
 
-                DataSet::RectilinearGrid {
-                    extent,
-                    x_coords,
-                    y_coords,
-                    z_coords,
-                    data,
-                } => {
-                    writeln!(self, "DATASET RECTILINEAR_GRID").map_err(|_| {
-                        Error::DataSet(DataSetError::RectilinearGrid(DataSetPart::Tags))
-                    })?;
+                DataSet::RectilinearGrid { extent, pieces } => {
+                    let piece = pieces.into_iter().next().ok_or(DataSetError::MissingPieceData)?;
+                    if let Ok(PieceData::RectilinearGrid { coords, data, .. }) = piece.load_into_piece_data() {
+                        writeln!(self, "DATASET RECTILINEAR_GRID").map_err(|_| {
+                            Error::DataSet(DataSetError::RectilinearGrid(DataSetPart::Tags))
+                        })?;
 
-                    let dims = extent.into_dims();
+                        let dims = extent.into_dims();
 
-                    writeln!(self, "DIMENSIONS {} {} {}", dims[0], dims[1], dims[2]).map_err(
-                        |_| Error::DataSet(DataSetError::RectilinearGrid(DataSetPart::Dimensions)),
-                    )?;
+                        writeln!(self, "DIMENSIONS {} {} {}", dims[0], dims[1], dims[2]).map_err(
+                            |_| Error::DataSet(DataSetError::RectilinearGrid(DataSetPart::Dimensions)),
+                        )?;
 
-                    writeln!(
-                        self,
-                        "X_COORDINATES {} {}",
-                        x_coords.len(),
-                        DataType::from(x_coords.element_type_id())
-                    )
-                    .map_err(|_| {
-                        Error::DataSet(DataSetError::RectilinearGrid(DataSetPart::XCoordinates(
-                            EntryPart::Header,
-                        )))
-                    })?;
-                    let num_x_coords = x_coords.len();
-                    self.write_buf::<BO>(x_coords).map_err(|e| {
-                        Error::DataSet(DataSetError::RectilinearGrid(DataSetPart::XCoordinates(
-                            EntryPart::Data(e.into()),
-                        )))
-                    })?;
-                    writeln!(
-                        self,
-                        "Y_COORDINATES {} {}",
-                        y_coords.len(),
-                        DataType::from(y_coords.element_type_id())
-                    )
-                    .map_err(|_| {
-                        Error::DataSet(DataSetError::RectilinearGrid(DataSetPart::YCoordinates(
-                            EntryPart::Header,
-                        )))
-                    })?;
-                    let num_y_coords = y_coords.len();
-                    self.write_buf::<BO>(y_coords).map_err(|e| {
-                        Error::DataSet(DataSetError::RectilinearGrid(DataSetPart::YCoordinates(
-                            EntryPart::Data(e.into()),
-                        )))
-                    })?;
-                    writeln!(
-                        self,
-                        "Z_COORDINATES {} {}",
-                        z_coords.len(),
-                        DataType::from(z_coords.element_type_id())
-                    )
-                    .map_err(|_| {
-                        Error::DataSet(DataSetError::RectilinearGrid(DataSetPart::ZCoordinates(
-                            EntryPart::Header,
-                        )))
-                    })?;
-                    let num_z_coords = z_coords.len();
-                    self.write_buf::<BO>(z_coords).map_err(|e| {
-                        Error::DataSet(DataSetError::RectilinearGrid(DataSetPart::ZCoordinates(
-                            EntryPart::Data(e.into()),
-                        )))
-                    })?;
+                        writeln!(
+                            self,
+                            "X_COORDINATES {} {}",
+                            coords.x.len(),
+                            DataType::from(coords.x.element_type_id())
+                        )
+                        .map_err(|_| {
+                            Error::DataSet(DataSetError::RectilinearGrid(DataSetPart::XCoordinates(
+                                EntryPart::Header,
+                            )))
+                        })?;
+                        let num_x_coords = coords.x.len();
+                        self.write_buf::<BO>(coords.x).map_err(|e| {
+                            Error::DataSet(DataSetError::RectilinearGrid(DataSetPart::XCoordinates(
+                                EntryPart::Data(e.into()),
+                            )))
+                        })?;
+                        writeln!(
+                            self,
+                            "Y_COORDINATES {} {}",
+                            coords.y.len(),
+                            DataType::from(coords.y.element_type_id())
+                        )
+                        .map_err(|_| {
+                            Error::DataSet(DataSetError::RectilinearGrid(DataSetPart::YCoordinates(
+                                EntryPart::Header,
+                            )))
+                        })?;
+                        let num_y_coords = coords.y.len();
+                        self.write_buf::<BO>(coords.y).map_err(|e| {
+                            Error::DataSet(DataSetError::RectilinearGrid(DataSetPart::YCoordinates(
+                                EntryPart::Data(e.into()),
+                            )))
+                        })?;
+                        writeln!(
+                            self,
+                            "Z_COORDINATES {} {}",
+                            coords.z.len(),
+                            DataType::from(coords.z.element_type_id())
+                        )
+                        .map_err(|_| {
+                            Error::DataSet(DataSetError::RectilinearGrid(DataSetPart::ZCoordinates(
+                                EntryPart::Header,
+                            )))
+                        })?;
+                        let num_z_coords = coords.z.len();
+                        self.write_buf::<BO>(coords.z).map_err(|e| {
+                            Error::DataSet(DataSetError::RectilinearGrid(DataSetPart::ZCoordinates(
+                                EntryPart::Data(e.into()),
+                            )))
+                        })?;
 
-                    let num_points = num_x_coords * num_y_coords * num_z_coords;
-                    let num_cells = (num_x_coords - 1) * (num_y_coords - 1) * (num_z_coords - 1);
-                    self.write_attrib::<BO>(data, num_points, num_cells)?;
+                        let num_points = num_x_coords * num_y_coords * num_z_coords;
+                        let num_cells = (num_x_coords - 1) * (num_y_coords - 1) * (num_z_coords - 1);
+                        self.write_attrib::<BO>(data, num_points, num_cells)?;
+                    }
                 }
             }
 

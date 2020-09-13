@@ -107,16 +107,19 @@ impl<BO: ByteOrder> VtkParser<BO> {
     ///  * "LINES"
     ///  * "POLYGONS"
     ///  * "TRIANGLE_STRIPS"
-    fn cells<'a>(input: &'a [u8], tag: &'static str, ft: FileType) -> IResult<&'a [u8], Cells> {
+    fn cell_verts<'a>(input: &'a [u8], tag: &'static str, ft: FileType) -> IResult<&'a [u8], VertexNumbers> {
         do_parse!(
             input,
             n: ws!(do_parse!(tag_no_case!(tag) >> n: u32_b >> (n)))
                 >> size: sp!(u32_b)
                 >> tag!("\n")
                 >> data: call!(DataParser::<BO>::data_vec::<u32>, size as usize, ft)
-                >> (Cells {
-                    num_cells: n,
-                    vertices: data
+                >> ({
+                        eprintln!("{:?}", &data);
+                        VertexNumbers::Legacy {
+                            num_cells: n,
+                            vertices: data
+                        }
                 })
         )
     }
@@ -190,7 +193,7 @@ impl<BO: ByteOrder> VtkParser<BO> {
         input: &[u8],
         num_elements: usize,
         ft: FileType,
-    ) -> IResult<&[u8], (String, Attribute)> {
+    ) -> IResult<&[u8], DataArray> {
         ws!(
             input,
             do_parse!(
@@ -206,9 +209,9 @@ impl<BO: ByteOrder> VtkParser<BO> {
                         ft
                     )
                     >> opt!(Self::meta)
-                    >> ((
-                        String::from(name),
-                        Attribute::Scalars {
+                    >> (DataArray {
+                        name: String::from(name),
+                        data: Attribute::Scalars {
                             num_comp: num_comp.unwrap_or(1),
                             lookup_table: lookup_tbl_name.and_then(|x| if x == "default" {
                                 None
@@ -217,12 +220,12 @@ impl<BO: ByteOrder> VtkParser<BO> {
                             }),
                             data
                         }
-                    ))
+                    })
             )
         )
     }
 
-    fn attribute_lookup_table(input: &[u8], ft: FileType) -> IResult<&[u8], (String, Attribute)> {
+    fn attribute_lookup_table(input: &[u8], ft: FileType) -> IResult<&[u8], DataArray> {
         ws!(
             input,
             do_parse!(
@@ -236,7 +239,7 @@ impl<BO: ByteOrder> VtkParser<BO> {
                         ft
                     )
                     >> opt!(Self::meta)
-                    >> (String::from(name), Attribute::LookupTable { data })
+                    >> (DataArray { name: String::from(name), data: Attribute::LookupTable { data } })
             )
         )
     }
@@ -258,7 +261,7 @@ impl<BO: ByteOrder> VtkParser<BO> {
         input: &[u8],
         num_elements: usize,
         ft: FileType,
-    ) -> IResult<&[u8], (String, Attribute)> {
+    ) -> IResult<&[u8], DataArray> {
         ws!(
             input,
             do_parse!(
@@ -271,10 +274,10 @@ impl<BO: ByteOrder> VtkParser<BO> {
                         ft
                     )
                     >> opt!(Self::meta)
-                    >> ((
-                        String::from(name),
-                        Attribute::ColorScalars { num_comp, data }
-                    ))
+                    >> (DataArray {
+                        name: String::from(name),
+                        data: Attribute::ColorScalars { num_comp, data }
+                    })
             )
         )
     }
@@ -283,7 +286,7 @@ impl<BO: ByteOrder> VtkParser<BO> {
         input: &[u8],
         num_elements: usize,
         ft: FileType,
-    ) -> IResult<&[u8], (String, Attribute)> {
+    ) -> IResult<&[u8], DataArray> {
         ws!(
             input,
             do_parse!(
@@ -292,7 +295,7 @@ impl<BO: ByteOrder> VtkParser<BO> {
                     >> dt: data_type
                     >> data: call!(Self::attribute_data, 3 * num_elements, dt, ft)
                     >> opt!(Self::meta)
-                    >> (String::from(name), Attribute::Vectors { data })
+                    >> (DataArray { name: String::from(name), data: Attribute::Vectors { data }})
             )
         )
     }
@@ -301,7 +304,7 @@ impl<BO: ByteOrder> VtkParser<BO> {
         input: &[u8],
         num_elements: usize,
         ft: FileType,
-    ) -> IResult<&[u8], (String, Attribute)> {
+    ) -> IResult<&[u8], DataArray> {
         ws!(
             input,
             do_parse!(
@@ -310,7 +313,7 @@ impl<BO: ByteOrder> VtkParser<BO> {
                     >> dt: data_type
                     >> data: call!(Self::attribute_data, 3 * num_elements, dt, ft)
                     >> opt!(Self::meta)
-                    >> (String::from(name), Attribute::Normals { data })
+                    >> (DataArray { name: String::from(name), data: Attribute::Normals { data }})
             )
         )
     }
@@ -319,7 +322,7 @@ impl<BO: ByteOrder> VtkParser<BO> {
         input: &[u8],
         num_elements: usize,
         ft: FileType,
-    ) -> IResult<&[u8], (String, Attribute)> {
+    ) -> IResult<&[u8], DataArray> {
         ws!(
             input,
             do_parse!(
@@ -329,10 +332,10 @@ impl<BO: ByteOrder> VtkParser<BO> {
                     >> dt: data_type
                     >> data: call!(Self::attribute_data, dim as usize * num_elements, dt, ft)
                     >> opt!(Self::meta)
-                    >> (
-                        String::from(name),
-                        Attribute::TextureCoordinates { dim, data }
-                    )
+                    >> (DataArray {
+                        name: String::from(name),
+                        data: Attribute::TextureCoordinates { dim, data }
+                    })
             )
         )
     }
@@ -341,7 +344,7 @@ impl<BO: ByteOrder> VtkParser<BO> {
         input: &[u8],
         num_elements: usize,
         ft: FileType,
-    ) -> IResult<&[u8], (String, Attribute)> {
+    ) -> IResult<&[u8], DataArray> {
         ws!(
             input,
             do_parse!(
@@ -350,7 +353,7 @@ impl<BO: ByteOrder> VtkParser<BO> {
                     >> dt: data_type
                     >> data: call!(Self::attribute_data, 9 * num_elements, dt, ft)
                     >> opt!(Self::meta)
-                    >> (String::from(name), Attribute::Tensors { data })
+                    >> (DataArray { name: String::from(name), data: Attribute::Tensors { data }})
             )
         )
     }
@@ -379,7 +382,7 @@ impl<BO: ByteOrder> VtkParser<BO> {
         )
     }
 
-    fn attribute_field(input: &[u8], ft: FileType) -> IResult<&[u8], (String, Attribute)> {
+    fn attribute_field(input: &[u8], ft: FileType) -> IResult<&[u8], DataArray> {
         ws!(
             input,
             do_parse!(
@@ -392,7 +395,7 @@ impl<BO: ByteOrder> VtkParser<BO> {
                             n as usize,
                             call!(Self::attribute_field_array, ft)
                         )
-                    >> (String::from(name), Attribute::Field { data_array })
+                    >> (DataArray { name: String::from(name), data: Attribute::Field { data_array }})
             )
         )
     }
@@ -401,7 +404,7 @@ impl<BO: ByteOrder> VtkParser<BO> {
         input: &[u8],
         num_elements: usize,
         ft: FileType,
-    ) -> IResult<&[u8], (String, Attribute)> {
+    ) -> IResult<&[u8], DataArray> {
         ws!(
             input,
             alt!(
@@ -417,7 +420,7 @@ impl<BO: ByteOrder> VtkParser<BO> {
         )
     }
 
-    fn point_attributes(input: &[u8], ft: FileType) -> IResult<&[u8], Vec<(String, Attribute)>> {
+    fn point_attributes(input: &[u8], ft: FileType) -> IResult<&[u8], Vec<DataArray>> {
         ws!(
             input,
             alt_complete!(
@@ -432,7 +435,7 @@ impl<BO: ByteOrder> VtkParser<BO> {
         )
     }
 
-    fn cell_attributes(input: &[u8], ft: FileType) -> IResult<&[u8], Vec<(String, Attribute)>> {
+    fn cell_attributes(input: &[u8], ft: FileType) -> IResult<&[u8], Vec<DataArray>> {
         ws!(
             input,
             alt_complete!(
@@ -499,10 +502,14 @@ impl<BO: ByteOrder> VtkParser<BO> {
                         )
                     >> data: call!(Self::attributes, ft)
                     >> (DataSet::ImageData {
-                        extent: Extent::Dims(parms.0),
-                        origin: parms.1,
-                        spacing: parms.2,
-                        data
+                            extent: Extent::Dims(parms.0),
+                            origin: parms.1,
+                            spacing: parms.2,
+                            pieces: vec![
+                                Piece::Inline(Box::new(PieceData::ImageData {
+                                    extent: Extent::Dims(parms.0),
+                                    data
+                                }))]
                     })
             )
         )
@@ -524,7 +531,7 @@ impl<BO: ByteOrder> VtkParser<BO> {
                     >> points: call!(Self::points, ft)
                     >> opt!(Self::meta)
                     >> data: call!(Self::attributes, ft)
-                    >> (DataSet::StructuredGrid { extent: Extent::Dims(dims), points, data })
+                    >> (DataSet::inline(PieceData::StructuredGrid { extent: Extent::Dims(dims), points, data }))
             )
         )
     }
@@ -542,18 +549,16 @@ impl<BO: ByteOrder> VtkParser<BO> {
                             >> nz: u32_b
                             >> ([nx, ny, nz])
                     )
-                    >> x_coords: call!(Self::coordinates, Axis::X, ft)
-                    >> y_coords: call!(Self::coordinates, Axis::Y, ft)
-                    >> z_coords: call!(Self::coordinates, Axis::Z, ft)
+                    >> x: call!(Self::coordinates, Axis::X, ft)
+                    >> y: call!(Self::coordinates, Axis::Y, ft)
+                    >> z: call!(Self::coordinates, Axis::Z, ft)
                     >> data: call!(Self::attributes, ft)
                     >> opt!(complete!(Self::meta))
-                    >> (DataSet::RectilinearGrid {
+                    >> (DataSet::inline(PieceData::RectilinearGrid {
                         extent: Extent::Dims(dims),
-                        x_coords,
-                        y_coords,
-                        z_coords,
+                        coords: Coordinates { x, y, z },
                         data
-                    })
+                    }))
             )
         )
     }
@@ -563,7 +568,7 @@ impl<BO: ByteOrder> VtkParser<BO> {
         let res = Self::attribute_field(input, ft);
         match res {
             IResult::Done(i, o) => {
-                if let (name, Attribute::Field { data_array }) = o {
+                if let DataArray { name, data: Attribute::Field { data_array }} = o {
                     IResult::Done(i, DataSet::Field { name, data_array })
                 } else {
                     IResult::Error(nom::Err::Code(ErrorKind::Custom(1u32)))
@@ -610,15 +615,17 @@ impl<BO: ByteOrder> VtkParser<BO> {
                 tag_no_case!("UNSTRUCTURED_GRID")
                     >> p: call!(Self::points, ft)
                     >> opt!(Self::meta)
-                    >> c: call!(Self::cells, "CELLS", ft)
-                    >> ct: call!(Self::cell_types, ft)
+                    >> cell_verts: call!(Self::cell_verts, "CELLS", ft)
+                    >> types: call!(Self::cell_types, ft)
                     >> data: call!(Self::attributes, ft)
-                    >> (DataSet::UnstructuredGrid {
+                    >> (DataSet::inline(PieceData::UnstructuredGrid {
                         points: p,
-                        cells: c,
-                        cell_types: ct,
+                        cells: Cells {
+                            cell_verts,
+                            types,
+                        },
                         data
-                    })
+                    }))
             )
         )
     }
@@ -628,13 +635,13 @@ impl<BO: ByteOrder> VtkParser<BO> {
         alt_complete!(
             input,
             map!(
-                call!(Self::cells, "LINES", ft),
+                call!(Self::cell_verts, "LINES", ft),
                 |x| PolyDataTopology::Lines(x)
-            ) | map!(call!(Self::cells, "POLYGONS", ft), |x| {
+            ) | map!(call!(Self::cell_verts, "POLYGONS", ft), |x| {
                 PolyDataTopology::Polygons(x)
-            }) | map!(call!(Self::cells, "VERTICES", ft), |x| {
+            }) | map!(call!(Self::cell_verts, "VERTICES", ft), |x| {
                 PolyDataTopology::Vertices(x)
-            }) | map!(call!(Self::cells, "TRIANGLE_STRIPS", ft), |x| {
+            }) | map!(call!(Self::cell_verts, "TRIANGLE_STRIPS", ft), |x| {
                 PolyDataTopology::TriangleStrips(x)
             })
         )
@@ -650,7 +657,7 @@ impl<BO: ByteOrder> VtkParser<BO> {
                 >> opt!(Self::meta)
                 >> topo: many_m_n!(0, 4, call!(Self::poly_data_topo, ft))
                 >> data: call!(Self::attributes, ft)
-                >> (DataSet::PolyData { points, topo, data })
+                >> (DataSet::inline(PieceData::PolyData { points, topo, data }))
         )
     }
 
@@ -749,23 +756,23 @@ mod tests {
         let in1 = "CELLS 0 0\n";
         let in2 = "CELLS 1 3\n2 1 2\nother";
 
-        let f = VtkParser::<NativeEndian>::cells(in1.as_bytes(), "CELLS", FileType::ASCII);
+        let f = VtkParser::<NativeEndian>::cell_verts(in1.as_bytes(), "CELLS", FileType::ASCII);
         assert_eq!(
             f,
             IResult::Done(
                 "".as_bytes(),
-                Cells {
+                VertexNumbers::Legacy {
                     num_cells: 0,
                     vertices: vec![]
                 }
             )
         );
-        let f = VtkParser::<NativeEndian>::cells(in2.as_bytes(), "CELLS", FileType::ASCII);
+        let f = VtkParser::<NativeEndian>::cell_verts(in2.as_bytes(), "CELLS", FileType::ASCII);
         assert_eq!(
             f,
             IResult::Done(
                 "other".as_bytes(),
-                Cells {
+                VertexNumbers::Legacy {
                     num_cells: 1,
                     vertices: vec![2, 1, 2]
                 }
@@ -810,15 +817,17 @@ mod tests {
         let in1 = "UNSTRUCTURED_GRID\nPOINTS 4 float\n\
                    2 45 2 3 4 1 46 2 0 4 32 1\nCELLS 2 10\n4 0 1 2 3\n4 3 2 1 0
                    CELL_TYPES 2\n 10 10\nother";
-        let out1 = DataSet::UnstructuredGrid {
+        let out1 = DataSet::inline(PieceData::UnstructuredGrid {
             points: vec![2.0f32, 45., 2., 3., 4., 1., 46., 2., 0., 4., 32., 1.].into(),
             cells: Cells {
-                num_cells: 2,
-                vertices: vec![4, 0, 1, 2, 3, 4, 3, 2, 1, 0],
+                cell_verts: VertexNumbers::Legacy {
+                    num_cells: 2,
+                    vertices: vec![4, 0, 1, 2, 3, 4, 3, 2, 1, 0],
+                },
+                types: vec![CellType::Tetra; 2],
             },
-            cell_types: vec![CellType::Tetra; 2],
             data: Attributes::new(),
-        };
+        });
 
         test!(unstructured_grid(in1, FileType::ASCII) => ("other", out1));
     }
@@ -826,14 +835,14 @@ mod tests {
     fn attribute_test() {
         // scalar attribute
         let in1 = "SCALARS cell_scalars int 1\n0 1 2 3 4 5";
-        let out1 = (
-            String::from("cell_scalars"),
-            Attribute::Scalars {
+        let out1 = DataArray {
+            name: String::from("cell_scalars"),
+            data: Attribute::Scalars {
                 num_comp: 1,
                 lookup_table: None,
                 data: vec![0, 1, 2, 3, 4, 5].into(),
             },
-        );
+        };
         test!(attribute(in1, 6, FileType::ASCII) => ("", out1));
     }
     #[test]
@@ -851,13 +860,13 @@ mod tests {
             lookup_table: None,
             data: vec![0, 1, 2, 3, 4, 5].into(),
         };
-        let out1 = vec![(String::from("cell_scalars"), scalar_attrib.clone())];
+        let out1 = vec![DataArray { name: String::from("cell_scalars"), data: scalar_attrib.clone()}];
         test!(cell_attributes(in1, FileType::ASCII) => out1);
         // scalar point and cell attributes
         let in2 = "POINT_DATA 6\n SCALARS point_scalars int 1\n0 1 2 3 4 5\n
                    CELL_DATA 6\n SCALARS cell_scalars int 1\n0 1 2 3 4 5";
-        let pt_res = vec![(String::from("point_scalars"), scalar_attrib.clone())];
-        let cl_res = vec![(String::from("cell_scalars"), scalar_attrib)];
+        let pt_res = vec![DataArray { name: String::from("point_scalars"), data: scalar_attrib.clone()}];
+        let cl_res = vec![DataArray { name: String::from("cell_scalars"), data: scalar_attrib}];
         let out2 = Attributes {
             point: pt_res,
             cell: cl_res,
@@ -867,30 +876,34 @@ mod tests {
     #[test]
     fn dataset_simple_test() {
         let in1 = "DATASET UNSTRUCTURED_GRID\nPOINTS 0 float\nCELLS 0 0\nCELL_TYPES 0\n";
-        let out1 = DataSet::UnstructuredGrid {
+        let out1 = DataSet::inline(PieceData::UnstructuredGrid {
             points: Vec::<f32>::new().into(),
             cells: Cells {
-                num_cells: 0,
-                vertices: vec![],
+                cell_verts: VertexNumbers::Legacy {
+                    num_cells: 0,
+                    vertices: vec![],
+                },
+                types: vec![],
             },
-            cell_types: vec![],
             data: Attributes::new(),
-        };
+        });
         test!(dataset(in1, FileType::ASCII) => out1);
     }
     #[test]
     fn dataset_test() {
         let in1 = "DATASET UNSTRUCTURED_GRID\nPOINTS 3 float\n2 45 2 3 4 1 46 2 0\
                    CELLS 0 0\nCELL_TYPES 0\n";
-        let out1 = DataSet::UnstructuredGrid {
+        let out1 = DataSet::inline(PieceData::UnstructuredGrid {
             points: vec![2.0f32, 45., 2., 3., 4., 1., 46., 2., 0.].into(),
             cells: Cells {
-                num_cells: 0,
-                vertices: vec![],
+                cell_verts: VertexNumbers::Legacy {
+                    num_cells: 0,
+                    vertices: vec![],
+                },
+                types: vec![],
             },
-            cell_types: vec![],
             data: Attributes::new(),
-        };
+        });
         test!(dataset(in1, FileType::ASCII) => out1);
     }
 }
