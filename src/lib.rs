@@ -185,12 +185,17 @@ pub fn import_be(file_path: impl AsRef<Path>) -> Result<model::Vtk, Error> {
 /// let vtk = Vtk {
 ///     version: Version::new((4,1)),
 ///     title: String::from("Tetrahedron"),
-///     data: DataSet::UnstructuredGrid {
+///     data: DataSet::inline(PieceData::UnstructuredGrid {
 ///         points: vec![0.0f32, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, -1.0, 0.0, 1.0, 0.0].into(),
-///         cells: Cells { num_cells: 1, vertices: vec![4, 0, 1, 2, 3] },
-///         cell_types: vec![CellType::Tetra],
+///         cells: Cells {
+///             cell_verts: VertexNumbers::Legacy {
+///                 num_cells: 1,
+///                 vertices: vec![4, 0, 1, 2, 3]
+///             },
+///             types: vec![CellType::Tetra],
+///         },
 ///         data: Attributes::new(),
-///     }
+///     })
 /// };
 /// export(vtk, "test.vtk");
 /// ```
@@ -238,12 +243,17 @@ pub fn export_be(data: model::Vtk, file_path: impl AsRef<Path>) -> Result<(), Er
 /// let vtk = Vtk {
 ///     version: Version::new((4,1)),
 ///     title: String::from("Tetrahedron"),
-///     data: DataSet::UnstructuredGrid {
+///     data: DataSet::inline(PieceData::UnstructuredGrid {
 ///         points: vec![0.0f32, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, -1.0, 0.0, 1.0, 0.0].into(),
-///         cells: Cells { num_cells: 1, vertices: vec![4, 0, 1, 2, 3] },
-///         cell_types: vec![CellType::Tetra],
+///         cells: Cells { 
+///             cell_verts: VertexNumbers::Legacy {
+///                 num_cells: 1,
+///                 vertices: vec![4, 0, 1, 2, 3]
+///             },
+///             types: vec![CellType::Tetra],
+///         },
 ///         data: Attributes::new(),
-///     }
+///     })
 /// };
 /// export_ascii(vtk, "test.vtk");
 /// ```

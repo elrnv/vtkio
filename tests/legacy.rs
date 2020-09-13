@@ -56,30 +56,32 @@ fn para_tet_test() -> Result {
     let out1 = Vtk {
         version: Version::new((4, 2)),
         title: String::from("vtk output"),
-        data: DataSet::UnstructuredGrid {
+        data: DataSet::inline(PieceData::UnstructuredGrid {
             points: vec![
                 0.0f64, 0.0, 0.0, 0.0, 0.0, -1.0, 0.0, 1.0, 0.0, 1.0, 0.0, 0.0,
             ]
             .into(),
             cells: Cells {
-                num_cells: 1,
-                vertices: vec![4, 0, 1, 2, 3],
+                cell_verts: VertexNumbers::Legacy {
+                    num_cells: 1,
+                    vertices: vec![4, 0, 1, 2, 3],
+                },
+                types: vec![CellType::Tetra],
             },
-            cell_types: vec![CellType::Tetra],
             data: Attributes {
                 point: vec![],
-                cell: vec![(
-                    String::from("FieldData"),
-                    Attribute::Field {
+                cell: vec![DataArray {
+                    name: String::from("FieldData"),
+                    data: Attribute::Field {
                         data_array: vec![FieldArray {
                             name: String::from("FloatValue"),
                             num_comp: 1,
                             data: vec![0.0f32].into(),
                         }],
                     },
-                )],
+                }],
             },
-        },
+        }),
     };
     test_ignore_rem!(parse_be(in1) => out1);
     test_ignore_rem!(parse_be(in2) => out1);
@@ -98,7 +100,7 @@ fn para_tets_test() -> Result {
     let out1 = Vtk {
         version: Version::new((4, 2)),
         title: String::from("vtk output"),
-        data: DataSet::UnstructuredGrid {
+        data: DataSet::inline(PieceData::UnstructuredGrid {
             points: vec![
                 13.2, 135.4, -7.7, 13.7, 134.2, -8.7, 12.2, 134.7, -8.6, 12.7, 133.6, -7.0, 3.6,
                 119.4, -0.3, -2.3, 137.0, -2.5, 5.4, 119.7, 0.0, -2.7, 135.9, -1.2, -2.9, 137.5,
@@ -106,10 +108,12 @@ fn para_tets_test() -> Result {
             ]
             .into(),
             cells: Cells {
-                num_cells: 3,
-                vertices: vec![4, 9, 5, 7, 8, 4, 3, 2, 0, 1, 4, 11, 6, 4, 10],
+                cell_verts: VertexNumbers::Legacy {
+                    num_cells: 3,
+                    vertices: vec![4, 9, 5, 7, 8, 4, 3, 2, 0, 1, 4, 11, 6, 4, 10],
+                },
+                types: vec![CellType::Tetra; 3],
             },
-            cell_types: vec![CellType::Tetra; 3],
             data: Attributes {
                 point: vec![(
                     String::from("FieldData"),
@@ -146,7 +150,7 @@ fn para_tets_test() -> Result {
                             },
                         ],
                     },
-                )],
+                ).into()],
                 cell: vec![(
                     String::from("FieldData"),
                     Attribute::Field {
@@ -163,9 +167,9 @@ fn para_tets_test() -> Result {
                             },
                         ],
                     },
-                )],
+                ).into()],
             },
-        },
+        }),
     };
     test_ignore_rem!(parse_be(in1) => out1);
     test_ignore_rem!(parse_be(in2) => out1);
@@ -184,18 +188,20 @@ fn tet_test() -> Result {
     let out1 = Vtk {
         version: Version::new((4, 2)),
         title: String::from("Tetrahedron example"),
-        data: DataSet::UnstructuredGrid {
+        data: DataSet::inline(PieceData::UnstructuredGrid {
             points: vec![
                 0.0f32, 0.0, 0.0, 0.0, 0.0, -1.0, 0.0, 1.0, 0.0, 1.0, 0.0, 0.0,
             ]
             .into(),
             cells: Cells {
-                num_cells: 1,
-                vertices: vec![4, 0, 1, 2, 3],
+                cell_verts: VertexNumbers::Legacy {
+                    num_cells: 1,
+                    vertices: vec![4, 0, 1, 2, 3],
+                },
+                types: vec![CellType::Tetra],
             },
-            cell_types: vec![CellType::Tetra],
             data: Attributes::new(),
-        },
+        }),
     };
     test!(parse_le(in1) => out1);
     test_b!(parse_le(in2) => out1);
@@ -213,14 +219,14 @@ fn tri_test() -> Result {
     let out1 = Vtk {
         version: Version::new((2, 0)),
         title: String::from("Triangle example"),
-        data: DataSet::PolyData {
+        data: DataSet::inline(PieceData::PolyData {
             points: vec![0.0f32, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, -1.0].into(),
-            topo: vec![PolyDataTopology::Polygons(Cells {
+            topo: vec![PolyDataTopology::Polygons(VertexNumbers::Legacy {
                 num_cells: 1,
                 vertices: vec![3, 0, 1, 2],
             })],
             data: Attributes::new(),
-        },
+        }),
     };
     test!(parse_ne(in1) => out1);
     test_b!(parse_ne(String::new().write_vtk(out1.clone())?.as_bytes()) => out1);
@@ -234,38 +240,38 @@ fn tri_attrib_ascii_test() -> Result {
     let out1 = Vtk {
         version: Version::new((2, 0)),
         title: String::from("Triangle example"),
-        data: DataSet::PolyData {
+        data: DataSet::inline(PieceData::PolyData {
             points: vec![0.0f32, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, -1.0].into(),
-            topo: vec![PolyDataTopology::Polygons(Cells {
+            topo: vec![PolyDataTopology::Polygons(VertexNumbers::Legacy {
                 num_cells: 1,
                 vertices: vec![3, 0, 1, 2],
             })],
             data: Attributes {
                 point: vec![],
                 cell: vec![
-                    (
-                        String::from("scalars"),
-                        Attribute::ColorScalars {
+                    DataArray {
+                        name: String::from("scalars"),
+                        data: Attribute::ColorScalars {
                             num_comp: 3,
                             data: vec![1.0f32, 0.0, 0.0].into(),
                         },
-                    ),
-                    (
-                        String::from("tex_coords"),
-                        Attribute::TextureCoordinates {
+                    },
+                    DataArray {
+                        name: String::from("tex_coords"),
+                        data: Attribute::TextureCoordinates {
                             dim: 3,
                             data: vec![1.0f32, 0.0, 0.0].into(),
                         },
-                    ),
-                    (
-                        String::from("tensors"),
-                        Attribute::Tensors {
+                    },
+                    DataArray {
+                        name: String::from("tensors"),
+                        data: Attribute::Tensors {
                             data: vec![1.0f64, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0].into(),
                         },
-                    ),
+                    },
                 ],
             },
-        },
+        }),
     };
     test!(parse_ne(in1) => out1);
     test_b!(parse_ne(String::new().write_vtk(out1.clone())?.as_bytes()) => out1);
@@ -280,38 +286,38 @@ fn tri_attrib_binary_test() -> Result {
     let out1 = Vtk {
         version: Version::new((4, 2)),
         title: String::from("Triangle example"),
-        data: DataSet::PolyData {
+        data: DataSet::inline(PieceData::PolyData {
             points: vec![0.0f32, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, -1.0].into(),
-            topo: vec![PolyDataTopology::Polygons(Cells {
+            topo: vec![PolyDataTopology::Polygons(VertexNumbers::Legacy {
                 num_cells: 1,
                 vertices: vec![3, 0, 1, 2],
             })],
             data: Attributes {
                 point: vec![],
                 cell: vec![
-                    (
-                        String::from("scalars"),
-                        Attribute::ColorScalars {
+                    DataArray {
+                        name: String::from("scalars"),
+                        data: Attribute::ColorScalars {
                             num_comp: 3,
                             data: vec![255u8, 0, 0].into(),
                         },
-                    ),
-                    (
-                        String::from("tex_coords"),
-                        Attribute::TextureCoordinates {
+                    },
+                    DataArray {
+                        name: String::from("tex_coords"),
+                        data: Attribute::TextureCoordinates {
                             dim: 3,
                             data: vec![1.0f32, 0.0, 0.0].into(),
                         },
-                    ),
-                    (
-                        String::from("tensors"),
-                        Attribute::Tensors {
+                    },
+                    DataArray {
+                        name: String::from("tensors"),
+                        data: Attribute::Tensors {
                             data: vec![1.0f64, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0].into(),
                         },
-                    ),
+                    },
                 ],
             },
-        },
+        }),
     };
     test_ignore_rem!(parse_be(in1) => out1);
     test_b!(parse_ne(Vec::<u8>::new().write_vtk(out1.clone())?) => out1);
@@ -326,17 +332,17 @@ fn square_test() -> Result {
     let out1 = Vtk {
         version: Version::new((2, 0)),
         title: String::from("Square example"),
-        data: DataSet::PolyData {
+        data: DataSet::inline(PieceData::PolyData {
             points: vec![
                 0.0f32, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, -1.0, 0.0, 0.0, -1.0,
             ]
             .into(),
-            topo: vec![PolyDataTopology::Polygons(Cells {
+            topo: vec![PolyDataTopology::Polygons(VertexNumbers::Legacy {
                 num_cells: 1,
                 vertices: vec![4, 0, 1, 2, 3],
             })],
             data: Attributes::new(),
-        },
+        }),
     };
     test!(parse_ne(in1) => out1);
     test_b!(parse_ne(String::new().write_vtk(out1.clone())?.as_bytes()) => out1);
@@ -352,19 +358,21 @@ fn cube_test() -> Result {
     let out1 = Vtk {
         version: Version::new((4, 2)),
         title: String::from("Cube example"),
-        data: DataSet::UnstructuredGrid {
+        data: DataSet::inline(PieceData::UnstructuredGrid {
             points: vec![
                 0.0, 0.0, 0.0, 0.0, 0.0, -1.0, 0.0, 1.0, 0.0, 0.0, 1.0, -1.0, 1.0, 0.0, 0.0, 1.0,
                 0.0, -1.0, 1.0, 1.0, 0.0, 1.0, 1.0, -1.0f32,
             ]
             .into(),
             cells: Cells {
-                num_cells: 1,
-                vertices: vec![8, 0, 4, 5, 1, 2, 6, 7, 3],
+                cell_verts: VertexNumbers::Legacy {
+                    num_cells: 1,
+                    vertices: vec![8, 0, 4, 5, 1, 2, 6, 7, 3],
+                },
+                types: vec![CellType::Hexahedron],
             },
-            cell_types: vec![CellType::Hexahedron],
             data: Attributes::new(),
-        },
+        }),
     };
     test!(parse_ne(in1) => out1);
     test_b!(parse_ne(String::new().write_vtk(out1.clone())?.as_bytes()) => out1);
@@ -380,7 +388,7 @@ fn structured_grid_test() -> Result {
     let out1 = Vtk {
         version: Version::new((3, 0)),
         title: String::from("vtk output"),
-        data: DataSet::StructuredGrid {
+        data: DataSet::inline(PieceData::StructuredGrid {
             extent: Extent::Dims([2, 2, 2]),
             points: vec![
                 0_f32, 0.2, 0., 0.1, 0.184843, 0., 0., 0.25, 0., 0.1, 0.234843, 0., 0., 0.2,
@@ -396,7 +404,7 @@ fn structured_grid_test() -> Result {
                             lookup_table: None,
                             data: vec![0f32, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0].into(),
                         },
-                    ),
+                    ).into(),
                     (
                         String::from("ptvec"),
                         Attribute::Vectors {
@@ -407,7 +415,7 @@ fn structured_grid_test() -> Result {
                             ]
                             .into(),
                         },
-                    ),
+                    ).into(),
                 ],
                 cell: vec![
                     (
@@ -417,16 +425,16 @@ fn structured_grid_test() -> Result {
                             lookup_table: None,
                             data: vec![1489.0f32].into(),
                         },
-                    ),
+                    ).into(),
                     (
                         String::from("cellvec"),
                         Attribute::Vectors {
                             data: vec![0.6f32, 0.7, 0.5].into(),
                         },
-                    ),
+                    ).into(),
                 ],
             },
-        },
+        }),
     };
     test!(parse_ne(in1) => out1);
     test_b!(parse_ne(String::new().write_vtk(out1.clone())?.as_bytes()) => out1);
@@ -442,11 +450,13 @@ fn rectilinear_grid_test() -> Result {
     let out1 = Vtk {
         version: Version::new((3, 0)),
         title: String::from("vtk output"),
-        data: DataSet::RectilinearGrid {
+        data: DataSet::inline(PieceData::RectilinearGrid {
             extent: Extent::Dims([3, 4, 1]),
-            x_coords: vec![0_f32, 2.0, 4.0].into(),
-            y_coords: vec![1_f32, 2.0, 3.0, 4.0].into(),
-            z_coords: vec![0_f32].into(),
+            coords: Coordinates {
+                x: vec![0_f32, 2.0, 4.0].into(),
+                y: vec![1_f32, 2.0, 3.0, 4.0].into(),
+                z: vec![0_f32].into(),
+            },
             data: Attributes {
                 point: vec![],
                 cell: vec![(
@@ -458,9 +468,9 @@ fn rectilinear_grid_test() -> Result {
                             data: vec![1.1_f32, 7.5, 1.2, 1.5, 2.6, 8.1].into(),
                         }],
                     },
-                )],
+                ).into()],
             },
-        },
+        }),
     };
     test_b!(parse_be(in1) => out1);
     test_b!(parse_ne(String::new().write_vtk(out1.clone())?.as_bytes()) => out1);
@@ -510,7 +520,7 @@ fn field_test() -> Result {
 
 #[test]
 fn cube_complex_test() -> Result {
-    let mut topo = vec![PolyDataTopology::Polygons(Cells {
+    let mut topo = vec![PolyDataTopology::Polygons(VertexNumbers::Legacy {
         num_cells: 6,
         vertices: vec![
             4, 0, 1, 2, 3, 4, 4, 5, 6, 7, 4, 0, 1, 5, 4, 4, 2, 3, 7, 6, 4, 0, 4, 7, 3, 4, 1, 2, 6,
@@ -527,7 +537,7 @@ fn cube_complex_test() -> Result {
                     lookup_table: Some(String::from("my_table")),
                     data: vec![0.0f32, 1., 2., 3., 4., 5., 6., 7.].into(),
                 },
-            ),
+            ).into(),
             (
                 String::from("my_table"),
                 Attribute::LookupTable {
@@ -538,7 +548,7 @@ fn cube_complex_test() -> Result {
                     ]
                     .into(),
                 },
-            ),
+            ).into(),
         ],
         cell: vec![
             (
@@ -548,7 +558,7 @@ fn cube_complex_test() -> Result {
                     lookup_table: None,
                     data: vec![0, 1, 2, 3, 4, 5].into(),
                 },
-            ),
+            ).into(),
             (
                 String::from("cell_normals"),
                 Attribute::Normals {
@@ -558,7 +568,7 @@ fn cube_complex_test() -> Result {
                     ]
                     .into(),
                 },
-            ),
+            ).into(),
             (
                 String::from("FieldData"),
                 Attribute::Field {
@@ -575,7 +585,7 @@ fn cube_complex_test() -> Result {
                         },
                     ],
                 },
-            ),
+            ).into(),
         ],
     };
     let points: IOBuffer = vec![
@@ -588,16 +598,16 @@ fn cube_complex_test() -> Result {
     let out1 = Vtk {
         version: Version::new((2, 0)),
         title: String::from("Cube example"),
-        data: DataSet::PolyData {
+        data: DataSet::inline(PieceData::PolyData {
             points: points.clone(),
             topo: topo.clone(),
             data: attributes.clone(),
-        },
+        }),
     };
 
     let in2 = include_bytes!("../assets/cube_complex_topo.vtk");
 
-    topo.push(PolyDataTopology::Vertices(Cells {
+    topo.push(PolyDataTopology::Vertices(VertexNumbers::Legacy {
         num_cells: 2,
         vertices: vec![2, 0, 1, 2, 2, 3],
     }));
@@ -610,7 +620,7 @@ fn cube_complex_test() -> Result {
                 lookup_table: None,
                 data: vec![0, 1, 2, 3, 4, 5, 6, 7].into(),
             },
-        ),
+        ).into(),
         (
             String::from("cell_normals"),
             Attribute::Normals {
@@ -620,7 +630,7 @@ fn cube_complex_test() -> Result {
                 ]
                 .into(),
             },
-        ),
+        ).into(),
         (
             String::from("FieldData"),
             Attribute::Field {
@@ -640,15 +650,15 @@ fn cube_complex_test() -> Result {
                     },
                 ],
             },
-        ),
+        ).into(),
     ];
 
     let out2 = Vtk {
-        data: DataSet::PolyData {
+        data: DataSet::inline(PieceData::PolyData {
             points: points.clone(),
             topo: topo.clone(),
             data: attributes.clone(),
-        },
+        }),
         ..out1.clone()
     };
 
@@ -670,7 +680,7 @@ fn unstructured_grid_complex_test() -> Result {
     let out1 = Vtk {
         version: Version::new((2, 0)),
         title: String::from("Unstructured Grid Example"),
-        data: DataSet::UnstructuredGrid {
+        data: DataSet::inline(PieceData::UnstructuredGrid {
             points: vec![
                 0.0f32, 0., 0., 1., 0., 0., 2., 0., 0., 0., 1., 0., 1., 1., 0., 2., 1., 0., 0., 0.,
                 1., 1., 0., 1., 2., 0., 1., 0., 1., 1., 1., 1., 1., 2., 1., 1., 0., 1., 2., 1., 1.,
@@ -679,28 +689,30 @@ fn unstructured_grid_complex_test() -> Result {
             ]
             .into(),
             cells: Cells {
-                num_cells: 12,
-                vertices: vec![
-                    10, 0, 1, 4, 3, 6, 7, 10, 9, 2, 5, 8, 0, 1, 4, 3, 6, 7, 10, 9, 8, 1, 2, 5, 4,
-                    7, 8, 11, 10, 4, 6, 10, 9, 12, 4, 5, 11, 10, 14, 6, 15, 16, 17, 14, 13, 12, 6,
-                    18, 15, 19, 16, 20, 17, 4, 22, 23, 20, 19, 3, 21, 22, 18, 3, 22, 19, 18, 2, 26,
-                    25, 1, 24,
+                cell_verts: VertexNumbers::Legacy {
+                    num_cells: 12,
+                    vertices: vec![
+                        10, 0, 1, 4, 3, 6, 7, 10, 9, 2, 5, 8, 0, 1, 4, 3, 6, 7, 10, 9, 8, 1, 2, 5, 4,
+                        7, 8, 11, 10, 4, 6, 10, 9, 12, 4, 5, 11, 10, 14, 6, 15, 16, 17, 14, 13, 12, 6,
+                        18, 15, 19, 16, 20, 17, 4, 22, 23, 20, 19, 3, 21, 22, 18, 3, 22, 19, 18, 2, 26,
+                        25, 1, 24,
+                    ],
+                },
+                types: vec![
+                    CellType::QuadraticTetra,
+                    CellType::Hexahedron,
+                    CellType::Hexahedron,
+                    CellType::Tetra,
+                    CellType::Tetra,
+                    CellType::Polygon,
+                    CellType::TriangleStrip,
+                    CellType::Quad,
+                    CellType::Triangle,
+                    CellType::Triangle,
+                    CellType::Line,
+                    CellType::Vertex,
                 ],
             },
-            cell_types: vec![
-                CellType::QuadraticTetra,
-                CellType::Hexahedron,
-                CellType::Hexahedron,
-                CellType::Tetra,
-                CellType::Tetra,
-                CellType::Polygon,
-                CellType::TriangleStrip,
-                CellType::Quad,
-                CellType::Triangle,
-                CellType::Triangle,
-                CellType::Line,
-                CellType::Vertex,
-            ],
             data: Attributes {
                 point: vec![
                     (
@@ -715,7 +727,7 @@ fn unstructured_grid_complex_test() -> Result {
                             ]
                             .into(),
                         },
-                    ),
+                    ).into(),
                     (
                         String::from("vectors"),
                         Attribute::Vectors {
@@ -728,11 +740,11 @@ fn unstructured_grid_complex_test() -> Result {
                             ]
                             .into(),
                         },
-                    ),
+                    ).into(),
                 ],
                 cell: vec![],
             },
-        },
+        }),
     };
     test!(parse_ne(in1) => out1);
     test_b!(parse_ne(String::new().write_vtk(out1.clone())?.as_bytes()) => out1);
@@ -748,10 +760,8 @@ fn volume_complex_test() -> Result {
     let out1 = Vtk {
         version: Version::new((2, 0)),
         title: String::from("Volume example"),
-        data: DataSet::ImageData {
+        data: DataSet::inline(PieceData::ImageData {
             extent: Extent::Dims([3, 4, 6]),
-            origin: [0.0, 0.0, 0.0],
-            spacing: [1.0, 1.0, 1.0],
             data: Attributes {
                 point: vec![(
                     String::from("volume_scalars"),
@@ -766,10 +776,10 @@ fn volume_complex_test() -> Result {
                         ]
                         .into(),
                     },
-                )],
+                ).into()],
                 cell: vec![],
             },
-        },
+        }),
     };
     test!(parse_ne(in1) => out1);
     test_b!(parse_ne(String::new().write_vtk(out1.clone())?.as_bytes()) => out1);
@@ -785,7 +795,7 @@ fn dodecagon_test() -> Result {
     let out1 = Vtk {
         version: Version::new((4, 2)),
         title: String::from("Dodecagon example"),
-        data: DataSet::UnstructuredGrid {
+        data: DataSet::inline(PieceData::UnstructuredGrid {
             points: vec![
                 0.5f32,
                 0.,
@@ -826,12 +836,14 @@ fn dodecagon_test() -> Result {
             ]
             .into(),
             cells: Cells {
-                num_cells: 1,
-                vertices: vec![12, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
+                cell_verts: VertexNumbers::Legacy {
+                    num_cells: 1,
+                    vertices: vec![12, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
+                },
+                types: vec![CellType::Polygon],
             },
-            cell_types: vec![CellType::Polygon],
             data: Attributes::new(),
-        },
+        }),
     };
 
     test_b!(parse_ne(in1) => out1);
@@ -848,7 +860,7 @@ fn dodecagon_with_meta_test() {
     let out1 = Vtk {
         version: Version::new((4, 2)),
         title: String::from("Dodecagon example"),
-        data: DataSet::UnstructuredGrid {
+        data: DataSet::inline(PieceData::UnstructuredGrid {
             points: vec![
                 0.5f32,
                 0.,
@@ -889,12 +901,14 @@ fn dodecagon_with_meta_test() {
             ]
             .into(),
             cells: Cells {
-                num_cells: 1,
-                vertices: vec![12, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
+                cell_verts: VertexNumbers::Legacy {
+                    num_cells: 1,
+                    vertices: vec![12, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
+                },
+                types: vec![CellType::Polygon],
             },
-            cell_types: vec![CellType::Polygon],
             data: Attributes::new(),
-        },
+        }),
     };
 
     test_b!(parse_ne(in1) => out1);
@@ -906,7 +920,7 @@ fn binary_dodecagon_test() {
     let out1 = Vtk {
         version: Version::new((4, 2)),
         title: String::from("Dodecagon example"),
-        data: DataSet::UnstructuredGrid {
+        data: DataSet::inline(PieceData::UnstructuredGrid {
             points: vec![
                 0.5f32,
                 0.,
@@ -947,12 +961,14 @@ fn binary_dodecagon_test() {
             ]
             .into(),
             cells: Cells {
-                num_cells: 1,
-                vertices: vec![12, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
+                cell_verts: VertexNumbers::Legacy {
+                    num_cells: 1,
+                    vertices: vec![12, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
+                },
+                types: vec![CellType::Polygon],
             },
-            cell_types: vec![CellType::Polygon],
             data: Attributes::new(),
-        },
+        }),
     };
     let in2 = include_bytes!("../assets/dodecagon.vtk");
 
