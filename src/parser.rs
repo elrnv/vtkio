@@ -54,18 +54,18 @@ named!(header<&[u8], (Version, String, FileType)>, sp!(
     )
 );
 
-named!(data_type< &[u8], DataType >, alt!(
-        tag_no_case!("bit")            => { |_| DataType::Bit } |
-        tag_no_case!("int")            => { |_| DataType::Int } |
-        tag_no_case!("char")           => { |_| DataType::Char } |
-        tag_no_case!("long")           => { |_| DataType::Long } |
-        tag_no_case!("short")          => { |_| DataType::Short } |
-        tag_no_case!("float")          => { |_| DataType::Float } |
-        tag_no_case!("double")         => { |_| DataType::Double } |
-        tag_no_case!("unsigned_int")   => { |_| DataType::UnsignedInt } |
-        tag_no_case!("unsigned_char")  => { |_| DataType::UnsignedChar } |
-        tag_no_case!("unsigned_long")  => { |_| DataType::UnsignedLong } |
-        tag_no_case!("unsigned_short") => { |_| DataType::UnsignedShort } ));
+named!(data_type< &[u8], ScalarType >, alt!(
+        tag_no_case!("bit")            => { |_| ScalarType::Bit } |
+        tag_no_case!("int")            => { |_| ScalarType::I32 } |
+        tag_no_case!("char")           => { |_| ScalarType::I8 } |
+        tag_no_case!("long")           => { |_| ScalarType::I64 } |
+        tag_no_case!("short")          => { |_| ScalarType::I16 } |
+        tag_no_case!("float")          => { |_| ScalarType::F32 } |
+        tag_no_case!("double")         => { |_| ScalarType::F64 } |
+        tag_no_case!("unsigned_int")   => { |_| ScalarType::U32 } |
+        tag_no_case!("unsigned_char")  => { |_| ScalarType::U8 } |
+        tag_no_case!("unsigned_long")  => { |_| ScalarType::U64 } |
+        tag_no_case!("unsigned_short") => { |_| ScalarType::U16 } ));
 
 named!(pub usize_b<&[u8], usize>, call!(integer) );
 named!(pub u32_b<&[u8], u32>, call!(integer) );
@@ -96,8 +96,8 @@ impl<BO: ByteOrder> VtkParser<BO> {
                            dt: sp!( data_type ) >>
                            tag!("\n") >>
                            (dt) ),
-                                DataType::Float => call!( parse_data_buffer::<f32, BO>, 3*n as usize, ft ) |
-                                DataType::Double => call!( parse_data_buffer::<f64, BO>, 3*n as usize, ft ) )
+                                ScalarType::F32 => call!( parse_data_buffer::<f32, BO>, 3*n as usize, ft ) |
+                                ScalarType::F64 => call!( parse_data_buffer::<f64, BO>, 3*n as usize, ft ) )
                 >> (vec)
         )
     }
@@ -143,8 +143,8 @@ impl<BO: ByteOrder> VtkParser<BO> {
                            dt: sp!( data_type ) >>
                            tag!("\n") >>
                            (dt) ),
-                                DataType::Float => call!( parse_data_buffer::<f32, BO>, n as usize, ft ) |
-                                DataType::Double => call!( parse_data_buffer::<f64, BO>, n as usize, ft ) )
+                                ScalarType::F32 => call!( parse_data_buffer::<f32, BO>, n as usize, ft ) |
+                                ScalarType::F64 => call!( parse_data_buffer::<f64, BO>, n as usize, ft ) )
                 >> (vec.into())
         )
     }
@@ -166,21 +166,21 @@ impl<BO: ByteOrder> VtkParser<BO> {
     fn attribute_data(
         input: &[u8],
         n: usize,
-        data_type: DataType,
+        data_type: ScalarType,
         ft: FileType,
     ) -> IResult<&[u8], IOBuffer> {
         match data_type {
-            DataType::Bit => parse_data_bit_buffer(input, n, ft),
-            DataType::UnsignedChar => parse_data_buffer_u8(input, n, ft),
-            DataType::Char => parse_data_buffer_i8(input, n, ft),
-            DataType::UnsignedShort => parse_data_buffer::<u16, BO>(input, n, ft),
-            DataType::Short => parse_data_buffer::<i16, BO>(input, n, ft),
-            DataType::UnsignedInt => parse_data_buffer::<u32, BO>(input, n, ft),
-            DataType::Int => parse_data_buffer::<i32, BO>(input, n, ft),
-            DataType::UnsignedLong => parse_data_buffer::<u64, BO>(input, n, ft),
-            DataType::Long => parse_data_buffer::<i64, BO>(input, n, ft),
-            DataType::Float => parse_data_buffer::<f32, BO>(input, n, ft),
-            DataType::Double => parse_data_buffer::<f64, BO>(input, n, ft),
+            ScalarType::Bit => parse_data_bit_buffer(input, n, ft),
+            ScalarType::U8 => parse_data_buffer_u8(input, n, ft),
+            ScalarType::I8 => parse_data_buffer_i8(input, n, ft),
+            ScalarType::U16 => parse_data_buffer::<u16, BO>(input, n, ft),
+            ScalarType::I16 => parse_data_buffer::<i16, BO>(input, n, ft),
+            ScalarType::U32 => parse_data_buffer::<u32, BO>(input, n, ft),
+            ScalarType::I32 => parse_data_buffer::<i32, BO>(input, n, ft),
+            ScalarType::U64 => parse_data_buffer::<u64, BO>(input, n, ft),
+            ScalarType::I64 => parse_data_buffer::<i64, BO>(input, n, ft),
+            ScalarType::F32 => parse_data_buffer::<f32, BO>(input, n, ft),
+            ScalarType::F64 => parse_data_buffer::<f64, BO>(input, n, ft),
         }
     }
 
@@ -239,7 +239,7 @@ impl<BO: ByteOrder> VtkParser<BO> {
                     >> data: call!(
                         Self::attribute_data,
                         4 * num_elements as usize,
-                        DataType::Float,
+                        ScalarType::F32,
                         ft
                     )
                     >> opt!(Self::meta)
@@ -260,8 +260,8 @@ impl<BO: ByteOrder> VtkParser<BO> {
         ft: FileType,
     ) -> IResult<&[u8], IOBuffer> {
         match ft {
-            FileType::ASCII => Self::attribute_data(input, n, DataType::Float, ft),
-            FileType::Binary => Self::attribute_data(input, n, DataType::UnsignedChar, ft),
+            FileType::ASCII => Self::attribute_data(input, n, ScalarType::F32, ft),
+            FileType::Binary => Self::attribute_data(input, n, ScalarType::U8, ft),
         }
     }
 
