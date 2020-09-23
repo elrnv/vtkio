@@ -9,14 +9,9 @@ pub mod parser;
 pub mod writer;
 pub mod xml;
 
-pub use buffer::call_numeric_buffer_fn;
-
 use std::fs::File;
 use std::io;
 use std::path::Path;
-
-/// Primary buffer type used to store data read from binary or ASCII files.
-pub type IOBuffer = buffer::DataBuffer;
 
 /// Error type for Import/Export operations.
 #[derive(Debug)]
@@ -141,15 +136,51 @@ where
 /// ```
 pub fn import(file_path: impl AsRef<Path>) -> Result<model::Vtk, Error> {
     let path = file_path.as_ref();
-    let ext = path.extension().and_then(|s| s.to_str()).ok_or(Error::UnknownFileExtension(None))?;
+    let ext = path
+        .extension()
+        .and_then(|s| s.to_str())
+        .ok_or(Error::UnknownFileExtension(None))?;
     match ext {
         "vtk" => import_vtk(path, parser::parse_be),
-        ext => Ok(xml::import(
-            path,
-            xml::FileType::try_from_ext(ext)
-                .ok_or(Error::UnknownFileExtension(Some(ext.to_string())))?,
-        )?),
+        ext => {
+            let ft = xml::FileType::try_from_ext(ext)
+                .ok_or(Error::UnknownFileExtension(Some(ext.to_string())))?;
+            let vtk_file = xml::import(path)?;
+            let exp_ft = xml::FileType::from(vtk_file.data_set_type);
+            if ft != exp_ft {
+                Err(Error::XML(xml::Error::TypeExtensionMismatch))
+            } else {
+                use std::convert::TryInto;
+                Ok(vtk_file.try_into()?)
+            }
+        }
     }
+}
+
+/// Import an XML VTK file in raw form.
+///
+/// This importer performs a direct translation from the XML string to a Rust representation
+/// without any decoding or conversion.
+///
+/// [`VTKFile`] is used internally as an intermediate step for constructing the [`Vtk`] model,
+/// which has built-in facilities for loading pieces referenced in "parallel" XML formats as well
+/// as representing Legacy VTK formats, which are more compact when serialized.
+///
+/// [`Vtk`]: model/struct.Vtk.html
+/// [`VTKFile`]: xml/struct.VTKFile.html
+#[cfg(feature = "unstable")]
+pub fn import_xml(file_path: impl AsRef<Path>) -> Result<xml::VTKFile, Error> {
+    let path = file_path.as_ref();
+    let ext = path
+        .extension()
+        .and_then(|s| s.to_str())
+        .ok_or(Error::UnknownFileExtension(None))?;
+
+    // Check that the file extension is one of the known ones.
+    let _ = xml::FileType::try_from_ext(ext)
+        .ok_or(Error::UnknownFileExtension(Some(ext.to_string())))?;
+
+    Ok(xml::import(path)?)
 }
 
 /// Import a legacy VTK file at the specified path.
@@ -176,6 +207,8 @@ pub fn import_be(file_path: impl AsRef<Path>) -> Result<model::Vtk, Error> {
 
 /// Export given vtk data to the specified file in BINARY format.
 ///
+/// Endianness is determined by the `byte_order` field of the [`Vtk`] type.
+///
 /// # Examples
 ///
 /// ```no_run
@@ -184,6 +217,7 @@ pub fn import_be(file_path: impl AsRef<Path>) -> Result<model::Vtk, Error> {
 /// use std::path::PathBuf;
 /// let vtk = Vtk {
 ///     version: Version::new((4,1)),
+///     byte_order: ByteOrder::BigEndian,
 ///     title: String::from("Tetrahedron"),
 ///     data: DataSet::inline(PieceData::UnstructuredGrid {
 ///         points: vec![0.0f32, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, -1.0, 0.0, 1.0, 0.0].into(),
@@ -199,36 +233,14 @@ pub fn import_be(file_path: impl AsRef<Path>) -> Result<model::Vtk, Error> {
 /// };
 /// export(vtk, "test.vtk");
 /// ```
+///
+/// [`Vtk`]: struct.Vtk.html
 pub fn export(data: model::Vtk, file_path: impl AsRef<Path>) -> Result<(), Error> {
     use crate::io::Write;
     use crate::writer::WriteVtk;
 
     let mut file = File::create(file_path.as_ref())?;
     file.write_all(Vec::<u8>::new().write_vtk(data)?.as_slice())?;
-    Ok(())
-}
-
-/// Same as [`export`] but produces output in little-endian byte order.
-///
-/// [`export`]: fn.export.html
-pub fn export_le(data: model::Vtk, file_path: impl AsRef<Path>) -> Result<(), Error> {
-    use crate::io::Write;
-    use crate::writer::WriteVtk;
-
-    let mut file = File::create(file_path.as_ref())?;
-    file.write_all(Vec::<u8>::new().write_vtk_le(data)?.as_slice())?;
-    Ok(())
-}
-
-/// Same as [`export`] but produces output in big-endian byte order.
-///
-/// [`export`]: fn.export.html
-pub fn export_be(data: model::Vtk, file_path: impl AsRef<Path>) -> Result<(), Error> {
-    use crate::io::Write;
-    use crate::writer::WriteVtk;
-
-    let mut file = File::create(file_path.as_ref())?;
-    file.write_all(Vec::<u8>::new().write_vtk_be(data)?.as_slice())?;
     Ok(())
 }
 
@@ -243,9 +255,10 @@ pub fn export_be(data: model::Vtk, file_path: impl AsRef<Path>) -> Result<(), Er
 /// let vtk = Vtk {
 ///     version: Version::new((4,1)),
 ///     title: String::from("Tetrahedron"),
+///     byte_order: ByteOrder::BigEndian,
 ///     data: DataSet::inline(PieceData::UnstructuredGrid {
 ///         points: vec![0.0f32, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, -1.0, 0.0, 1.0, 0.0].into(),
-///         cells: Cells { 
+///         cells: Cells {
 ///             cell_verts: VertexNumbers::Legacy {
 ///                 num_cells: 1,
 ///                 vertices: vec![4, 0, 1, 2, 3]
