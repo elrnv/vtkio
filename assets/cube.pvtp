@@ -1,16 +1,17 @@
 <?xml version="1.0"?>
 <VTKFile type="PPolyData" version="0.1" byte_order="LittleEndian">
-    <PPolyData GhostLevel="0">
-        <PPointData Scalars="my_scalars">
-        <PDataArray type="Float32" Name="my_scalars"/>
-        </PPointData>
-        <PCellData Scalars="cell_scalars" Normals="cell_normals">
-        <PDataArray type="Int32" Name="cell_scalars"/>
-        <PDataArray type="Float32" Name="cell_normals" NumberOfComponents="3"/>
-        </PCellData>
-        <PPoints>
-        <PDataArray type="Float32" NumberOfComponents="3"/>
-        </PPoints>
-        <Piece Source="polyEx0.vtp"/>
-    </PPolyData>
+<PPolyData GhostLevel="0">
+  <PPointData Scalars="my_scalars">
+    <PDataArray type="Float32" Name="my_scalars"/>
+  </PPointData>
+  <PCellData Scalars="cell_scalars" Normals="cell_normals">
+    <PDataArray type="Int32" Name="cell_scalars"/>
+     <PDataArray type="Float32" Name="cell_normals" NumberOfComponents="3"/>
+  </PCellData>
+  <PPoints>
+    <PDataArray type="Float32" NumberOfComponents="3"/>
+  </PPoints>
+  <Piece Source="polyEx0.vtp"/>
+  <Piece Source="polyEx0.vtp"/>
+</PPolyData>
 </VTKFile>

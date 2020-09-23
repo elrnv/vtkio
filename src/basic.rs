@@ -1,10 +1,11 @@
-use nom::{digit, IResult, Needed};
-
-use crate::IOBuffer;
-use byteorder::{ByteOrder, NativeEndian};
-use num_traits::Zero;
 use std::any::Any;
 use std::str::{self, FromStr};
+
+use byteorder::ByteOrder;
+use nom::{digit, IResult, Needed};
+use num_traits::Zero;
+
+use crate::model::IOBuffer;
 
 /// This enum indicates if bulk data is saved in binary.
 /// NOTE: VTK files are saved in ASCII format with bulk data optionally saved in
@@ -157,25 +158,101 @@ where
     )
 }
 
-pub struct DataParser<BO: ByteOrder = NativeEndian>(::std::marker::PhantomData<BO>);
-
-impl<BO: ByteOrder> DataParser<BO> {
-    /// Parse a set of typed numbers into an `IOBuffer`.
-    pub fn data_buffer<T>(input: &[u8], n: usize, ft: FileType) -> IResult<&[u8], IOBuffer>
-    where
-        T: FromStr + Any + Clone + Zero + FromBinary + FromAscii + ::std::fmt::Debug,
-    {
-        Self::data_vec::<T>(input, n, ft).map(IOBuffer::from)
+// A trait identifying all scalar types supported by VTK.
+pub trait Scalar: FromStr + FromAscii + FromBinary {}
+macro_rules! impl_scalar {
+    ($($type:ty),* $(,)*) => {
+        $(
+            impl Scalar for $type {}
+        )*
     }
+}
 
-    /// Parse a set of typed numbers into a `Vec`.
-    pub fn data_vec<T>(input: &[u8], n: usize, ft: FileType) -> IResult<&[u8], Vec<T>>
-    where
-        T: FromStr + FromAscii + FromBinary,
-    {
-        match ft {
-            FileType::ASCII => many_m_n!(input, n, n, ws!(T::from_ascii)),
-            FileType::Binary => many_m_n!(input, n, n, T::from_binary::<BO>),
+impl_scalar!(u8, i8, u16, i16, u32, i32, u64, i64, f32, f64);
+
+/// Parse a set of typed numbers into an `IOBuffer`.
+pub fn parse_data_buffer<T, BO>(input: &[u8], n: usize, ft: FileType) -> IResult<&[u8], IOBuffer>
+where
+    T: Scalar + Any + Clone + Zero + ::std::fmt::Debug,
+    BO: ByteOrder,
+    IOBuffer: From<Vec<T>>,
+{
+    parse_data_vec::<T, BO>(input, n, ft).map(IOBuffer::from)
+}
+
+/// Parse a set of unsigned bytes into an `IOBuffer`.
+pub fn parse_data_buffer_u8(input: &[u8], n: usize, ft: FileType) -> IResult<&[u8], IOBuffer> {
+    parse_data_vec_u8(input, n, ft).map(IOBuffer::from)
+}
+
+/// Parse a set of signed bytes into an `IOBuffer`.
+pub fn parse_data_buffer_i8(input: &[u8], n: usize, ft: FileType) -> IResult<&[u8], IOBuffer> {
+    parse_data_vec_i8(input, n, ft).map(IOBuffer::from)
+}
+
+/// Parse a set of bits into an `IOBuffer`.
+pub fn parse_data_bit_buffer(input: &[u8], n: usize, ft: FileType) -> IResult<&[u8], IOBuffer> {
+    parse_data_bit_vec(input, n, ft).map(IOBuffer::from)
+}
+
+/// Parse a set of typed numbers into a `Vec`.
+pub fn parse_data_vec<T, BO>(input: &[u8], n: usize, ft: FileType) -> IResult<&[u8], Vec<T>>
+where
+    T: Scalar,
+    BO: ByteOrder,
+{
+    match ft {
+        FileType::ASCII => many_m_n!(input, n, n, ws!(T::from_ascii)),
+        FileType::Binary => many_m_n!(input, n, n, T::from_binary::<BO>),
+    }
+}
+
+/// Parse a set of unsigned bytes into a `Vec`.
+pub fn parse_data_vec_u8(input: &[u8], n: usize, ft: FileType) -> IResult<&[u8], Vec<u8>> {
+    match ft {
+        FileType::ASCII => many_m_n!(input, n, n, ws!(u8::from_ascii)),
+        FileType::Binary => {
+            // If expecting bytes, byte order doesn't matter, just return the entire block.
+            if input.len() < n {
+                IResult::Incomplete(Needed::Size(n))
+            } else {
+                IResult::Done(&input[n..], input[0..n].to_vec())
+            }
+        }
+    }
+}
+
+/// Parse a set of signed bytes into a `Vec`.
+pub fn parse_data_vec_i8(input: &[u8], n: usize, ft: FileType) -> IResult<&[u8], Vec<i8>> {
+    match ft {
+        FileType::ASCII => many_m_n!(input, n, n, ws!(i8::from_ascii)),
+        FileType::Binary => {
+            // If expecting bytes, byte order doesn't matter, just return the entire block.
+            // Unsafety is used here to avoid having to iterate.
+            if input.len() < n {
+                IResult::Incomplete(Needed::Size(n))
+            } else {
+                // SAFETY: All u8 are representable as i8 and both are 8 bits.
+                IResult::Done(
+                    &input[n..],
+                    unsafe { std::slice::from_raw_parts(input[0..n].as_ptr() as *const i8, n) }
+                        .to_vec(),
+                )
+            }
+        }
+    }
+}
+
+pub fn parse_data_bit_vec(input: &[u8], n: usize, ft: FileType) -> IResult<&[u8], Vec<u8>> {
+    match ft {
+        FileType::ASCII => many_m_n!(input, n, n, ws!(u8::from_ascii)),
+        FileType::Binary => {
+            let nbytes = n / 8 + if n % 8 == 0 { 0 } else { 1 };
+            if input.len() < nbytes {
+                IResult::Incomplete(Needed::Size(nbytes))
+            } else {
+                IResult::Done(&input[nbytes..], input[0..nbytes].to_vec())
+            }
         }
     }
 }
@@ -215,22 +292,22 @@ mod tests {
     }
     #[test]
     fn data_test() {
-        let f = <DataParser>::data_buffer::<f32>("".as_bytes(), 0, FileType::ASCII);
+        let f = parse_data_buffer::<f32, BigEndian>("".as_bytes(), 0, FileType::ASCII);
         assert_eq!(
             f,
             IResult::Done("".as_bytes(), IOBuffer::from(Vec::<f32>::new()))
         );
-        let f = <DataParser>::data_buffer::<f32>("3".as_bytes(), 1, FileType::ASCII);
+        let f = parse_data_buffer::<f32, BigEndian>("3".as_bytes(), 1, FileType::ASCII);
         assert_eq!(
             f,
             IResult::Done("".as_bytes(), IOBuffer::from(vec![3.0f32]))
         );
-        let f = <DataParser>::data_buffer::<f32>("3 32".as_bytes(), 2, FileType::ASCII);
+        let f = parse_data_buffer::<f32, BigEndian>("3 32".as_bytes(), 2, FileType::ASCII);
         assert_eq!(
             f,
             IResult::Done("".as_bytes(), IOBuffer::from(vec![3.0f32, 32.0]))
         );
-        let f = <DataParser>::data_buffer::<f32>("3 32 32.0 4e3".as_bytes(), 4, FileType::ASCII);
+        let f = parse_data_buffer::<f32, BigEndian>("3 32 32.0 4e3".as_bytes(), 4, FileType::ASCII);
         assert_eq!(
             f,
             IResult::Done(
@@ -238,7 +315,7 @@ mod tests {
                 IOBuffer::from(vec![3.0f32, 32.0, 32.0, 4.0e3])
             )
         );
-        let f = <DataParser>::data_buffer::<f64>("3 32 32.0 4e3".as_bytes(), 4, FileType::ASCII);
+        let f = parse_data_buffer::<f64, BigEndian>("3 32 32.0 4e3".as_bytes(), 4, FileType::ASCII);
         assert_eq!(
             f,
             IResult::Done(
