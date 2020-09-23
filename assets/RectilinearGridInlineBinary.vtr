@@ -1,0 +1,36 @@
+<VTKFile type="RectilinearGrid" version="1.0" byte_order="LittleEndian" header_type="UInt64">
+  <RectilinearGrid WholeExtent="0 3 0 1 0 1">
+  <Piece Extent="0 3 0 1 0 1">
+    <PointData>
+    </PointData>
+    <CellData Scalars="Pressure">
+      <DataArray type="Float32" Name="Pressure" format="binary" RangeMin="0" RangeMax="0">
+        DAAAAAAAAAAAAAAAAAAAAAAAAAA=
+      </DataArray>
+      <DataArray type="Float32" Name="Void Volume Fraction" format="binary" RangeMin="0.5" RangeMax="1">
+        DAAAAAAAAAAAAIA/AAAAPwAAgD8=
+      </DataArray>
+      <DataArray type="Float32" Name="X Velocity" format="binary" RangeMin="0" RangeMax="1.399999976158142">
+        DAAAAAAAAAAAAAAAAAAAADMzsz8=
+      </DataArray>
+      <DataArray type="Float32" Name="Y Velocity" format="binary" RangeMin="0" RangeMax="1">
+        DAAAAAAAAAAAAAAAAAAAAAAAgD8=
+      </DataArray>
+      <DataArray type="Float32" Name="Z Velocity" format="binary" RangeMin="0" RangeMax="0.5">
+        DAAAAAAAAAAAAAAAAAAAPwAAAAA=
+      </DataArray>
+    </CellData>
+    <Coordinates>
+      <DataArray type="Float64" Name="Array 0x55929c0" format="binary" RangeMin="-3" RangeMax="3">
+        IAAAAAAAAAAAAAAAAAAIwAAAAAAAAPC/AAAAAAAA8D8AAAAAAAAIQA==
+      </DataArray>
+      <DataArray type="Float64" Name="Array 0x5431fc0" format="binary" RangeMin="0" RangeMax="1">
+        EAAAAAAAAAAAAAAAAAAAAAAAAAAAAPA/
+      </DataArray>
+      <DataArray type="Float64" Name="Array 0x55bf7b0" format="binary" RangeMin="-1" RangeMax="1">
+        EAAAAAAAAAAAAAAAAADwvwAAAAAAAPA/
+      </DataArray>
+    </Coordinates>
+  </Piece>
+  </RectilinearGrid>
+</VTKFile>
