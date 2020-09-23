@@ -172,7 +172,7 @@ mod write_vtk_impl {
                                 self,
                                 "SCALARS {} {} {}",
                                 name,
-                                DataType::from(data.data_type()),
+                                ScalarType::from(data.data_type()),
                                 num_comp
                             )
                             .map_err(|_| {
@@ -721,30 +721,30 @@ mod write_vtk_impl {
             }
 
             match buf {
-                IOBuffer::UnsignedChar(v) => write_buf_impl(v, self, Self::write_u8)?,
-                IOBuffer::Char(v) => write_buf_impl(v, self, Self::write_i8)?,
-                IOBuffer::UnsignedShort(v) => {
+                IOBuffer::U8(v) => write_buf_impl(v, self, Self::write_u8)?,
+                IOBuffer::I8(v) => write_buf_impl(v, self, Self::write_i8)?,
+                IOBuffer::U16(v) => {
                     write_buf_impl(v, self, Self::write_u16::<BO>)?;
                 }
-                IOBuffer::Short(v) => {
+                IOBuffer::I16(v) => {
                     write_buf_impl(v, self, Self::write_i16::<BO>)?;
                 }
-                IOBuffer::UnsignedInt(v) => {
+                IOBuffer::U32(v) => {
                     write_buf_impl(v, self, Self::write_u32::<BO>)?;
                 }
-                IOBuffer::Int(v) => {
+                IOBuffer::I32(v) => {
                     write_buf_impl(v, self, Self::write_i32::<BO>)?;
                 }
-                IOBuffer::UnsignedLong(v) => {
+                IOBuffer::U64(v) => {
                     write_buf_impl(v, self, Self::write_u64::<BO>)?;
                 }
-                IOBuffer::Long(v) => {
+                IOBuffer::I64(v) => {
                     write_buf_impl(v, self, Self::write_i64::<BO>)?;
                 }
-                IOBuffer::Float(v) => {
+                IOBuffer::F32(v) => {
                     write_buf_impl(v, self, Self::write_f32::<BO>)?;
                 }
-                IOBuffer::Double(v) => {
+                IOBuffer::F64(v) => {
                     write_buf_impl(v, self, Self::write_f64::<BO>)?;
                 }
                 _ => return Err(Error::DataMismatchError),

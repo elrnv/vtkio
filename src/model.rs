@@ -100,34 +100,30 @@ pub enum IOBuffer {
     /// Bit array is stored in 8 bit chunks.
     Bit(Vec<u8>),
     /// Vector of unsigned bytes.
-    UnsignedChar(Vec<u8>),
+    U8(Vec<u8>),
     /// Vector of signed bytes.
-    Char(Vec<i8>),
+    I8(Vec<i8>),
     /// Vector of unsigned short integers `u16`.
-    UnsignedShort(Vec<u16>),
+    U16(Vec<u16>),
     /// Vector of signed short integers `i16`.
-    Short(Vec<i16>),
+    I16(Vec<i16>),
     /// Vector of unsigned integers `u32`.
-    UnsignedInt(Vec<u32>),
+    U32(Vec<u32>),
     /// Vector of signed integers `i32`.
-    Int(Vec<i32>),
+    I32(Vec<i32>),
     /// Vector of unsigned long integers `u64`.
-    UnsignedLong(Vec<u64>),
+    U64(Vec<u64>),
     /// Vector of signed long integers `i64`.
-    Long(Vec<i64>),
+    I64(Vec<i64>),
     /// Vector of single precision floats.
-    Float(Vec<f32>),
+    F32(Vec<f32>),
     /// Vector of double precision floats.
-    Double(Vec<f64>),
-    /// Information about where the buffer data is stored within another larger buffer.
-    ///
-    /// The tuple fields identify the offset, length and scalar type of the target buffer.
-    Ref(u32, u32, DataType),
+    F64(Vec<f64>),
 }
 
 impl Default for IOBuffer {
     fn default() -> IOBuffer {
-        IOBuffer::Float(Vec::new())
+        IOBuffer::F32(Vec::new())
     }
 }
 
@@ -150,52 +146,50 @@ macro_rules! impl_io_buffer_convert {
     };
 }
 
-impl_io_buffer_convert!(u8 <=> UnsignedChar);
-impl_io_buffer_convert!(i8 <=> Char);
-impl_io_buffer_convert!(u16 <=> UnsignedShort);
-impl_io_buffer_convert!(i16 <=> Short);
-impl_io_buffer_convert!(u32 <=> UnsignedInt);
-impl_io_buffer_convert!(i32 <=> Int);
-impl_io_buffer_convert!(u64 <=> UnsignedLong);
-impl_io_buffer_convert!(i64 <=> Long);
-impl_io_buffer_convert!(f32 <=> Float);
-impl_io_buffer_convert!(f64 <=> Double);
+impl_io_buffer_convert!(u8 <=> U8);
+impl_io_buffer_convert!(i8 <=> I8);
+impl_io_buffer_convert!(u16 <=> U16);
+impl_io_buffer_convert!(i16 <=> I16);
+impl_io_buffer_convert!(u32 <=> U32);
+impl_io_buffer_convert!(i32 <=> I32);
+impl_io_buffer_convert!(u64 <=> U64);
+impl_io_buffer_convert!(i64 <=> I64);
+impl_io_buffer_convert!(f32 <=> F32);
+impl_io_buffer_convert!(f64 <=> F64);
 
 #[macro_export]
 macro_rules! match_buf {
     ($s:ident; $v:pat => $e:expr; ($o:pat, $l:pat, $dt:pat) => $r:expr) => {
         match $s {
             IOBuffer::Bit($v) => $e,
-            IOBuffer::UnsignedChar($v) => $e,
-            IOBuffer::Char($v) => $e,
-            IOBuffer::UnsignedShort($v) => $e,
-            IOBuffer::Short($v) => $e,
-            IOBuffer::UnsignedInt($v) => $e,
-            IOBuffer::Int($v) => $e,
-            IOBuffer::UnsignedLong($v) => $e,
-            IOBuffer::Long($v) => $e,
-            IOBuffer::Float($v) => $e,
-            IOBuffer::Double($v) => $e,
-            IOBuffer::Ref($o, $l, $dt) => $r,
+            IOBuffer::U8($v) => $e,
+            IOBuffer::I8($v) => $e,
+            IOBuffer::U16($v) => $e,
+            IOBuffer::I16($v) => $e,
+            IOBuffer::U32($v) => $e,
+            IOBuffer::I32($v) => $e,
+            IOBuffer::U64($v) => $e,
+            IOBuffer::I64($v) => $e,
+            IOBuffer::F32($v) => $e,
+            IOBuffer::F64($v) => $e,
         }
     };
 }
 
 impl IOBuffer {
-    pub fn data_type(&self) -> DataType {
+    pub fn data_type(&self) -> ScalarType {
         match self {
-            IOBuffer::Bit(_) => DataType::Bit,
-            IOBuffer::UnsignedChar(_) => DataType::UnsignedChar,
-            IOBuffer::Char(_) => DataType::Char,
-            IOBuffer::UnsignedShort(_) => DataType::UnsignedShort,
-            IOBuffer::Short(_) => DataType::Short,
-            IOBuffer::UnsignedInt(_) => DataType::UnsignedInt,
-            IOBuffer::Int(_) => DataType::Int,
-            IOBuffer::UnsignedLong(_) => DataType::UnsignedLong,
-            IOBuffer::Long(_) => DataType::Long,
-            IOBuffer::Float(_) => DataType::Float,
-            IOBuffer::Double(_) => DataType::Double,
-            IOBuffer::Ref(_, _, dt) => *dt,
+            IOBuffer::Bit(_) => ScalarType::Bit,
+            IOBuffer::U8(_) => ScalarType::U8,
+            IOBuffer::I8(_) => ScalarType::I8,
+            IOBuffer::U16(_) => ScalarType::U16,
+            IOBuffer::I16(_) => ScalarType::I16,
+            IOBuffer::U32(_) => ScalarType::U32,
+            IOBuffer::I32(_) => ScalarType::I32,
+            IOBuffer::U64(_) => ScalarType::U64,
+            IOBuffer::I64(_) => ScalarType::I64,
+            IOBuffer::F32(_) => ScalarType::F32,
+            IOBuffer::F64(_) => ScalarType::F64,
         }
     }
 
@@ -326,7 +320,7 @@ impl From<IOBuffer> for ScalarArray {
 
 impl<E> DataArrayBase<E> {
     /// Get the scalar data type stored by the underlying buffer.
-    pub fn data_type(&self) -> DataType {
+    pub fn data_type(&self) -> ScalarType {
         self.data.data_type()
     }
     /// Get the number of elements stored by this data array.
@@ -1145,22 +1139,22 @@ pub enum MetaData {
     },
     RectilinearGrid {
         ghost_level: u32,
-        coords: [DataType; 3],
+        coords: [ScalarType; 3],
         attributes: AttributesMetaData,
     },
     StructuredGrid {
         ghost_level: u32,
-        points_type: DataType,
+        points_type: ScalarType,
         attributes: AttributesMetaData,
     },
     UnstructuredGrid {
         ghost_level: u32,
-        points_type: DataType,
+        points_type: ScalarType,
         attributes: AttributesMetaData,
     },
     PolyData {
         ghost_level: u32,
-        points_type: DataType,
+        points_type: ScalarType,
         attributes: AttributesMetaData,
     },
 }
@@ -1181,68 +1175,68 @@ pub struct AttributesMetaData {
 pub struct ArrayMetaData {
     pub name: String,
     pub elem: ElementType,
-    pub data_type: DataType,
+    pub data_type: ScalarType,
 }
 
 /// Types of data that can be recognized by the parser. Not all data types are supported for all
 /// classes.
 #[derive(Copy, Clone, PartialEq, Debug)]
-pub enum DataType {
+pub enum ScalarType {
     /// Data is interpreted as `u8` (unsigned 8 bit) chunks.
     Bit,
     /// Data is interpreted as `u8` (unsigned 8 bit) integers.
-    UnsignedChar,
+    U8,
     /// Data is interpreted as `i8` (signed 8 bit) integers.
-    Char,
+    I8,
     /// Data is interpreted as `u16` (unsigned 16 bit) integers.
-    UnsignedShort,
+    U16,
     /// Data is interpreted as `i16` (signed 16 bit) integers.
-    Short,
+    I16,
     /// Data is interpreted as `u32` (unsigned 32 bit) integers.
-    UnsignedInt,
+    U32,
     /// Data is interpreted as `i32` (signed 32 bit) integers.
-    Int,
+    I32,
     /// Data is interpreted as `u64` (unsigned 64 bit) integers.
-    UnsignedLong,
+    U64,
     /// Data is interpreted as `i64` (signed 64 bit) integers.
-    Long,
+    I64,
     /// Data is interpreted as `f32` (single precision) floats.
-    Float,
+    F32,
     /// Data is interpreted as `f64` (double precision) floats.
-    Double,
+    F64,
 }
 
-impl fmt::Display for DataType {
+impl fmt::Display for ScalarType {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
-            DataType::Bit => write!(f, "bit"),
-            DataType::UnsignedChar => write!(f, "unsigned_char"),
-            DataType::Char => write!(f, "char"),
-            DataType::UnsignedShort => write!(f, "unsigned_short"),
-            DataType::Short => write!(f, "short"),
-            DataType::UnsignedInt => write!(f, "unsigned_int"),
-            DataType::Int => write!(f, "int"),
-            DataType::UnsignedLong => write!(f, "unsigned_long"),
-            DataType::Long => write!(f, "long"),
-            DataType::Float => write!(f, "float"),
-            DataType::Double => write!(f, "double"),
+            ScalarType::Bit => write!(f, "bit"),
+            ScalarType::U8 => write!(f, "unsigned_char"),
+            ScalarType::I8 => write!(f, "char"),
+            ScalarType::U16 => write!(f, "unsigned_short"),
+            ScalarType::I16 => write!(f, "short"),
+            ScalarType::U32 => write!(f, "unsigned_int"),
+            ScalarType::I32 => write!(f, "int"),
+            ScalarType::U64 => write!(f, "unsigned_long"),
+            ScalarType::I64 => write!(f, "long"),
+            ScalarType::F32 => write!(f, "float"),
+            ScalarType::F64 => write!(f, "double"),
         }
     }
 }
 
-impl From<TypeId> for DataType {
+impl From<TypeId> for ScalarType {
     fn from(dt: TypeId) -> Self {
         match dt {
-            x if x == TypeId::of::<u8>() => DataType::UnsignedChar,
-            x if x == TypeId::of::<i8>() => DataType::Char,
-            x if x == TypeId::of::<u16>() => DataType::UnsignedShort,
-            x if x == TypeId::of::<i16>() => DataType::Short,
-            x if x == TypeId::of::<u32>() => DataType::UnsignedInt,
-            x if x == TypeId::of::<i32>() => DataType::Int,
-            x if x == TypeId::of::<u64>() => DataType::UnsignedLong,
-            x if x == TypeId::of::<i64>() => DataType::Long,
-            x if x == TypeId::of::<f32>() => DataType::Float,
-            x if x == TypeId::of::<f64>() => DataType::Double,
+            x if x == TypeId::of::<u8>() => ScalarType::U8,
+            x if x == TypeId::of::<i8>() => ScalarType::I8,
+            x if x == TypeId::of::<u16>() => ScalarType::U16,
+            x if x == TypeId::of::<i16>() => ScalarType::I16,
+            x if x == TypeId::of::<u32>() => ScalarType::U32,
+            x if x == TypeId::of::<i32>() => ScalarType::I32,
+            x if x == TypeId::of::<u64>() => ScalarType::U64,
+            x if x == TypeId::of::<i64>() => ScalarType::I64,
+            x if x == TypeId::of::<f32>() => ScalarType::F32,
+            x if x == TypeId::of::<f64>() => ScalarType::F64,
             _ => panic!("Specified type is unsupported by VTK."),
         }
     }

@@ -339,7 +339,7 @@ mod version {
     }
 }
 
-mod coordinates {
+mod pcoordinates {
     use super::{PCoordinates, PDataArray};
     use serde::de::{Deserialize, Deserializer, MapAccess, Visitor};
     use serde::ser::{Serialize, Serializer};
@@ -398,6 +398,69 @@ mod coordinates {
             D: Deserializer<'de>,
         {
             d.deserialize_struct("PCoordinates", &["PDataArray"; 3], PCoordinatesVisitor)
+        }
+    }
+}
+
+mod coordinates {
+    use super::{Coordinates, DataArray};
+    use serde::de::{Deserialize, Deserializer, MapAccess, Visitor};
+    use serde::ser::{Serialize, Serializer};
+    use std::fmt;
+
+    #[derive(Debug, serde::Deserialize)]
+    #[serde(field_identifier)]
+    enum Field {
+        DataArray,
+    }
+
+    struct CoordinatesVisitor;
+
+    impl<'de> Visitor<'de> for CoordinatesVisitor {
+        type Value = Coordinates;
+
+        fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+            formatter.write_str("an array of 3 DataArrays")
+        }
+
+        fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error>
+        where
+            A: MapAccess<'de>,
+        {
+            let invalid_len_err = |n| <A::Error as serde::de::Error>::invalid_length(n, &self);
+            let (_, x) = map
+                .next_entry::<Field, DataArray>()?
+                .ok_or_else(|| invalid_len_err(0))?;
+            let (_, y) = map
+                .next_entry::<Field, DataArray>()?
+                .ok_or_else(|| invalid_len_err(1))?;
+            let (_, z) = map
+                .next_entry::<Field, DataArray>()?
+                .ok_or_else(|| invalid_len_err(2))?;
+            Ok(Coordinates([x, y, z]))
+        }
+    }
+
+    impl Serialize for Coordinates {
+        fn serialize<S>(&self, s: S) -> Result<S::Ok, S::Error>
+        where
+            S: Serializer,
+        {
+            use serde::ser::SerializeStruct;
+            let Coordinates([x, y, z]) = self;
+            let mut ss = s.serialize_struct("Coordinates", 3)?;
+            ss.serialize_field("DataArray", x)?;
+            ss.serialize_field("DataArray", y)?;
+            ss.serialize_field("DataArray", z)?;
+            ss.end()
+        }
+    }
+    impl<'de> Deserialize<'de> for Coordinates {
+        fn deserialize<D>(d: D) -> Result<Coordinates, D::Error>
+        where
+            D: Deserializer<'de>,
+        {
+            d.deserialize_struct("Coordinates", &["DataArray"; 3], CoordinatesVisitor)
         }
     }
 }
@@ -572,160 +635,6 @@ mod data_set {
                 ss.serialize_field("Piece", p)?;
             }
             ss.end()
-        }
-    }
-
-    impl Serialize for DataSet {
-        fn serialize<S>(&self, s: S) -> std::result::Result<S::Ok, S::Error>
-        where
-            S: Serializer,
-        {
-            match self {
-                DataSet::ImageData(ImageData {
-                    whole_extent,
-                    origin,
-                    spacing,
-                    pieces,
-                }) => {
-                    let mut ss = s.serialize_struct("ImageData", 3 + pieces.len())?;
-                    ss.serialize_field("WholeExtent", whole_extent)?;
-                    ss.serialize_field("Origin", origin)?;
-                    ss.serialize_field("Spacing", spacing)?;
-                    for p in pieces {
-                        ss.serialize_field("Piece", p)?;
-                    }
-                    ss.end()
-                }
-                DataSet::PolyData(Unstructured { pieces }) => {
-                    let mut ss = s.serialize_struct("PolyData", pieces.len())?;
-                    for p in pieces {
-                        ss.serialize_field("Piece", p)?;
-                    }
-                    ss.end()
-                }
-                DataSet::RectilinearGrid(Grid {
-                    whole_extent,
-                    pieces,
-                }) => {
-                    let mut ss = s.serialize_struct("RectilinearGrid", 1 + pieces.len())?;
-                    ss.serialize_field("WholeExtent", whole_extent)?;
-                    for p in pieces {
-                        ss.serialize_field("Piece", p)?;
-                    }
-                    ss.end()
-                }
-                DataSet::StructuredGrid(Grid {
-                    whole_extent,
-                    pieces,
-                }) => {
-                    let mut ss = s.serialize_struct("StructuredGrid", 1 + pieces.len())?;
-                    ss.serialize_field("WholeExtent", whole_extent)?;
-                    for p in pieces {
-                        ss.serialize_field("Piece", p)?;
-                    }
-                    ss.end()
-                }
-                DataSet::UnstructuredGrid(Unstructured { pieces }) => {
-                    let mut ss = s.serialize_struct("UnstructuredGrid", pieces.len())?;
-                    for p in pieces {
-                        ss.serialize_field("Piece", p)?;
-                    }
-                    ss.end()
-                }
-                DataSet::PImageData(PImageData {
-                    ghost_level,
-                    whole_extent,
-                    origin,
-                    spacing,
-                    point_data,
-                    cell_data,
-                    pieces,
-                }) => {
-                    let mut ss = s.serialize_struct("PImageData", 6 + pieces.len())?;
-                    ss.serialize_field("GhostLevel", ghost_level)?;
-                    ss.serialize_field("WholeExtent", whole_extent)?;
-                    ss.serialize_field("Origin", origin)?;
-                    ss.serialize_field("Spacing", spacing)?;
-                    ss.serialize_field("PPointData", point_data)?;
-                    ss.serialize_field("PCellData", cell_data)?;
-                    for p in pieces {
-                        ss.serialize_field("Piece", p)?;
-                    }
-                    ss.end()
-                }
-                DataSet::PPolyData(PUnstructured {
-                    ghost_level,
-                    point_data,
-                    cell_data,
-                    points,
-                    pieces,
-                }) => {
-                    let mut ss = s.serialize_struct("PPolyData", 4 + pieces.len())?;
-                    ss.serialize_field("GhostLevel", ghost_level)?;
-                    ss.serialize_field("PPointData", point_data)?;
-                    ss.serialize_field("PCellData", cell_data)?;
-                    ss.serialize_field("PPoints", points)?;
-                    for p in pieces {
-                        ss.serialize_field("Piece", p)?;
-                    }
-                    ss.end()
-                }
-                DataSet::PRectilinearGrid(PRectilinearGrid {
-                    ghost_level,
-                    whole_extent,
-                    point_data,
-                    cell_data,
-                    coords,
-                    pieces,
-                }) => {
-                    let mut ss = s.serialize_struct("PRectilinearGrid", 5 + pieces.len())?;
-                    ss.serialize_field("GhostLevel", ghost_level)?;
-                    ss.serialize_field("WholeExtent", whole_extent)?;
-                    ss.serialize_field("PPointData", point_data)?;
-                    ss.serialize_field("PCellData", cell_data)?;
-                    ss.serialize_field("PCoordinates", coords)?;
-                    for p in pieces {
-                        ss.serialize_field("Piece", p)?;
-                    }
-                    ss.end()
-                }
-                DataSet::PStructuredGrid(PStructuredGrid {
-                    ghost_level,
-                    whole_extent,
-                    point_data,
-                    cell_data,
-                    points,
-                    pieces,
-                }) => {
-                    let mut ss = s.serialize_struct("PStructuredGrid", 5 + pieces.len())?;
-                    ss.serialize_field("GhostLevel", ghost_level)?;
-                    ss.serialize_field("WholeExtent", whole_extent)?;
-                    ss.serialize_field("PPointData", point_data)?;
-                    ss.serialize_field("PCellData", cell_data)?;
-                    ss.serialize_field("PPoints", points)?;
-                    for p in pieces {
-                        ss.serialize_field("Piece", p)?;
-                    }
-                    ss.end()
-                }
-                DataSet::PUnstructuredGrid(PUnstructured {
-                    ghost_level,
-                    point_data,
-                    cell_data,
-                    points,
-                    pieces,
-                }) => {
-                    let mut ss = s.serialize_struct("PUnstructuredGrid", 4 + pieces.len())?;
-                    ss.serialize_field("GhostLevel", ghost_level)?;
-                    ss.serialize_field("PPointData", point_data)?;
-                    ss.serialize_field("PCellData", cell_data)?;
-                    ss.serialize_field("PPoints", points)?;
-                    for p in pieces {
-                        ss.serialize_field("Piece", p)?;
-                    }
-                    ss.end()
-                }
-            }
         }
     }
 }
@@ -1626,11 +1535,8 @@ impl AttributeData {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub struct Coordinates {
-    #[serde(rename = "$value")]
-    pub data_array: [DataArray; 3],
-}
+#[derive(Clone, Debug, PartialEq)]
+pub struct Coordinates([DataArray; 3]);
 
 impl Coordinates {
     /// Given the expected number of elements and an optional appended data,
@@ -1641,9 +1547,7 @@ impl Coordinates {
         appended: Option<&AppendedData>,
     ) -> std::result::Result<model::Coordinates, ValidationError> {
         use model::ScalarArray;
-        let Coordinates {
-            data_array: [x, y, z],
-        } = self;
+        let Coordinates([x, y, z]) = self;
         let x = x.into_field_array(nx, appended)?;
         let y = y.into_field_array(ny, appended)?;
         let z = z.into_field_array(nz, appended)?;
@@ -1758,16 +1662,16 @@ impl DataArray {
                     // SAFETY: Converting between primitive types only.
                     let buf = unsafe {
                         match scalar_type {
-                            ScalarType::Int8 => IOBuffer::Char(reinterpret_vec(bytes)),
-                            ScalarType::UInt8 => IOBuffer::UnsignedChar(reinterpret_vec(bytes)),
-                            ScalarType::Int16 => IOBuffer::Short(reinterpret_vec(bytes)),
-                            ScalarType::UInt16 => IOBuffer::UnsignedShort(reinterpret_vec(bytes)),
-                            ScalarType::Int32 => IOBuffer::Int(reinterpret_vec(bytes)),
-                            ScalarType::UInt32 => IOBuffer::UnsignedInt(reinterpret_vec(bytes)),
-                            ScalarType::Int64 => IOBuffer::Long(reinterpret_vec(bytes)),
-                            ScalarType::UInt64 => IOBuffer::UnsignedLong(reinterpret_vec(bytes)),
-                            ScalarType::Float32 => IOBuffer::Float(reinterpret_vec(bytes)),
-                            ScalarType::Float64 => IOBuffer::Double(reinterpret_vec(bytes)),
+                            ScalarType::Int8 => IOBuffer::I8(reinterpret_vec(bytes)),
+                            ScalarType::UInt8 => IOBuffer::U8(reinterpret_vec(bytes)),
+                            ScalarType::Int16 => IOBuffer::I16(reinterpret_vec(bytes)),
+                            ScalarType::UInt16 => IOBuffer::U16(reinterpret_vec(bytes)),
+                            ScalarType::Int32 => IOBuffer::I32(reinterpret_vec(bytes)),
+                            ScalarType::UInt32 => IOBuffer::U32(reinterpret_vec(bytes)),
+                            ScalarType::Int64 => IOBuffer::I64(reinterpret_vec(bytes)),
+                            ScalarType::UInt64 => IOBuffer::U64(reinterpret_vec(bytes)),
+                            ScalarType::Float32 => IOBuffer::F32(reinterpret_vec(bytes)),
+                            ScalarType::Float64 => IOBuffer::F64(reinterpret_vec(bytes)),
                         }
                     };
                     if buf.len() != l {
@@ -1786,16 +1690,16 @@ impl DataArray {
                 // SAFETY: Converting between primitive types only.
                 let buf = unsafe {
                     match scalar_type {
-                        ScalarType::Int8 => IOBuffer::Char(reinterpret_vec(bytes)),
-                        ScalarType::UInt8 => IOBuffer::UnsignedChar(reinterpret_vec(bytes)),
-                        ScalarType::Int16 => IOBuffer::Short(reinterpret_vec(bytes)),
-                        ScalarType::UInt16 => IOBuffer::UnsignedShort(reinterpret_vec(bytes)),
-                        ScalarType::Int32 => IOBuffer::Int(reinterpret_vec(bytes)),
-                        ScalarType::UInt32 => IOBuffer::UnsignedInt(reinterpret_vec(bytes)),
-                        ScalarType::Int64 => IOBuffer::Long(reinterpret_vec(bytes)),
-                        ScalarType::UInt64 => IOBuffer::UnsignedLong(reinterpret_vec(bytes)),
-                        ScalarType::Float32 => IOBuffer::Float(reinterpret_vec(bytes)),
-                        ScalarType::Float64 => IOBuffer::Double(reinterpret_vec(bytes)),
+                        ScalarType::Int8 => IOBuffer::I8(reinterpret_vec(bytes)),
+                        ScalarType::UInt8 => IOBuffer::U8(reinterpret_vec(bytes)),
+                        ScalarType::Int16 => IOBuffer::I16(reinterpret_vec(bytes)),
+                        ScalarType::UInt16 => IOBuffer::U16(reinterpret_vec(bytes)),
+                        ScalarType::Int32 => IOBuffer::I32(reinterpret_vec(bytes)),
+                        ScalarType::UInt32 => IOBuffer::U32(reinterpret_vec(bytes)),
+                        ScalarType::Int64 => IOBuffer::I64(reinterpret_vec(bytes)),
+                        ScalarType::UInt64 => IOBuffer::U64(reinterpret_vec(bytes)),
+                        ScalarType::Float32 => IOBuffer::F32(reinterpret_vec(bytes)),
+                        ScalarType::Float64 => IOBuffer::F64(reinterpret_vec(bytes)),
                     }
                 };
                 if buf.len() != l {
@@ -1819,16 +1723,16 @@ impl DataArray {
                         .collect()
                 }
                 let buf = match scalar_type {
-                    ScalarType::Int8 => IOBuffer::Char(parse_num_seq(slice)?),
-                    ScalarType::UInt8 => IOBuffer::UnsignedChar(parse_num_seq(slice)?),
-                    ScalarType::Int16 => IOBuffer::Short(parse_num_seq(slice)?),
-                    ScalarType::UInt16 => IOBuffer::UnsignedShort(parse_num_seq(slice)?),
-                    ScalarType::Int32 => IOBuffer::Int(parse_num_seq(slice)?),
-                    ScalarType::UInt32 => IOBuffer::UnsignedInt(parse_num_seq(slice)?),
-                    ScalarType::Int64 => IOBuffer::Long(parse_num_seq(slice)?),
-                    ScalarType::UInt64 => IOBuffer::UnsignedLong(parse_num_seq(slice)?),
-                    ScalarType::Float32 => IOBuffer::Float(parse_num_seq(slice)?),
-                    ScalarType::Float64 => IOBuffer::Double(parse_num_seq(slice)?),
+                    ScalarType::Int8 => IOBuffer::I8(parse_num_seq(slice)?),
+                    ScalarType::UInt8 => IOBuffer::U8(parse_num_seq(slice)?),
+                    ScalarType::Int16 => IOBuffer::I16(parse_num_seq(slice)?),
+                    ScalarType::UInt16 => IOBuffer::U16(parse_num_seq(slice)?),
+                    ScalarType::Int32 => IOBuffer::I32(parse_num_seq(slice)?),
+                    ScalarType::UInt32 => IOBuffer::U32(parse_num_seq(slice)?),
+                    ScalarType::Int64 => IOBuffer::I64(parse_num_seq(slice)?),
+                    ScalarType::UInt64 => IOBuffer::U64(parse_num_seq(slice)?),
+                    ScalarType::Float32 => IOBuffer::F32(parse_num_seq(slice)?),
+                    ScalarType::Float64 => IOBuffer::F64(parse_num_seq(slice)?),
                 };
                 if buf.len() != l {
                     return Err(ValidationError::DataArraySizeMismatch {
@@ -1957,37 +1861,37 @@ impl ScalarType {
     }
 }
 
-impl From<model::DataType> for ScalarType {
-    fn from(s: model::DataType) -> ScalarType {
+impl From<model::ScalarType> for ScalarType {
+    fn from(s: model::ScalarType) -> ScalarType {
         match s {
-            model::DataType::Bit => ScalarType::UInt8,
-            model::DataType::Char => ScalarType::Int8,
-            model::DataType::UnsignedChar => ScalarType::UInt8,
-            model::DataType::Short => ScalarType::Int16,
-            model::DataType::UnsignedShort => ScalarType::UInt16,
-            model::DataType::Int => ScalarType::Int32,
-            model::DataType::UnsignedInt => ScalarType::UInt32,
-            model::DataType::Long => ScalarType::Int64,
-            model::DataType::UnsignedLong => ScalarType::UInt64,
-            model::DataType::Float => ScalarType::Float32,
-            model::DataType::Double => ScalarType::Float64,
+            model::ScalarType::Bit => ScalarType::UInt8,
+            model::ScalarType::I8 => ScalarType::Int8,
+            model::ScalarType::U8 => ScalarType::UInt8,
+            model::ScalarType::I16 => ScalarType::Int16,
+            model::ScalarType::U16 => ScalarType::UInt16,
+            model::ScalarType::I32 => ScalarType::Int32,
+            model::ScalarType::U32 => ScalarType::UInt32,
+            model::ScalarType::I64 => ScalarType::Int64,
+            model::ScalarType::U64 => ScalarType::UInt64,
+            model::ScalarType::F32 => ScalarType::Float32,
+            model::ScalarType::F64 => ScalarType::Float64,
         }
     }
 }
 
-impl From<ScalarType> for model::DataType {
-    fn from(s: ScalarType) -> model::DataType {
+impl From<ScalarType> for model::ScalarType {
+    fn from(s: ScalarType) -> model::ScalarType {
         match s {
-            ScalarType::Int8 => model::DataType::Char,
-            ScalarType::UInt8 => model::DataType::UnsignedChar,
-            ScalarType::Int16 => model::DataType::Short,
-            ScalarType::UInt16 => model::DataType::UnsignedShort,
-            ScalarType::Int32 => model::DataType::Int,
-            ScalarType::UInt32 => model::DataType::UnsignedInt,
-            ScalarType::Int64 => model::DataType::Long,
-            ScalarType::UInt64 => model::DataType::UnsignedLong,
-            ScalarType::Float32 => model::DataType::Float,
-            ScalarType::Float64 => model::DataType::Double,
+            ScalarType::Int8 => model::ScalarType::I8,
+            ScalarType::UInt8 => model::ScalarType::U8,
+            ScalarType::Int16 => model::ScalarType::I16,
+            ScalarType::UInt16 => model::ScalarType::U16,
+            ScalarType::Int32 => model::ScalarType::I32,
+            ScalarType::UInt32 => model::ScalarType::U32,
+            ScalarType::Int64 => model::ScalarType::I64,
+            ScalarType::UInt64 => model::ScalarType::U64,
+            ScalarType::Float32 => model::ScalarType::F32,
+            ScalarType::Float64 => model::ScalarType::F64,
         }
     }
 }
@@ -2083,13 +1987,6 @@ impl FileType {
                 data: DataType::UnstructuredGrid,
             },
             _ => return None,
-        })
-    }
-
-    pub fn try_from_byte_str_serial(ty: &[u8]) -> Option<FileType> {
-        DataType::try_from_byte_str(ty).map(|data| FileType {
-            storage: StorageFormat::Serial,
-            data,
         })
     }
 }
@@ -2707,11 +2604,18 @@ impl std::convert::TryFrom<VTKFile> for model::Vtk {
 }
 
 impl From<model::Vtk> for VTKFile {
-    fn from(_vtk: model::Vtk) -> VTKFile {
+    fn from(vtk: model::Vtk) -> VTKFile {
+        let model::Vtk {
+            version,
+            byte_order,
+            data: data_set,
+            ..
+        } = vtk;
+
         VTKFile {
             data_set_type: DataSetType::ImageData,
-            version: model::Version::new((4, 1)),
-            byte_order: model::ByteOrder::BigEndian,
+            version,
+            byte_order,
             ..Default::default()
         }
     }
