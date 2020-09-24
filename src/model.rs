@@ -1,7 +1,9 @@
 use std::any::TypeId;
+use std::convert::TryFrom;
 use std::fmt;
 use std::ops::RangeInclusive;
 
+use bytemuck::cast_vec;
 use num_derive::FromPrimitive;
 
 /**
@@ -11,6 +13,7 @@ use num_derive::FromPrimitive;
 /// Error type describing failure modes of various model processing tasks and validation.
 #[derive(Debug)]
 pub enum Error {
+    InvalidCast(std::io::Error),
     FailedToLoadPieceData,
     MissingPieceData,
     IO(std::io::Error),
@@ -20,6 +23,7 @@ pub enum Error {
 impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         match self {
+            Error::InvalidCast(source) => write!(f, "Invalid cast error: {:?}", source),
             Error::MissingPieceData => write!(f, "Missing piece data"),
             Error::IO(source) => write!(f, "IO error: {:?}", source),
             Error::VTKIO(source) => write!(f, "VTK IO error: {:?}", source),
@@ -31,6 +35,7 @@ impl std::fmt::Display for Error {
 impl std::error::Error for Error {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
+            Error::InvalidCast(source) => Some(source),
             Error::IO(source) => Some(source),
             Error::VTKIO(source) => Some(source),
             _ => None,
@@ -134,6 +139,7 @@ macro_rules! impl_io_buffer_convert {
                 IOBuffer::$v(v)
             }
         }
+
         impl Into<Option<Vec<$t>>> for IOBuffer {
             fn into(self) -> Option<Vec<$t>> {
                 if let IOBuffer::$v(v) = self {
@@ -141,6 +147,15 @@ macro_rules! impl_io_buffer_convert {
                 } else {
                     None
                 }
+            }
+        }
+
+        impl std::iter::FromIterator<$t> for IOBuffer {
+            fn from_iter<T>(iter: T) -> Self
+            where
+                T: IntoIterator<Item = $t>,
+            {
+                iter.into_iter().collect::<Vec<$t>>().into()
             }
         }
     };
@@ -176,8 +191,25 @@ macro_rules! match_buf {
     };
 }
 
+macro_rules! impl_bytes_constructor {
+    ($bytes:ident, $bo:ident, $read:ident, $t:ident, $variant:ident) => {{
+        use byteorder::ReadBytesExt;
+        let mut out = vec![num_traits::Zero::zero(); $bytes.len() / std::mem::size_of::<$t>()];
+        let mut reader = std::io::Cursor::new($bytes);
+        match $bo {
+            ByteOrder::BigEndian => reader
+                .$read::<byteorder::BE>(out.as_mut_slice())
+                .map_err(|e| Error::InvalidCast(e))?,
+            ByteOrder::LittleEndian => reader
+                .$read::<byteorder::LE>(out.as_mut_slice())
+                .map_err(|e| Error::InvalidCast(e))?,
+        }
+        Ok(IOBuffer::$variant(out))
+    }};
+}
+
 impl IOBuffer {
-    pub fn data_type(&self) -> ScalarType {
+    pub fn scalar_type(&self) -> ScalarType {
         match self {
             IOBuffer::Bit(_) => ScalarType::Bit,
             IOBuffer::U8(_) => ScalarType::U8,
@@ -199,6 +231,171 @@ impl IOBuffer {
 
     pub fn is_empty(&self) -> bool {
         self.len() == 0
+    }
+
+    pub fn into_bytes(self, bo: ByteOrder) -> Vec<u8> {
+        use byteorder::WriteBytesExt;
+        use byteorder::{BE, LE};
+        let mut out: Vec<u8> = Vec::new();
+
+        match self {
+            IOBuffer::Bit(v) => out = v,
+            IOBuffer::U8(v) => out = v,
+            IOBuffer::I8(v) => out = cast_vec(v),
+            IOBuffer::U16(v) => {
+                out.reserve(v.len() * std::mem::size_of::<u16>());
+                match bo {
+                    ByteOrder::BigEndian => {
+                        v.into_iter().for_each(|x| out.write_u16::<BE>(x).unwrap())
+                    }
+                    ByteOrder::LittleEndian => {
+                        v.into_iter().for_each(|x| out.write_u16::<LE>(x).unwrap())
+                    }
+                }
+            }
+            IOBuffer::I16(v) => {
+                out.reserve(v.len() * std::mem::size_of::<i16>());
+                match bo {
+                    ByteOrder::BigEndian => {
+                        v.into_iter().for_each(|x| out.write_i16::<BE>(x).unwrap())
+                    }
+                    ByteOrder::LittleEndian => {
+                        v.into_iter().for_each(|x| out.write_i16::<LE>(x).unwrap())
+                    }
+                }
+            }
+            IOBuffer::U32(v) => {
+                out.reserve(v.len() * std::mem::size_of::<u32>());
+                match bo {
+                    ByteOrder::BigEndian => {
+                        v.into_iter().for_each(|x| out.write_u32::<BE>(x).unwrap())
+                    }
+                    ByteOrder::LittleEndian => {
+                        v.into_iter().for_each(|x| out.write_u32::<LE>(x).unwrap())
+                    }
+                }
+            }
+            IOBuffer::I32(v) => {
+                out.reserve(v.len() * std::mem::size_of::<i32>());
+                match bo {
+                    ByteOrder::BigEndian => {
+                        v.into_iter().for_each(|x| out.write_i32::<BE>(x).unwrap())
+                    }
+                    ByteOrder::LittleEndian => {
+                        v.into_iter().for_each(|x| out.write_i32::<LE>(x).unwrap())
+                    }
+                }
+            }
+            IOBuffer::U64(v) => {
+                out.reserve(v.len() * std::mem::size_of::<u64>());
+                match bo {
+                    ByteOrder::BigEndian => {
+                        v.into_iter().for_each(|x| out.write_u64::<BE>(x).unwrap())
+                    }
+                    ByteOrder::LittleEndian => {
+                        v.into_iter().for_each(|x| out.write_u64::<LE>(x).unwrap())
+                    }
+                }
+            }
+            IOBuffer::I64(v) => {
+                out.reserve(v.len() * std::mem::size_of::<i64>());
+                match bo {
+                    ByteOrder::BigEndian => {
+                        v.into_iter().for_each(|x| out.write_i64::<BE>(x).unwrap())
+                    }
+                    ByteOrder::LittleEndian => {
+                        v.into_iter().for_each(|x| out.write_i64::<LE>(x).unwrap())
+                    }
+                }
+            }
+            IOBuffer::F32(v) => {
+                out.reserve(v.len() * std::mem::size_of::<f32>());
+                match bo {
+                    ByteOrder::BigEndian => {
+                        v.into_iter().for_each(|x| out.write_f32::<BE>(x).unwrap())
+                    }
+                    ByteOrder::LittleEndian => {
+                        v.into_iter().for_each(|x| out.write_f32::<LE>(x).unwrap())
+                    }
+                }
+            }
+            IOBuffer::F64(v) => {
+                out.reserve(v.len() * std::mem::size_of::<f64>());
+                match bo {
+                    ByteOrder::BigEndian => {
+                        v.into_iter().for_each(|x| out.write_f64::<BE>(x).unwrap())
+                    }
+                    ByteOrder::LittleEndian => {
+                        v.into_iter().for_each(|x| out.write_f64::<LE>(x).unwrap())
+                    }
+                }
+            }
+        }
+        out
+    }
+
+    /// Construct an `IOBuffer` from a `Vec` of bytes and a corresponding scalar type.
+    pub fn from_bytes(
+        bytes: Vec<u8>,
+        scalar_type: ScalarType,
+        bo: ByteOrder,
+    ) -> Result<Self, Error> {
+        match scalar_type {
+            ScalarType::Bit => Ok(IOBuffer::u8_from_bytes(bytes)),
+            ScalarType::I8 => Ok(IOBuffer::i8_from_bytes(bytes)),
+            ScalarType::U8 => Ok(IOBuffer::u8_from_bytes(bytes)),
+            ScalarType::I16 => IOBuffer::i16_from_bytes(bytes, bo),
+            ScalarType::U16 => IOBuffer::u16_from_bytes(bytes, bo),
+            ScalarType::I32 => IOBuffer::i32_from_bytes(bytes, bo),
+            ScalarType::U32 => IOBuffer::u32_from_bytes(bytes, bo),
+            ScalarType::I64 => IOBuffer::i64_from_bytes(bytes, bo),
+            ScalarType::U64 => IOBuffer::u64_from_bytes(bytes, bo),
+            ScalarType::F32 => IOBuffer::f32_from_bytes(bytes, bo),
+            ScalarType::F64 => IOBuffer::f64_from_bytes(bytes, bo),
+        }
+    }
+
+    /// Construct an `IOBuffer` with `u8` elements from the given `Vec` of bytes.
+    pub fn u8_from_bytes(bytes: Vec<u8>) -> Self {
+        // Nothing to do here
+        IOBuffer::U8(bytes)
+    }
+    /// Construct an `IOBuffer` with `i8` elements from the given `Vec` of bytes.
+    pub fn i8_from_bytes(bytes: Vec<u8>) -> Self {
+        IOBuffer::I8(cast_vec(bytes))
+    }
+
+    /// Construct an `IOBuffer` with `u16` elements from the given `Vec` of bytes.
+    pub fn u16_from_bytes(bytes: Vec<u8>, bo: ByteOrder) -> Result<Self, Error> {
+        impl_bytes_constructor!(bytes, bo, read_u16_into, u16, U16)
+    }
+    /// Construct an `IOBuffer` with `i16` elements from the given `Vec` of bytes.
+    pub fn i16_from_bytes(bytes: Vec<u8>, bo: ByteOrder) -> Result<Self, Error> {
+        impl_bytes_constructor!(bytes, bo, read_i16_into, i16, I16)
+    }
+    /// Construct an `IOBuffer` with `u32` elements from the given `Vec` of bytes.
+    pub fn u32_from_bytes(bytes: Vec<u8>, bo: ByteOrder) -> Result<Self, Error> {
+        impl_bytes_constructor!(bytes, bo, read_u32_into, u32, U32)
+    }
+    /// Construct an `IOBuffer` with `i32` elements from the given `Vec` of bytes.
+    pub fn i32_from_bytes(bytes: Vec<u8>, bo: ByteOrder) -> Result<Self, Error> {
+        impl_bytes_constructor!(bytes, bo, read_i32_into, i32, I32)
+    }
+    /// Construct an `IOBuffer` with `u64` elements from the given `Vec` of bytes.
+    pub fn u64_from_bytes(bytes: Vec<u8>, bo: ByteOrder) -> Result<Self, Error> {
+        impl_bytes_constructor!(bytes, bo, read_u64_into, u64, U64)
+    }
+    /// Construct an `IOBuffer` with `i64` elements from the given `Vec` of bytes.
+    pub fn i64_from_bytes(bytes: Vec<u8>, bo: ByteOrder) -> Result<Self, Error> {
+        impl_bytes_constructor!(bytes, bo, read_i64_into, i64, I64)
+    }
+    /// Construct an `IOBuffer` with `f32` elements from the given `Vec` of bytes.
+    pub fn f32_from_bytes(bytes: Vec<u8>, bo: ByteOrder) -> Result<Self, Error> {
+        impl_bytes_constructor!(bytes, bo, read_f32_into, f32, F32)
+    }
+    /// Construct an `IOBuffer` with `f64` elements from the given `Vec` of bytes.
+    pub fn f64_from_bytes(bytes: Vec<u8>, bo: ByteOrder) -> Result<Self, Error> {
+        impl_bytes_constructor!(bytes, bo, read_f64_into, f64, F64)
     }
 }
 
@@ -320,8 +517,8 @@ impl From<IOBuffer> for ScalarArray {
 
 impl<E> DataArrayBase<E> {
     /// Get the scalar data type stored by the underlying buffer.
-    pub fn data_type(&self) -> ScalarType {
-        self.data.data_type()
+    pub fn scalar_type(&self) -> ScalarType {
+        self.data.scalar_type()
     }
     /// Get the number of elements stored by this data array.
     ///
@@ -775,6 +972,41 @@ impl VertexNumbers {
             }
         }
     }
+    /// Converts `self` into `XML` format.
+    ///
+    /// Returns a connectivity and offsets array pair as in the `XML` variant.
+    pub fn into_xml(self) -> (Vec<u32>, Vec<u32>) {
+        match self {
+            VertexNumbers::Legacy {
+                num_cells,
+                vertices,
+            } => {
+                let num_cells = usize::try_from(num_cells).unwrap();
+                let num_verts = vertices.len();
+                let mut connectivity = Vec::with_capacity(vertices.len() - num_cells);
+                let mut offsets = Vec::with_capacity(num_cells);
+                let mut n = -1i64;
+                let mut prev_off = 0;
+                for v in vertices {
+                    if n > 0 {
+                        connectivity.push(v);
+                        n -= 1;
+                    } else {
+                        offsets.push(v + prev_off);
+                        prev_off += v;
+                        n = v.into();
+                    }
+                }
+                assert_eq!(connectivity.len(), num_verts - num_cells);
+                assert_eq!(offsets.len(), num_cells);
+                (connectivity, offsets)
+            }
+            VertexNumbers::XML {
+                connectivity,
+                offsets,
+            } => (connectivity, offsets),
+        }
+    }
 }
 
 /// Cells with variable types.
@@ -819,6 +1051,30 @@ pub enum PolyDataTopology {
 }
 
 impl PolyDataTopology {
+    pub fn num_verts(&self) -> usize {
+        match self {
+            PolyDataTopology::Vertices(vert_nums) => vert_nums.num_cells(),
+            _ => 0,
+        }
+    }
+    pub fn num_lines(&self) -> usize {
+        match self {
+            PolyDataTopology::Lines(vert_nums) => vert_nums.num_cells(),
+            _ => 0,
+        }
+    }
+    pub fn num_polys(&self) -> usize {
+        match self {
+            PolyDataTopology::Polygons(vert_nums) => vert_nums.num_cells(),
+            _ => 0,
+        }
+    }
+    pub fn num_strips(&self) -> usize {
+        match self {
+            PolyDataTopology::TriangleStrips(vert_nums) => vert_nums.num_cells(),
+            _ => 0,
+        }
+    }
     pub fn num_cells(&self) -> usize {
         match self {
             PolyDataTopology::Vertices(vert_nums)
@@ -1032,12 +1288,14 @@ pub enum PieceData {
     /// depending on the type of geometry. To get `NumberOfPoints`, simply take the length of
     /// `points`.
     PolyData {
+        /// A contiguous array of coordinates (x,y,z) representing the points in the mesh.
         points: IOBuffer,
         topo: Vec<PolyDataTopology>,
         data: Attributes,
     },
     /// UnstructuredGrid piece data.
     UnstructuredGrid {
+        /// A contiguous array of coordinates (x,y,z) representing the points in the mesh.
         points: IOBuffer,
         cells: Cells,
         data: Attributes,
@@ -1076,7 +1334,6 @@ pub enum DataSet {
     /// 3D Unstructured grid. Note that `cells.num_cells` must equal `cell_types.len()`.
     UnstructuredGrid {
         meta: Option<Box<MetaData>>,
-        /// A contiguous array of coordinates (x,y,z) representing the points in the mesh.
         pieces: Vec<Piece>,
     },
     /// 3D Polygon data.
@@ -1175,7 +1432,7 @@ pub struct AttributesMetaData {
 pub struct ArrayMetaData {
     pub name: String,
     pub elem: ElementType,
-    pub data_type: ScalarType,
+    pub scalar_type: ScalarType,
 }
 
 /// Types of data that can be recognized by the parser. Not all data types are supported for all
