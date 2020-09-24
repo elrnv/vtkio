@@ -172,7 +172,7 @@ mod write_vtk_impl {
                                 self,
                                 "SCALARS {} {} {}",
                                 name,
-                                ScalarType::from(data.data_type()),
+                                ScalarType::from(data.scalar_type()),
                                 num_comp
                             )
                             .map_err(|_| {
@@ -217,7 +217,7 @@ mod write_vtk_impl {
                             })?;
                         }
                         ElementType::Vectors => {
-                            writeln!(self, "VECTORS {} {}", name, data.data_type()).map_err(
+                            writeln!(self, "VECTORS {} {}", name, data.scalar_type()).map_err(
                                 |_| Error::Attribute(AttributeError::Vectors(EntryPart::Header)),
                             )?;
                             self.write_buf::<BO>(data).map_err(|e| {
@@ -225,7 +225,7 @@ mod write_vtk_impl {
                             })?;
                         }
                         ElementType::Normals => {
-                            writeln!(self, "NORMALS {} {}", name, data.data_type()).map_err(
+                            writeln!(self, "NORMALS {} {}", name, data.scalar_type()).map_err(
                                 |_| Error::Attribute(AttributeError::Normals(EntryPart::Header)),
                             )?;
                             self.write_buf::<BO>(data).map_err(|e| {
@@ -238,7 +238,7 @@ mod write_vtk_impl {
                                 "TEXTURE_COORDINATES {} {} {}",
                                 name,
                                 dim,
-                                data.data_type()
+                                data.scalar_type()
                             )
                             .map_err(|_| {
                                 Error::Attribute(AttributeError::TextureCoordinates(
@@ -252,7 +252,7 @@ mod write_vtk_impl {
                             })?;
                         }
                         ElementType::Tensors => {
-                            writeln!(self, "TENSORS {} {}", name, data.data_type()).map_err(
+                            writeln!(self, "TENSORS {} {}", name, data.scalar_type()).map_err(
                                 |_| Error::Attribute(AttributeError::Tensors(EntryPart::Header)),
                             )?;
                             self.write_buf::<BO>(data).map_err(|e| {
@@ -305,7 +305,7 @@ mod write_vtk_impl {
                             name,
                             num_comp,
                             data.len() / num_comp as usize,
-                            data.data_type()
+                            data.scalar_type()
                         )
                         .map_err(|_| {
                             Error::Attribute(AttributeError::FieldArray(EntryPart::Header))
@@ -357,7 +357,7 @@ mod write_vtk_impl {
                             name,
                             num_comp,
                             data.len() / num_comp as usize,
-                            data.data_type()
+                            data.scalar_type()
                         )
                         .map_err(|_| Error::DataSet(DataSetError::FieldArray(EntryPart::Header)))?;
                         self.write_buf::<BO>(data).map_err(|e| {
@@ -378,7 +378,7 @@ mod write_vtk_impl {
                             Error::DataSet(DataSetError::PolyData(DataSetPart::Tags))
                         })?;
 
-                        writeln!(self, "POINTS {} {}", points.len() / 3, points.data_type())
+                        writeln!(self, "POINTS {} {}", points.len() / 3, points.scalar_type())
                             .map_err(|_| {
                                 Error::DataSet(DataSetError::PolyData(DataSetPart::Points(
                                     EntryPart::Header,
@@ -460,7 +460,7 @@ mod write_vtk_impl {
                             Error::DataSet(DataSetError::UnstructuredGrid(DataSetPart::Tags))
                         })?;
 
-                        writeln!(self, "POINTS {} {}", points.len() / 3, points.data_type())
+                        writeln!(self, "POINTS {} {}", points.len() / 3, points.scalar_type())
                             .map_err(|_| {
                                 Error::DataSet(DataSetError::UnstructuredGrid(DataSetPart::Points(
                                     EntryPart::Header,
@@ -580,7 +580,7 @@ mod write_vtk_impl {
                             },
                         )?;
 
-                        writeln!(self, "POINTS {} {}", points.len() / 3, points.data_type())
+                        writeln!(self, "POINTS {} {}", points.len() / 3, points.scalar_type())
                             .map_err(|_| {
                                 Error::DataSet(DataSetError::StructuredGrid(DataSetPart::Points(
                                     EntryPart::Header,
@@ -624,7 +624,7 @@ mod write_vtk_impl {
                             self,
                             "X_COORDINATES {} {}",
                             coords.x.len(),
-                            coords.x.data_type()
+                            coords.x.scalar_type()
                         )
                         .map_err(|_| {
                             Error::DataSet(DataSetError::RectilinearGrid(
@@ -641,7 +641,7 @@ mod write_vtk_impl {
                             self,
                             "Y_COORDINATES {} {}",
                             coords.y.len(),
-                            coords.y.data_type()
+                            coords.y.scalar_type()
                         )
                         .map_err(|_| {
                             Error::DataSet(DataSetError::RectilinearGrid(
@@ -658,7 +658,7 @@ mod write_vtk_impl {
                             self,
                             "Z_COORDINATES {} {}",
                             coords.z.len(),
-                            coords.z.data_type()
+                            coords.z.scalar_type()
                         )
                         .map_err(|_| {
                             Error::DataSet(DataSetError::RectilinearGrid(

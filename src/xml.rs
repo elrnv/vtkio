@@ -12,7 +12,9 @@ mod se;
 
 //use std::io::BufRead;
 //use std::collections::HashMap;
+use bytemuck::allocation::cast_vec;
 use quick_xml::de;
+use std::convert::{TryFrom, TryInto};
 use std::path::Path;
 
 use serde::{Deserialize, Serialize};
@@ -26,6 +28,7 @@ pub enum Error {
     XML(quick_xml::Error),
     Base64Decode(base64::DecodeError),
     Validation(ValidationError),
+    Model(model::Error),
     IO(std::io::Error),
     Deserialization(de::DeError),
     InvalidVersion,
@@ -44,6 +47,7 @@ impl std::fmt::Display for Error {
             Error::XML(source) => write!(f, "XML error: {:?}", source),
             Error::Base64Decode(source) => write!(f, "Base64 decode error: {:?}", source),
             Error::Validation(source) => write!(f, "Validation error: {:?}", source),
+            Error::Model(source) => write!(f, "Model processing error: {:?}", source),
             Error::IO(source) => write!(f, "I/O error: {:?}", source),
             Error::Deserialization(source) => write!(f, "Deserialization error: {:?}", source),
             Error::InvalidVersion => write!(f, "VTK version must be in \"major.minor\" format"),
@@ -72,10 +76,17 @@ impl std::error::Error for Error {
             Error::XML(source) => Some(source),
             Error::Base64Decode(source) => Some(source),
             Error::Validation(source) => Some(source),
+            Error::Model(source) => Some(source),
             Error::IO(source) => Some(source),
             Error::Deserialization(source) => Some(source),
             _ => None,
         }
+    }
+}
+
+impl From<model::Error> for Error {
+    fn from(e: model::Error) -> Error {
+        Error::Model(e)
     }
 }
 
@@ -1325,7 +1336,7 @@ impl From<Extent> for model::Extent {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Default, Serialize)]
 #[serde(rename_all = "PascalCase")]
 pub struct Piece {
     pub extent: Option<Extent>,
@@ -1358,6 +1369,14 @@ pub struct Points {
     data: DataArray,
 }
 
+impl Points {
+    pub fn from_io_buffer(buf: model::IOBuffer, bo: model::ByteOrder) -> Points {
+        Points {
+            data: DataArray::from_io_buffer(buf, bo),
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize)]
 pub struct Cells {
     #[serde(rename = "DataArray")]
@@ -1369,34 +1388,52 @@ pub struct Cells {
 }
 
 impl Cells {
+    fn from_model_cells(cells: model::Cells, bo: model::ByteOrder) -> Cells {
+        let model::Cells { cell_verts, types } = cells;
+        let (connectivity, offsets) = cell_verts.into_xml();
+        Cells {
+            connectivity: DataArray::from_io_buffer(connectivity.into(), bo),
+            offsets: DataArray::from_io_buffer(offsets.into(), bo),
+            types: DataArray::from_io_buffer(
+                types
+                    .into_iter()
+                    .map(|x| x as u8)
+                    .collect::<model::IOBuffer>(),
+                bo,
+            ),
+        }
+    }
+}
+
+impl Cells {
     /// Given the expected number of elements and an optional appended data,
     /// converts this `Topo` struct into a `mode::VertexNumbers` type.
     pub fn into_model_cells(
         self,
         l: usize,
         appended: Option<&AppendedData>,
+        bo: model::ByteOrder,
     ) -> std::result::Result<model::Cells, ValidationError> {
         use num_traits::FromPrimitive;
-        use reinterpret::reinterpret_vec;
 
-        let type_codes: Option<Vec<u8>> = self.types.into_io_buffer(l, appended)?.into();
+        let type_codes: Option<Vec<u8>> = self.types.into_io_buffer(l, appended, bo)?.into();
         let type_codes = type_codes.ok_or_else(|| ValidationError::InvalidDataFormat)?;
         let types: std::result::Result<Vec<model::CellType>, ValidationError> = type_codes
             .into_iter()
             .map(|x| model::CellType::from_u8(x).ok_or_else(|| ValidationError::InvalidCellType(x)))
             .collect();
 
-        let connectivity: Option<Vec<i32>> = self.connectivity.into_io_buffer(l, appended)?.into();
+        let connectivity: Option<Vec<i32>> =
+            self.connectivity.into_io_buffer(l, appended, bo)?.into();
         let connectivity = connectivity.ok_or_else(|| ValidationError::InvalidDataFormat)?;
-        let offsets: Option<Vec<i32>> = self.offsets.into_io_buffer(l, appended)?.into();
+        let offsets: Option<Vec<i32>> = self.offsets.into_io_buffer(l, appended, bo)?.into();
         let offsets = offsets.ok_or_else(|| ValidationError::InvalidDataFormat)?;
         debug_assert!(connectivity.iter().all(|&x| x >= 0));
         debug_assert!(offsets.iter().all(|&x| x >= 0));
         Ok(model::Cells {
             cell_verts: model::VertexNumbers::XML {
-                // SAFETY: we are interpreting i32 as u32, which is safe. Positivity is checked above.
-                connectivity: unsafe { reinterpret_vec(connectivity) },
-                offsets: unsafe { reinterpret_vec(offsets) },
+                connectivity: cast_vec(connectivity),
+                offsets: cast_vec(offsets),
             },
             types: types?,
         })
@@ -1418,9 +1455,11 @@ impl Topo {
         self,
         l: usize,
         appended: Option<&AppendedData>,
+        bo: model::ByteOrder,
     ) -> std::result::Result<model::VertexNumbers, ValidationError> {
-        let connectivity: Option<Vec<u32>> = self.connectivity.into_io_buffer(l, appended)?.into();
-        let offsets: Option<Vec<u32>> = self.offsets.into_io_buffer(l, appended)?.into();
+        let connectivity: Option<Vec<u32>> =
+            self.connectivity.into_io_buffer(l, appended, bo)?.into();
+        let offsets: Option<Vec<u32>> = self.offsets.into_io_buffer(l, appended, bo)?.into();
         Ok(model::VertexNumbers::XML {
             connectivity: connectivity.ok_or_else(|| ValidationError::InvalidDataFormat)?,
             offsets: offsets.ok_or_else(|| ValidationError::InvalidDataFormat)?,
@@ -1506,10 +1545,63 @@ impl AttributeInfo {
 }
 
 impl AttributeData {
+    pub fn from_model_attributes(
+        attribs: Vec<model::Attribute>,
+        byte_order: model::ByteOrder,
+    ) -> Self {
+        let mut attribute_data = AttributeData::default();
+        for attrib in attribs {
+            match attrib {
+                model::Attribute::DataArray(data) => {
+                    let num_comp = data.num_comp();
+                    // Only pick the first found attribute as the active one.
+                    match data.elem {
+                        model::ElementType::Scalars { .. } => {
+                            if attribute_data.scalars.is_none() {
+                                attribute_data.scalars = Some(data.name.to_string());
+                            }
+                        }
+                        model::ElementType::Vectors => {
+                            if attribute_data.vectors.is_none() {
+                                attribute_data.vectors = Some(data.name.to_string());
+                            }
+                        }
+                        model::ElementType::Normals => {
+                            if attribute_data.normals.is_none() {
+                                attribute_data.normals = Some(data.name.to_string());
+                            }
+                        }
+                        model::ElementType::TCoords(_) => {
+                            if attribute_data.tcoords.is_none() {
+                                attribute_data.tcoords = Some(data.name.to_string());
+                            }
+                        }
+                        model::ElementType::Tensors => {
+                            if attribute_data.tensors.is_none() {
+                                attribute_data.tensors = Some(data.name.to_string());
+                            }
+                        }
+                        _ => {}
+                    }
+                    attribute_data.data_array.push(DataArray {
+                        scalar_type: data.scalar_type().into(),
+                        name: data.name,
+                        num_comp: u32::try_from(num_comp).unwrap(),
+                        data: Data::Data(base64::encode(data.data.into_bytes(byte_order))),
+                        ..Default::default()
+                    });
+                }
+                // Field attributes are not supported, they are simply ignored.
+                _ => {}
+            }
+        }
+        attribute_data
+    }
     pub fn into_model_attributes(
         self,
         n: usize,
         appended_data: Option<&AppendedData>,
+        bo: model::ByteOrder,
     ) -> Vec<model::Attribute> {
         let AttributeData {
             scalars,
@@ -1530,7 +1622,7 @@ impl AttributeData {
 
         data_array
             .into_iter()
-            .filter_map(|x| x.into_attribute(n, appended_data, &info).ok())
+            .filter_map(|x| x.into_attribute(n, appended_data, &info, bo).ok())
             .collect()
     }
 }
@@ -1539,18 +1631,28 @@ impl AttributeData {
 pub struct Coordinates([DataArray; 3]);
 
 impl Coordinates {
+    /// Construct `Coordinates` from `model::Coordinates`.
+    pub fn from_model_coords(coords: model::Coordinates, bo: model::ByteOrder) -> Self {
+        Coordinates([
+            DataArray::from_scalar_array(coords.x, bo),
+            DataArray::from_scalar_array(coords.y, bo),
+            DataArray::from_scalar_array(coords.z, bo),
+        ])
+    }
+
     /// Given the expected number of elements and an optional appended data,
     /// converts this struct into a `mode::Coordinates` type.
     pub fn into_model_coordinates(
         self,
         [nx, ny, nz]: [usize; 3],
         appended: Option<&AppendedData>,
+        bo: model::ByteOrder,
     ) -> std::result::Result<model::Coordinates, ValidationError> {
         use model::ScalarArray;
         let Coordinates([x, y, z]) = self;
-        let x = x.into_field_array(nx, appended)?;
-        let y = y.into_field_array(ny, appended)?;
-        let z = z.into_field_array(nz, appended)?;
+        let x = x.into_field_array(nx, appended, bo)?;
+        let y = y.into_field_array(ny, appended, bo)?;
+        let z = z.into_field_array(nz, appended, bo)?;
         Ok(model::Coordinates {
             x: ScalarArray {
                 name: x.name,
@@ -1591,7 +1693,7 @@ impl PDataArray {
         Ok(model::ArrayMetaData {
             name: self.name,
             elem,
-            data_type: self.scalar_type.into(),
+            scalar_type: self.scalar_type.into(),
         })
     }
 }
@@ -1631,6 +1733,29 @@ impl Default for DataArray {
 }
 
 impl DataArray {
+    /// Construct a binary `DataArray` from a given `model::FieldArray`.
+    pub fn from_field_array(field: model::FieldArray, bo: model::ByteOrder) -> Self {
+        DataArray {
+            name: field.name,
+            num_comp: field.elem,
+            ..DataArray::from_io_buffer(field.data, bo)
+        }
+    }
+    /// Construct a binary `DataArray` from a given `model::FieldArray`.
+    pub fn from_scalar_array(array: model::ScalarArray, bo: model::ByteOrder) -> Self {
+        DataArray {
+            name: array.name,
+            ..DataArray::from_io_buffer(array.data, bo)
+        }
+    }
+    /// Construct a binary `DataArray` from a given [`model::IOBuffer`].
+    pub fn from_io_buffer(buf: model::IOBuffer, bo: model::ByteOrder) -> Self {
+        DataArray {
+            scalar_type: buf.scalar_type().into(),
+            data: Data::Data(base64::encode(buf.into_bytes(bo))),
+            ..Default::default()
+        }
+    }
     /// Convert this data array into a `model::FieldArray` type.
     ///
     /// The given arguments are the number of elements (not bytes) in the expected output
@@ -1639,10 +1764,9 @@ impl DataArray {
         self,
         l: usize,
         appended: Option<&AppendedData>,
+        byte_order: model::ByteOrder,
     ) -> std::result::Result<model::FieldArray, ValidationError> {
         use model::IOBuffer;
-        use reinterpret::reinterpret_vec;
-        use std::convert::TryInto;
 
         let DataArray {
             name,
@@ -1659,21 +1783,7 @@ impl DataArray {
                 if let Some(appended) = appended {
                     let start: usize = offset.unwrap_or(0).try_into().unwrap();
                     let bytes = appended.data.0[start..l * scalar_type.size()].to_vec();
-                    // SAFETY: Converting between primitive types only.
-                    let buf = unsafe {
-                        match scalar_type {
-                            ScalarType::Int8 => IOBuffer::I8(reinterpret_vec(bytes)),
-                            ScalarType::UInt8 => IOBuffer::U8(reinterpret_vec(bytes)),
-                            ScalarType::Int16 => IOBuffer::I16(reinterpret_vec(bytes)),
-                            ScalarType::UInt16 => IOBuffer::U16(reinterpret_vec(bytes)),
-                            ScalarType::Int32 => IOBuffer::I32(reinterpret_vec(bytes)),
-                            ScalarType::UInt32 => IOBuffer::U32(reinterpret_vec(bytes)),
-                            ScalarType::Int64 => IOBuffer::I64(reinterpret_vec(bytes)),
-                            ScalarType::UInt64 => IOBuffer::U64(reinterpret_vec(bytes)),
-                            ScalarType::Float32 => IOBuffer::F32(reinterpret_vec(bytes)),
-                            ScalarType::Float64 => IOBuffer::F64(reinterpret_vec(bytes)),
-                        }
-                    };
+                    let buf = IOBuffer::from_bytes(bytes, scalar_type.into(), byte_order)?;
                     if buf.len() != l {
                         return Err(ValidationError::DataArraySizeMismatch {
                             expected: l,
@@ -1687,21 +1797,7 @@ impl DataArray {
             }
             DataArrayFormat::Binary => {
                 let bytes = base64::decode(data.into_string())?;
-                // SAFETY: Converting between primitive types only.
-                let buf = unsafe {
-                    match scalar_type {
-                        ScalarType::Int8 => IOBuffer::I8(reinterpret_vec(bytes)),
-                        ScalarType::UInt8 => IOBuffer::U8(reinterpret_vec(bytes)),
-                        ScalarType::Int16 => IOBuffer::I16(reinterpret_vec(bytes)),
-                        ScalarType::UInt16 => IOBuffer::U16(reinterpret_vec(bytes)),
-                        ScalarType::Int32 => IOBuffer::I32(reinterpret_vec(bytes)),
-                        ScalarType::UInt32 => IOBuffer::U32(reinterpret_vec(bytes)),
-                        ScalarType::Int64 => IOBuffer::I64(reinterpret_vec(bytes)),
-                        ScalarType::UInt64 => IOBuffer::U64(reinterpret_vec(bytes)),
-                        ScalarType::Float32 => IOBuffer::F32(reinterpret_vec(bytes)),
-                        ScalarType::Float64 => IOBuffer::F64(reinterpret_vec(bytes)),
-                    }
-                };
+                let buf = IOBuffer::from_bytes(bytes, scalar_type.into(), byte_order)?;
                 if buf.len() != l {
                     return Err(ValidationError::DataArraySizeMismatch {
                         expected: l,
@@ -1760,9 +1856,10 @@ impl DataArray {
         l: usize,
         appended: Option<&AppendedData>,
         info: &AttributeInfo,
+        bo: model::ByteOrder,
     ) -> std::result::Result<model::DataArray, ValidationError> {
         // First convert into a field array.
-        let model::FieldArray { name, data, elem } = self.into_field_array(l, appended)?;
+        let model::FieldArray { name, data, elem } = self.into_field_array(l, appended, bo)?;
 
         // Then determine an appropriate element type.
         let elem = info.element_type(&name, elem);
@@ -1777,8 +1874,9 @@ impl DataArray {
         self,
         num_elements: usize,
         appended: Option<&AppendedData>,
+        bo: model::ByteOrder,
     ) -> std::result::Result<model::IOBuffer, ValidationError> {
-        self.into_field_array(num_elements, appended)
+        self.into_field_array(num_elements, appended, bo)
             .map(|model::FieldArray { data, .. }| data)
     }
 
@@ -1787,8 +1885,9 @@ impl DataArray {
         num_bytes: usize,
         appended: Option<&AppendedData>,
         info: &AttributeInfo,
+        bo: model::ByteOrder,
     ) -> std::result::Result<model::Attribute, ValidationError> {
-        let data_array = self.into_model_data_array(num_bytes, appended, info)?;
+        let data_array = self.into_model_data_array(num_bytes, appended, info, bo)?;
 
         Ok(model::Attribute::DataArray(data_array))
     }
@@ -2112,6 +2211,7 @@ pub enum ValidationError {
     MissingDataSet,
     DataSetMismatch,
     InvalidDataFormat,
+    Model(model::Error),
     ParseFloat(std::num::ParseFloatError),
     ParseInt(std::num::ParseIntError),
     InvalidCellType(u8),
@@ -2122,6 +2222,12 @@ pub enum ValidationError {
     Base64Decode(base64::DecodeError),
     Deserialize(de::DeError),
     Unsupported,
+}
+
+impl From<model::Error> for ValidationError {
+    fn from(e: model::Error) -> ValidationError {
+        ValidationError::Model(e)
+    }
 }
 
 impl From<std::num::ParseFloatError> for ValidationError {
@@ -2151,6 +2257,7 @@ impl From<de::DeError> for ValidationError {
 impl std::error::Error for ValidationError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
+            ValidationError::Model(source) => Some(source),
             ValidationError::Base64Decode(source) => Some(source),
             ValidationError::Deserialize(source) => Some(source),
             ValidationError::ParseFloat(source) => Some(source),
@@ -2167,6 +2274,7 @@ impl std::fmt::Display for ValidationError {
                 write!(f, "VTKFile type doesn't match internal data set definition")
             }
             ValidationError::InvalidDataFormat => write!(f, "Invalid data format"),
+            ValidationError::Model(e) => write!(f, "Failed to convert model to xml: {}", e),
             ValidationError::ParseFloat(e) => write!(f, "Failed to parse a float: {}", e),
             ValidationError::ParseInt(e) => write!(f, "Failed to parse an int: {}", e),
             ValidationError::InvalidCellType(t) => write!(f, "Invalid cell type: {}", t),
@@ -2191,11 +2299,9 @@ impl std::fmt::Display for ValidationError {
     }
 }
 
-impl std::convert::TryFrom<VTKFile> for model::Vtk {
+impl TryFrom<VTKFile> for model::Vtk {
     type Error = Error;
     fn try_from(xml: VTKFile) -> std::result::Result<model::Vtk, Self::Error> {
-        use std::convert::TryInto;
-
         let VTKFile {
             version,
             byte_order,
@@ -2220,8 +2326,8 @@ impl std::convert::TryFrom<VTKFile> for model::Vtk {
 
         let attributes =
             |npts, ncells, point_data: AttributeData, cell_data: AttributeData| model::Attributes {
-                point: point_data.into_model_attributes(npts, appended_data),
-                cell: cell_data.into_model_attributes(ncells, appended_data),
+                point: point_data.into_model_attributes(npts, appended_data, byte_order),
+                cell: cell_data.into_model_attributes(ncells, appended_data, byte_order),
             };
 
         let data = match data_set {
@@ -2292,29 +2398,46 @@ impl std::convert::TryFrom<VTKFile> for model::Vtk {
                             let mut topo = Vec::new();
                             if let Some(verts) = verts {
                                 topo.push(model::PolyDataTopology::Vertices(
-                                    verts.into_vertex_numbers(number_of_verts, appended_data)?,
+                                    verts.into_vertex_numbers(
+                                        number_of_verts,
+                                        appended_data,
+                                        byte_order,
+                                    )?,
                                 ));
                             }
                             if let Some(lines) = lines {
                                 topo.push(model::PolyDataTopology::Lines(
-                                    lines.into_vertex_numbers(number_of_lines, appended_data)?,
+                                    lines.into_vertex_numbers(
+                                        number_of_lines,
+                                        appended_data,
+                                        byte_order,
+                                    )?,
                                 ));
                             }
                             if let Some(strips) = strips {
                                 topo.push(model::PolyDataTopology::TriangleStrips(
-                                    strips.into_vertex_numbers(number_of_strips, appended_data)?,
+                                    strips.into_vertex_numbers(
+                                        number_of_strips,
+                                        appended_data,
+                                        byte_order,
+                                    )?,
                                 ));
                             }
                             if let Some(polys) = polys {
                                 topo.push(model::PolyDataTopology::Polygons(
-                                    polys.into_vertex_numbers(number_of_polys, appended_data)?,
+                                    polys.into_vertex_numbers(
+                                        number_of_polys,
+                                        appended_data,
+                                        byte_order,
+                                    )?,
                                 ));
                             }
                             Ok(model::Piece::Inline(Box::new(model::PieceData::PolyData {
-                                points: points
-                                    .unwrap()
-                                    .data
-                                    .into_io_buffer(number_of_points, appended_data)?,
+                                points: points.unwrap().data.into_io_buffer(
+                                    number_of_points,
+                                    appended_data,
+                                    byte_order,
+                                )?,
                                 topo,
                                 data: attributes(
                                     number_of_points,
@@ -2352,6 +2475,7 @@ impl std::convert::TryFrom<VTKFile> for model::Vtk {
                             let coords = coords.into_model_coordinates(
                                 [nx as usize, ny as usize, nz as usize],
                                 appended_data,
+                                byte_order,
                             )?;
                             Ok(model::Piece::Inline(Box::new(
                                 model::PieceData::RectilinearGrid {
@@ -2391,10 +2515,11 @@ impl std::convert::TryFrom<VTKFile> for model::Vtk {
                             Ok(model::Piece::Inline(Box::new(
                                 model::PieceData::StructuredGrid {
                                     extent,
-                                    points: points
-                                        .unwrap()
-                                        .data
-                                        .into_io_buffer(number_of_points, appended_data)?,
+                                    points: points.unwrap().data.into_io_buffer(
+                                        number_of_points,
+                                        appended_data,
+                                        byte_order,
+                                    )?,
                                     data: attributes(
                                         number_of_points,
                                         number_of_cells,
@@ -2426,16 +2551,21 @@ impl std::convert::TryFrom<VTKFile> for model::Vtk {
                                 let number_of_cells = convert_num(number_of_cells)?;
                                 let cells = topo
                                     .map(|topo| {
-                                        topo.into_model_cells(number_of_cells, appended_data)
+                                        topo.into_model_cells(
+                                            number_of_cells,
+                                            appended_data,
+                                            byte_order,
+                                        )
                                     })
                                     .transpose()?
                                     .unwrap_or_default();
                                 Ok(model::Piece::Inline(Box::new(
                                     model::PieceData::UnstructuredGrid {
-                                        points: points
-                                            .unwrap()
-                                            .data
-                                            .into_io_buffer(number_of_points, appended_data)?,
+                                        points: points.unwrap().data.into_io_buffer(
+                                            number_of_points,
+                                            appended_data,
+                                            byte_order,
+                                        )?,
                                         cells,
                                         data: attributes(
                                             number_of_points,
@@ -2603,8 +2733,9 @@ impl std::convert::TryFrom<VTKFile> for model::Vtk {
     }
 }
 
-impl From<model::Vtk> for VTKFile {
-    fn from(vtk: model::Vtk) -> VTKFile {
+impl TryFrom<model::Vtk> for VTKFile {
+    type Error = Error;
+    fn try_from(vtk: model::Vtk) -> Result<VTKFile> {
         let model::Vtk {
             version,
             byte_order,
@@ -2612,12 +2743,226 @@ impl From<model::Vtk> for VTKFile {
             ..
         } = vtk;
 
-        VTKFile {
-            data_set_type: DataSetType::ImageData,
+        let appended_data = Vec::new();
+
+        let data_set = match data_set {
+            model::DataSet::ImageData {
+                extent,
+                origin,
+                spacing,
+                pieces,
+                //meta,
+                ..
+            } => DataSet::ImageData(ImageData {
+                whole_extent: extent.into(),
+                origin,
+                spacing,
+                pieces: pieces
+                    .into_iter()
+                    .map(|piece| {
+                        let piece_data = piece.load_into_piece_data()?;
+                        if let model::PieceData::ImageData { extent, data } = piece_data {
+                            Ok(Piece {
+                                extent: Some(extent.into()),
+                                point_data: AttributeData::from_model_attributes(
+                                    data.point, byte_order,
+                                ),
+                                cell_data: AttributeData::from_model_attributes(
+                                    data.cell, byte_order,
+                                ),
+                                ..Default::default()
+                            })
+                        } else {
+                            return Err(Error::Model(model::Error::MissingPieceData));
+                        }
+                    })
+                    .collect::<Result<Vec<Piece>>>()?,
+            }),
+            model::DataSet::StructuredGrid {
+                extent,
+                pieces,
+                //meta,
+                ..
+            } => DataSet::StructuredGrid(Grid {
+                whole_extent: extent.into(),
+                pieces: pieces
+                    .into_iter()
+                    .map(|piece| {
+                        let piece_data = piece.load_into_piece_data()?;
+                        if let model::PieceData::StructuredGrid {
+                            extent,
+                            points,
+                            data,
+                        } = piece_data
+                        {
+                            Ok(Piece {
+                                extent: Some(extent.into()),
+                                points: Some(Points::from_io_buffer(points, byte_order)),
+                                point_data: AttributeData::from_model_attributes(
+                                    data.point, byte_order,
+                                ),
+                                cell_data: AttributeData::from_model_attributes(
+                                    data.cell, byte_order,
+                                ),
+                                ..Default::default()
+                            })
+                        } else {
+                            return Err(Error::Model(model::Error::MissingPieceData));
+                        }
+                    })
+                    .collect::<Result<Vec<Piece>>>()?,
+            }),
+            model::DataSet::RectilinearGrid {
+                extent,
+                pieces,
+                //meta,
+                ..
+            } => DataSet::RectilinearGrid(Grid {
+                whole_extent: extent.into(),
+                pieces: pieces
+                    .into_iter()
+                    .map(|piece| {
+                        let piece_data = piece.load_into_piece_data()?;
+                        if let model::PieceData::RectilinearGrid {
+                            extent,
+                            coords,
+                            data,
+                        } = piece_data
+                        {
+                            Ok(Piece {
+                                extent: Some(extent.into()),
+                                coordinates: Some(Coordinates::from_model_coords(
+                                    coords, byte_order,
+                                )),
+                                point_data: AttributeData::from_model_attributes(
+                                    data.point, byte_order,
+                                ),
+                                cell_data: AttributeData::from_model_attributes(
+                                    data.cell, byte_order,
+                                ),
+                                ..Default::default()
+                            })
+                        } else {
+                            return Err(Error::Model(model::Error::MissingPieceData));
+                        }
+                    })
+                    .collect::<Result<Vec<Piece>>>()?,
+            }),
+            model::DataSet::UnstructuredGrid {
+                pieces,
+                //meta,
+                ..
+            } => DataSet::UnstructuredGrid(Unstructured {
+                pieces: pieces
+                    .into_iter()
+                    .map(|piece| {
+                        let piece_data = piece.load_into_piece_data()?;
+                        if let model::PieceData::UnstructuredGrid {
+                            points,
+                            cells,
+                            data,
+                        } = piece_data
+                        {
+                            Ok(Piece {
+                                number_of_points: u32::try_from(points.len()).unwrap(),
+                                number_of_cells: u32::try_from(cells.num_cells()).unwrap(),
+                                points: Some(Points::from_io_buffer(points, byte_order)),
+                                cells: Some(Cells::from_model_cells(cells, byte_order)),
+                                point_data: AttributeData::from_model_attributes(
+                                    data.point, byte_order,
+                                ),
+                                cell_data: AttributeData::from_model_attributes(
+                                    data.cell, byte_order,
+                                ),
+                                ..Default::default()
+                            })
+                        } else {
+                            return Err(Error::Model(model::Error::MissingPieceData));
+                        }
+                    })
+                    .collect::<Result<Vec<Piece>>>()?,
+            }),
+            model::DataSet::PolyData {
+                pieces,
+                //meta,
+                ..
+            } => DataSet::PolyData(Unstructured {
+                pieces: pieces
+                    .into_iter()
+                    .map(|piece| {
+                        let piece_data = piece.load_into_piece_data()?;
+                        if let model::PieceData::PolyData { points, topo, data } = piece_data {
+                            let number_of_lines: usize = topo.iter().map(|x| x.num_lines()).sum();
+                            let number_of_verts: usize = topo.iter().map(|x| x.num_verts()).sum();
+                            let number_of_polys: usize = topo.iter().map(|x| x.num_polys()).sum();
+                            let number_of_strips: usize = topo.iter().map(|x| x.num_strips()).sum();
+
+                            Ok(Piece {
+                                number_of_points: u32::try_from(points.len()).unwrap(),
+                                number_of_lines: u32::try_from(number_of_lines).unwrap(),
+                                number_of_verts: u32::try_from(number_of_verts).unwrap(),
+                                number_of_polys: u32::try_from(number_of_polys).unwrap(),
+                                number_of_strips: u32::try_from(number_of_strips).unwrap(),
+                                points: Some(Points::from_io_buffer(points, byte_order)),
+                                polys: None,
+                                point_data: AttributeData::from_model_attributes(
+                                    data.point, byte_order,
+                                ),
+                                cell_data: AttributeData::from_model_attributes(
+                                    data.cell, byte_order,
+                                ),
+                                ..Default::default()
+                            })
+                        } else {
+                            return Err(Error::Model(model::Error::MissingPieceData));
+                        }
+                    })
+                    .collect::<Result<Vec<Piece>>>()?,
+            }),
+            model::DataSet::Field { data_array, .. } => {
+                // Convert a legacy field data set into image data with a piece for each data_array.
+                // If this becomes usefule we can try to group the arrays into
+                // chunks of the same length and put those into a single piece
+                // at different attributes.
+                let max_count = data_array.iter().map(|v| v.len()).max().unwrap_or(0) as i32;
+                DataSet::ImageData(ImageData {
+                    whole_extent: Extent([0, max_count, 0, 0, 0, 0]),
+                    origin: [0.0; 3],
+                    spacing: [1.0; 3],
+                    pieces: data_array
+                        .into_iter()
+                        .map(|data| Piece {
+                            extent: Some(Extent([0, data.len() as i32, 0, 0, 0, 0])),
+                            cell_data: AttributeData {
+                                data_array: vec![DataArray::from_field_array(data, byte_order)],
+                                ..Default::default()
+                            },
+                            ..Default::default()
+                        })
+                        .collect(),
+                })
+            }
+        };
+
+        let data_set_type = DataSetType::from(&data_set);
+        let appended_data = if appended_data.is_empty() {
+            None
+        } else {
+            Some(AppendedData {
+                encoding: Encoding::Raw,
+                data: RawData(appended_data),
+            })
+        };
+
+        Ok(VTKFile {
+            data_set_type,
             version,
             byte_order,
-            ..Default::default()
-        }
+            header_type: None,
+            compressor: Compressor::None,
+            appended_data,
+            data_set,
+        })
     }
 }
 
@@ -2938,7 +3283,6 @@ mod tests {
     #[test]
     fn xml_to_vtk_conversion() -> Result<()> {
         use model::*;
-        use std::convert::TryInto;
         let xml = import("assets/RectilinearGrid_ascii.vtr")?;
         std::dbg!(&xml);
         let vtk: Vtk = xml.clone().try_into()?;
@@ -2969,6 +3313,19 @@ mod tests {
                 })
             }
         );
+        Ok(())
+    }
+
+    #[test]
+    fn vtk_xml_conversion_round_trip() -> Result<()> {
+        use model::*;
+        let xml = import("assets/RectilinearGrid_ascii.vtr")?;
+        std::dbg!(&xml);
+        let vtk: Vtk = xml.clone().try_into()?;
+        let xml_round_trip: VTKFile = vtk.clone().try_into()?;
+        let vtk_round_trip: Vtk = xml_round_trip.clone().try_into()?;
+        assert_eq!(vtk.clone(), vtk_round_trip,);
+        assert_eq!(xml_round_trip.clone(), vtk_round_trip.try_into()?);
         Ok(())
     }
 }
