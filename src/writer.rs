@@ -632,7 +632,7 @@ mod write_vtk_impl {
                             ))
                         })?;
                         let num_x_coords = coords.x.len();
-                        self.write_buf::<BO>(coords.x.data).map_err(|e| {
+                        self.write_buf::<BO>(coords.x).map_err(|e| {
                             Error::DataSet(DataSetError::RectilinearGrid(
                                 DataSetPart::XCoordinates(EntryPart::Data(e.into())),
                             ))
@@ -649,7 +649,7 @@ mod write_vtk_impl {
                             ))
                         })?;
                         let num_y_coords = coords.y.len();
-                        self.write_buf::<BO>(coords.y.data).map_err(|e| {
+                        self.write_buf::<BO>(coords.y).map_err(|e| {
                             Error::DataSet(DataSetError::RectilinearGrid(
                                 DataSetPart::YCoordinates(EntryPart::Data(e.into())),
                             ))
@@ -666,7 +666,7 @@ mod write_vtk_impl {
                             ))
                         })?;
                         let num_z_coords = coords.z.len();
-                        self.write_buf::<BO>(coords.z.data).map_err(|e| {
+                        self.write_buf::<BO>(coords.z).map_err(|e| {
                             Error::DataSet(DataSetError::RectilinearGrid(
                                 DataSetPart::ZCoordinates(EntryPart::Data(e.into())),
                             ))

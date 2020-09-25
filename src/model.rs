@@ -172,10 +172,11 @@ impl_io_buffer_convert!(i64 <=> I64);
 impl_io_buffer_convert!(f32 <=> F32);
 impl_io_buffer_convert!(f64 <=> F64);
 
+/// Evaluate the expression `$e` given a `Vec` `$v`.
 #[macro_export]
 macro_rules! match_buf {
-    ($s:ident; $v:pat => $e:expr; ($o:pat, $l:pat, $dt:pat) => $r:expr) => {
-        match $s {
+    ($buf:expr; $v:pat => $e:expr) => {
+        match $buf {
             IOBuffer::Bit($v) => $e,
             IOBuffer::U8($v) => $e,
             IOBuffer::I8($v) => $e,
@@ -226,7 +227,7 @@ impl IOBuffer {
     }
 
     pub fn len(&self) -> usize {
-        match_buf!(self; v => v.len(); (_, l, _) => *l as usize)
+        match_buf!(self; v => v.len())
     }
 
     pub fn is_empty(&self) -> bool {
@@ -397,7 +398,61 @@ impl IOBuffer {
     pub fn f64_from_bytes(bytes: Vec<u8>, bo: ByteOrder) -> Result<Self, Error> {
         impl_bytes_constructor!(bytes, bo, read_f64_into, f64, F64)
     }
+
+    /// Returns an iterator over elements with type `T`.
+    ///
+    /// If `T` is not one of `u8`, `i8`, `u16`, `i16`, `u32`, `i32`, `u64`, `i64`, `f32`, or `f64`,
+    /// then `None` is returned.
+    pub fn iter<T: Scalar>(&self) -> Option<std::slice::Iter<T>> {
+        T::io_buf_vec_ref(self).map(|v| v.iter())
+    }
+
+    /// Converts this buffer into the underlying `Vec` representation.
+    ///
+    /// If `T` is not one of `u8`, `i8`, `u16`, `i16`, `u32`, `i32`, `u64`, `i64`, `f32`, or `f64`,
+    /// then `None` is returned.
+    pub fn into_vec<T: Scalar>(self) -> Option<Vec<T>> {
+        T::io_buf_into_vec(self)
+    }
 }
+
+pub trait Scalar
+where
+    Self: Sized,
+{
+    fn io_buf_vec_ref(io_buf: &IOBuffer) -> Option<&Vec<Self>>;
+    fn io_buf_into_vec(io_buf: IOBuffer) -> Option<Vec<Self>>;
+}
+
+macro_rules! impl_scalar {
+    ($t:ident, $v:ident) => {
+        impl Scalar for $t {
+            fn io_buf_vec_ref(io_buf: &IOBuffer) -> Option<&Vec<Self>> {
+                match io_buf {
+                    IOBuffer::$v(v) => Some(v),
+                    _ => None,
+                }
+            }
+            fn io_buf_into_vec(io_buf: IOBuffer) -> Option<Vec<Self>> {
+                match io_buf {
+                    IOBuffer::$v(v) => Some(v),
+                    _ => None,
+                }
+            }
+        }
+    };
+}
+
+impl_scalar!(u8, U8);
+impl_scalar!(i8, I8);
+impl_scalar!(u16, U16);
+impl_scalar!(i16, I16);
+impl_scalar!(u32, U32);
+impl_scalar!(i32, I32);
+impl_scalar!(u64, U64);
+impl_scalar!(i64, I64);
+impl_scalar!(f32, F32);
+impl_scalar!(f64, F64);
 
 impl std::fmt::Display for IOBuffer {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
@@ -409,7 +464,7 @@ impl std::fmt::Display for IOBuffer {
                     write!(f, " {}", i)?;
                 }
             }
-        }; (_, _, _) => {});
+        });
         Ok(())
     }
 }
@@ -442,12 +497,6 @@ pub type FieldArray = DataArrayBase<u32>;
 /// particular purpose (e.g. colors, texture coordinates).
 pub type DataArray = DataArrayBase<ElementType>;
 
-/// A data array whose elements are scalars (1 scalar component per element).
-///
-/// This version of `DataArrayBase` discards the knowledge about the number of components in each
-/// element of the array. The number of components will then be inferred from the context.
-pub type ScalarArray = DataArrayBase<()>;
-
 impl Default for DataArray {
     fn default() -> DataArray {
         DataArray {
@@ -468,48 +517,11 @@ impl Default for FieldArray {
     }
 }
 
-impl Default for ScalarArray {
-    fn default() -> ScalarArray {
-        ScalarArray {
-            name: String::new(),
-            elem: (),
-            data: IOBuffer::default(),
-        }
-    }
-}
-
-macro_rules! impl_from_vec_for_scalar_array {
-    ($($t:ty),* $(,)*) => {
-        $(
-            impl From<Vec<$t>> for ScalarArray {
-                fn from(v: Vec<$t>) -> ScalarArray {
-                    ScalarArray {
-                        data: v.into(),
-                        ..ScalarArray::default()
-                    }
-                }
-            }
-        )*
-    }
-}
-
-impl_from_vec_for_scalar_array!(u8, i8, u16, i16, u32, i32, u64, i64, f32, f64);
-
 impl From<IOBuffer> for DataArray {
     fn from(buf: IOBuffer) -> DataArray {
         DataArray {
             name: String::new(),
             elem: ElementType::Generic(1),
-            data: buf,
-        }
-    }
-}
-
-impl From<IOBuffer> for ScalarArray {
-    fn from(buf: IOBuffer) -> ScalarArray {
-        ScalarArray {
-            name: String::new(),
-            elem: (),
             data: buf,
         }
     }
@@ -654,15 +666,6 @@ impl FieldArray {
     /// This is equal to `self.len() / self.num_elem()`.
     pub fn num_comp(&self) -> usize {
         self.elem as usize
-    }
-}
-
-impl ScalarArray {
-    pub fn new(name: impl Into<String>) -> ScalarArray {
-        ScalarArray {
-            name: name.into(),
-            ..ScalarArray::default()
-        }
     }
 }
 
@@ -1124,11 +1127,11 @@ pub enum CellType {
 #[derive(Clone, Debug, PartialEq, Default)]
 pub struct Coordinates {
     /// Point coordinates along the `x` axis.
-    pub x: ScalarArray,
+    pub x: IOBuffer,
     /// Point coordinates along the `y` axis.
-    pub y: ScalarArray,
+    pub y: IOBuffer,
     /// Point coordinates along the `z` axis.
-    pub z: ScalarArray,
+    pub z: IOBuffer,
 }
 
 /// The extent of the structured object being represented in 3D space.
@@ -1496,5 +1499,26 @@ impl From<TypeId> for ScalarType {
             x if x == TypeId::of::<f64>() => ScalarType::F64,
             _ => panic!("Specified type is unsupported by VTK."),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn io_buffer_iter() {
+        let v = vec![1, 2, 3, 4];
+        let buf = IOBuffer::U32(v);
+        assert!(buf.iter::<u32>().is_some());
+        assert!(buf.iter::<f32>().is_none());
+    }
+
+    #[test]
+    fn io_buffer_into_vec() {
+        let v = vec![1, 2, 3, 4];
+        let buf = IOBuffer::U32(v.clone());
+        assert!(buf.clone().into_vec::<f32>().is_none());
+        assert_eq!(buf.into_vec::<u32>(), Some(v));
     }
 }
