@@ -1,9 +1,15 @@
 use std::fmt::Arguments;
 
-use byteorder::{BigEndian, ByteOrder, LittleEndian, NativeEndian};
+use byteorder::{BigEndian, ByteOrder, LittleEndian};
 
 use crate::model::ByteOrder as ByteOrderTag;
 use crate::model::*;
+
+/// A `Write` wrapper for writing in ASCII format.
+pub struct AsciiWriter<W: std::fmt::Write>(pub W);
+
+/// A `Write` wrapper for writing in binary format.
+pub struct BinaryWriter<W: std::io::Write>(pub W);
 
 mod write_vtk_impl {
     use super::*;
@@ -684,13 +690,14 @@ mod write_vtk_impl {
             Ok(self)
         }
     }
-    impl WriteVtkImpl for Vec<u8> {
+
+    impl<W: std::io::Write> WriteVtkImpl for BinaryWriter<W> {
         fn write_fmt(&mut self, args: Arguments) -> Result {
-            std::io::Write::write_fmt(self, args)?;
+            std::io::Write::write_fmt(&mut self.0, args)?;
             Ok(())
         }
         fn write_file_type(&mut self) -> Result {
-            writeln!(self, "BINARY\n").map_err(|_| Error::Header(Header::FileType))
+            writeln!(&mut self.0, "BINARY\n").map_err(|_| Error::Header(Header::FileType))
         }
         fn write_cell_types<BO: ByteOrder>(&mut self, data: Vec<CellType>) -> Result {
             let err_fn = |ek: Option<std::io::ErrorKind>| {
@@ -700,9 +707,9 @@ mod write_vtk_impl {
             };
             let err = |e: std::io::Error| err_fn(Some(e.kind()));
             for t in data {
-                self.write_i32::<BO>(t as i32).map_err(err)?;
+                self.0.write_i32::<BO>(t as i32).map_err(err)?;
             }
-            writeln!(self).map_err(|_| Error::NewLine)
+            writeln!(&mut self.0).map_err(|_| Error::NewLine)
         }
         fn write_u32_vec<BO: ByteOrder>(&mut self, data: Vec<u32>) -> Result {
             let buf = IOBuffer::from(data);
@@ -721,69 +728,110 @@ mod write_vtk_impl {
             }
 
             match buf {
-                IOBuffer::U8(v) => write_buf_impl(v, self, Self::write_u8)?,
-                IOBuffer::I8(v) => write_buf_impl(v, self, Self::write_i8)?,
+                IOBuffer::U8(v) => write_buf_impl(v, &mut self.0, W::write_u8)?,
+                IOBuffer::I8(v) => write_buf_impl(v, &mut self.0, W::write_i8)?,
                 IOBuffer::U16(v) => {
-                    write_buf_impl(v, self, Self::write_u16::<BO>)?;
+                    write_buf_impl(v, &mut self.0, W::write_u16::<BO>)?;
                 }
                 IOBuffer::I16(v) => {
-                    write_buf_impl(v, self, Self::write_i16::<BO>)?;
+                    write_buf_impl(v, &mut self.0, W::write_i16::<BO>)?;
                 }
                 IOBuffer::U32(v) => {
-                    write_buf_impl(v, self, Self::write_u32::<BO>)?;
+                    write_buf_impl(v, &mut self.0, W::write_u32::<BO>)?;
                 }
                 IOBuffer::I32(v) => {
-                    write_buf_impl(v, self, Self::write_i32::<BO>)?;
+                    write_buf_impl(v, &mut self.0, W::write_i32::<BO>)?;
                 }
                 IOBuffer::U64(v) => {
-                    write_buf_impl(v, self, Self::write_u64::<BO>)?;
+                    write_buf_impl(v, &mut self.0, W::write_u64::<BO>)?;
                 }
                 IOBuffer::I64(v) => {
-                    write_buf_impl(v, self, Self::write_i64::<BO>)?;
+                    write_buf_impl(v, &mut self.0, W::write_i64::<BO>)?;
                 }
                 IOBuffer::F32(v) => {
-                    write_buf_impl(v, self, Self::write_f32::<BO>)?;
+                    write_buf_impl(v, &mut self.0, W::write_f32::<BO>)?;
                 }
                 IOBuffer::F64(v) => {
-                    write_buf_impl(v, self, Self::write_f64::<BO>)?;
+                    write_buf_impl(v, &mut self.0, W::write_f64::<BO>)?;
                 }
                 _ => return Err(Error::DataMismatchError),
             }
 
-            writeln!(self)
+            writeln!(&mut self.0)?;
+            Ok(())
         }
     }
 
-    impl WriteVtkImpl for String {
+    impl WriteVtkImpl for Vec<u8> {
         fn write_fmt(&mut self, args: Arguments) -> Result {
-            std::fmt::Write::write_fmt(self, args)?;
+            BinaryWriter(self).write_fmt(args)
+        }
+        fn write_file_type(&mut self) -> Result {
+            BinaryWriter(self).write_file_type()
+        }
+        fn write_cell_types<BO: ByteOrder>(&mut self, data: Vec<CellType>) -> Result {
+            BinaryWriter(self).write_cell_types::<BO>(data)
+        }
+        fn write_u32_vec<BO: ByteOrder>(&mut self, data: Vec<u32>) -> Result {
+            BinaryWriter(self).write_u32_vec::<BO>(data)
+        }
+        fn write_buf<BO: ByteOrder>(&mut self, buf: IOBuffer) -> Result {
+            BinaryWriter(self).write_buf::<BO>(buf)
+        }
+    }
+
+    impl<W: std::fmt::Write> WriteVtkImpl for AsciiWriter<W> {
+        fn write_fmt(&mut self, args: Arguments) -> Result {
+            std::fmt::Write::write_fmt(&mut self.0, args)?;
             Ok(())
         }
         fn write_file_type(&mut self) -> Result {
-            writeln!(self, "ASCII\n").map_err(|_| Error::Header(Header::FileType))
+            writeln!(&mut self.0, "ASCII\n").map_err(|_| Error::Header(Header::FileType))?;
+            Ok(())
         }
         fn write_cell_types<BO: ByteOrder>(&mut self, data: Vec<CellType>) -> Result {
             let err = Error::DataSet(DataSetError::UnstructuredGrid(DataSetPart::CellTypes(
                 EntryPart::Data(None),
             )));
             for t in data {
-                writeln!(self, "{}", t as u8).map_err(|_| err)?;
+                writeln!(&mut self.0, "{}", t as u8).map_err(|_| err)?;
             }
-            writeln!(self).map_err(|_| err)
+            writeln!(&mut self.0).map_err(|_| err)?;
+            Ok(())
         }
         fn write_u32_vec<BO: ByteOrder>(&mut self, data: Vec<u32>) -> Result {
             for i in 0..data.len() {
-                write!(self, "{}", data[i])?;
+                write!(&mut self.0, "{}", data[i])?;
                 if i < data.len() - 1 {
                     // add an extra space between elements
-                    write!(self, " ")?;
+                    write!(&mut self.0, " ")?;
                 }
             }
-            writeln!(self) // finish with a new line
+            writeln!(&mut self.0)?; // finish with a new line
+            Ok(())
         }
 
         fn write_buf<BO: ByteOrder>(&mut self, data: IOBuffer) -> Result {
-            writeln!(self, "{}", data)
+            writeln!(&mut self.0, "{}", data)?;
+            Ok(())
+        }
+    }
+
+    impl WriteVtkImpl for String {
+        fn write_fmt(&mut self, args: Arguments) -> Result {
+            AsciiWriter(self).write_fmt(args)
+        }
+        fn write_file_type(&mut self) -> Result {
+            AsciiWriter(self).write_file_type()
+        }
+        fn write_cell_types<BO: ByteOrder>(&mut self, data: Vec<CellType>) -> Result {
+            AsciiWriter(self).write_cell_types::<BO>(data)
+        }
+        fn write_u32_vec<BO: ByteOrder>(&mut self, data: Vec<u32>) -> Result {
+            AsciiWriter(self).write_u32_vec::<BO>(data)
+        }
+        fn write_buf<BO: ByteOrder>(&mut self, buf: IOBuffer) -> Result {
+            AsciiWriter(self).write_buf::<BO>(buf)
         }
     }
 }
@@ -798,18 +846,30 @@ pub trait WriteVtk: write_vtk_impl::WriteVtkImpl {
         }
     }
     /// Same as `write_vtk` but overrides the `byte_order` field to write in little endian format.
-    fn write_vtk_le(&mut self, vtk: Vtk) -> Result<&mut Self, Error> {
+    fn write_vtk_le(&mut self, mut vtk: Vtk) -> Result<&mut Self, Error> {
+        // Make sure the written file is consistent
+        vtk.byte_order = ByteOrderTag::LittleEndian;
         self.write_vtk_impl::<LittleEndian>(vtk)
     }
     /// Same as `write_vtk` but overrides the `byte_order` field to write in big endian format.
-    fn write_vtk_be(&mut self, vtk: Vtk) -> Result<&mut Self, Error> {
+    fn write_vtk_be(&mut self, mut vtk: Vtk) -> Result<&mut Self, Error> {
+        // Make sure the written file is consistent
+        vtk.byte_order = ByteOrderTag::BigEndian;
         self.write_vtk_impl::<BigEndian>(vtk)
     }
     /// Same as `write_vtk` but overrides the `byte_order` field to write in native endian format.
+    #[cfg(target_endian = "little")]
     fn write_vtk_ne(&mut self, vtk: Vtk) -> Result<&mut Self, Error> {
-        self.write_vtk_impl::<NativeEndian>(vtk)
+        self.write_vtk_le(vtk)
+    }
+    /// Same as `write_vtk` but overrides the `byte_order` field to write in native endian format.
+    #[cfg(target_endian = "big")]
+    fn write_vtk_ne(&mut self, vtk: Vtk) -> Result<&mut Self, Error> {
+        self.write_vtk_be(vtk)
     }
 }
 
-impl WriteVtk for Vec<u8> {}
+impl<W: std::fmt::Write> WriteVtk for AsciiWriter<W> {}
+impl<W: std::io::Write> WriteVtk for BinaryWriter<W> {}
 impl WriteVtk for String {}
+impl WriteVtk for Vec<u8> {}
