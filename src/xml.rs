@@ -1634,9 +1634,9 @@ impl Coordinates {
     /// Construct `Coordinates` from `model::Coordinates`.
     pub fn from_model_coords(coords: model::Coordinates, bo: model::ByteOrder) -> Self {
         Coordinates([
-            DataArray::from_scalar_array(coords.x, bo),
-            DataArray::from_scalar_array(coords.y, bo),
-            DataArray::from_scalar_array(coords.z, bo),
+            DataArray::from_io_buffer(coords.x, bo),
+            DataArray::from_io_buffer(coords.y, bo),
+            DataArray::from_io_buffer(coords.z, bo),
         ])
     }
 
@@ -1648,28 +1648,11 @@ impl Coordinates {
         appended: Option<&AppendedData>,
         bo: model::ByteOrder,
     ) -> std::result::Result<model::Coordinates, ValidationError> {
-        use model::ScalarArray;
         let Coordinates([x, y, z]) = self;
-        let x = x.into_field_array(nx, appended, bo)?;
-        let y = y.into_field_array(ny, appended, bo)?;
-        let z = z.into_field_array(nz, appended, bo)?;
-        Ok(model::Coordinates {
-            x: ScalarArray {
-                name: x.name,
-                data: x.data,
-                elem: (),
-            },
-            y: ScalarArray {
-                name: y.name,
-                data: y.data,
-                elem: (),
-            },
-            z: ScalarArray {
-                name: z.name,
-                data: z.data,
-                elem: (),
-            },
-        })
+        let x = x.into_io_buffer(nx, appended, bo)?;
+        let y = y.into_io_buffer(ny, appended, bo)?;
+        let z = z.into_io_buffer(nz, appended, bo)?;
+        Ok(model::Coordinates { x, y, z })
     }
 }
 
@@ -1739,13 +1722,6 @@ impl DataArray {
             name: field.name,
             num_comp: field.elem,
             ..DataArray::from_io_buffer(field.data, bo)
-        }
-    }
-    /// Construct a binary `DataArray` from a given `model::FieldArray`.
-    pub fn from_scalar_array(array: model::ScalarArray, bo: model::ByteOrder) -> Self {
-        DataArray {
-            name: array.name,
-            ..DataArray::from_io_buffer(array.data, bo)
         }
     }
     /// Construct a binary `DataArray` from a given [`model::IOBuffer`].
@@ -3295,9 +3271,9 @@ mod tests {
                 data: DataSet::inline(PieceData::RectilinearGrid {
                     extent: Extent::Ranges([0..=3, 0..=1, 0..=1]),
                     coords: Coordinates {
-                        x: ScalarArray::default().with_data(vec![-3.0, -1.0, 1.0, 3.0]),
-                        y: ScalarArray::default().with_data(vec![0.0, 1.0]),
-                        z: ScalarArray::default().with_data(vec![-1.0, 1.0]),
+                        x: vec![-3.0, -1.0, 1.0, 3.0].into(),
+                        y: vec![0.0, 1.0].into(),
+                        z: vec![-1.0, 1.0].into(),
                     },
                     data: Attributes {
                         point: Vec::new(),

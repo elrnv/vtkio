@@ -1,30 +1,29 @@
 # vtkio
 
-A parser and writer for the Visualization Toolkit (VTK) [legacy file
-format](https://www.vtk.org/wp-content/uploads/2015/04/file-formats.pdf).
+A parser and writer for the Visualization Toolkit (VTK) [file
+formats](https://lorensen.github.io/VTKExamples/site/VTKFileFormats/).
 
 [![On crates.io](https://img.shields.io/crates/v/vtkio.svg)](https://crates.io/crates/vtkio)
 [![On docs.rs](https://docs.rs/vtkio/badge.svg)](https://docs.rs/vtkio/)
 [![Build status](https://travis-ci.org/elrnv/vtkio.svg?branch=master)](https://travis-ci.org/elrnv/vtkio)
 
-This is meant to be a feature complete parser of the legacy VTK file format. However, I have only
-used this parser for tetrahedral and triangle meshes, and I am still lacking real world tests. Pull
-requests welcome.
+This is meant to be a feature complete parser of Legacy and XML VTK file formats. Both serial and
+parallel XML file formats are supported.
 
-This parser is written using [nom](https://github.com/Geal/nom).
+The Legacy format parser is written using [nom](https://crates.io/crates/nom).
+XML VTK files are import and exported with [`quick-xml`](https://crates.io/crates/quick-xml) and [`serde`](https://crates.io/crates/serde) crates.
 
 # Examples
 
-There are many sample files can be found in the `assets` directory. For the following example, we
-will load a VTK file named `tet.vtk`, modify it and write it back in ASCII VTK format.
+Many sample files can be found in the `assets` directory. For the following example, we
+will load a VTK file named `tet.vtk`, modify it and write it back in Legacy ASCII format.
 
 ```rust
-extern crate vtkio;
 use vtkio::model::*; // import model definition of a VTK file
 use vtkio::{import, export_ascii};
 fn main() {
     use std::path::PathBuf;
-    let file_path = PathBuf::from("tet.vtk");
+    let file_path = PathBuf::from("assets/tet.vtk");
     
     let mut vtk_file = import(&file_path)
         .expect(&format!("Failed to load file: {:?}", file_path));
@@ -36,12 +35,10 @@ fn main() {
 }
 ```
 
-# Notes
+# Changes
 
-If you are working with binary files produced by [ParaView](https://www.paraview.org/), it is likely
-that they will be written in big endian format regardless of your platform. To load binary files in a
-specific endianness, use the `import_le` and `import_be` functions for little and big endian files
-respectively.
+The previous version of the crate (v0.3) supports only Legacy VTK formats. For a list of changes
+introduced in the new version of `vtkio` (v0.4) see the [CHANGELOG](CHANGELOG.md).
 
 # License
 

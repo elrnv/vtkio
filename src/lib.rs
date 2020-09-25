@@ -1,3 +1,33 @@
+//! # `vtkio`
+//!
+//! Import and export library for Visualization Toolkit (VTK)
+//! [files](https://lorensen.github.io/VTKExamples/site/VTKFileFormats/).
+//!
+//! Legacy `.vtk` files as well as modern XML formats are supported.
+//! Both "serial" and "parallel" XML files are supported with facilities for lazily loading.
+//!
+//! # Examples
+//!
+//! Many sample files can be found in the `assets` directory. For the following example, we
+//! will load a VTK file named `tet.vtk`, modify it and write it back in Legacy ASCII format.
+//!
+//! ```no_run
+//! use vtkio::model::*; // import model definition of a VTK file
+//! use vtkio::{import, export_ascii};
+//! fn main() {
+//!     use std::path::PathBuf;
+//!     let file_path = PathBuf::from("assets/tet.vtk");
+//!
+//!     let mut vtk_file = import(&file_path)
+//!         .expect(&format!("Failed to load file: {:?}", file_path));
+//!
+//!     vtk_file.version = Version::new((4,2)); // arbitrary change
+//!
+//!     export_ascii(vtk_file, &file_path)
+//!         .expect(&format!("Failed to save file: {:?}", file_path));
+//! }
+//! ```
+//!
 #[macro_use]
 extern crate nom;
 
@@ -12,6 +42,8 @@ pub mod xml;
 use std::fs::File;
 use std::io;
 use std::path::Path;
+
+pub use model::IOBuffer;
 
 /// Error type for Import/Export operations.
 #[derive(Debug)]
@@ -205,7 +237,7 @@ pub fn import_be(file_path: impl AsRef<Path>) -> Result<model::Vtk, Error> {
     import_vtk(file_path.as_ref(), parser::parse_be)
 }
 
-/// Export given vtk data to the specified file in BINARY format.
+/// Export given [`Vtk`] file to the specified file in binary format.
 ///
 /// Endianness is determined by the `byte_order` field of the [`Vtk`] type.
 ///
@@ -241,6 +273,34 @@ pub fn export(data: model::Vtk, file_path: impl AsRef<Path>) -> Result<(), Error
 
     let mut file = File::create(file_path.as_ref())?;
     file.write_all(Vec::<u8>::new().write_vtk(data)?.as_slice())?;
+    Ok(())
+}
+
+/// Export the given `Vtk` file to the specified file in little endian binary format.
+///
+/// This function is used as [`export`] but overrides endiannes.
+///
+/// [`export`]: fn.export.html
+pub fn export_le(data: model::Vtk, file_path: impl AsRef<Path>) -> Result<(), Error> {
+    use crate::io::Write;
+    use crate::writer::WriteVtk;
+
+    let mut file = File::create(file_path.as_ref())?;
+    file.write_all(Vec::<u8>::new().write_vtk_le(data)?.as_slice())?;
+    Ok(())
+}
+
+/// Export the given `Vtk` file to the specified file in big endian binary format.
+///
+/// This function is used as [`export`] but overrides endiannes.
+///
+/// [`export`]: fn.export.html
+pub fn export_be(data: model::Vtk, file_path: impl AsRef<Path>) -> Result<(), Error> {
+    use crate::io::Write;
+    use crate::writer::WriteVtk;
+
+    let mut file = File::create(file_path.as_ref())?;
+    file.write_all(Vec::<u8>::new().write_vtk_be(data)?.as_slice())?;
     Ok(())
 }
 

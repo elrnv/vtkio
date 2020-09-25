@@ -129,7 +129,7 @@ impl<BO: ByteOrder> VtkParser<BO> {
     }
 
     #[allow(unused_variables)]
-    fn coordinates(input: &[u8], axis: Axis, ft: FileType) -> IResult<&[u8], ScalarArray> {
+    fn coordinates(input: &[u8], axis: Axis, ft: FileType) -> IResult<&[u8], IOBuffer> {
         let tag = match axis {
             Axis::X => "X_COORDINATES",
             Axis::Y => "Y_COORDINATES",
@@ -145,7 +145,7 @@ impl<BO: ByteOrder> VtkParser<BO> {
                            (dt) ),
                                 ScalarType::F32 => call!( parse_data_buffer::<f32, BO>, n as usize, ft ) |
                                 ScalarType::F64 => call!( parse_data_buffer::<f64, BO>, n as usize, ft ) )
-                >> (vec.into())
+                >> (vec)
         )
     }
 
