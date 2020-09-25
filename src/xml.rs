@@ -2948,6 +2948,12 @@ pub(crate) fn import(file_path: impl AsRef<Path>) -> Result<VTKFile> {
     Ok(de::from_reader(std::io::BufReader::new(f))?)
 }
 
+/// Export an XML VTK file to the specified path.
+pub(crate) fn export(file_path: impl AsRef<Path>, vtk: &VTKFile) -> Result<()> {
+    let f = std::fs::File::create(file_path)?;
+    Ok(se::to_writer(std::io::BufWriter::new(f), &vtk)?)
+}
+
 impl std::fmt::Display for VTKFile {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", se::to_string(self).map_err(|_| std::fmt::Error)?)

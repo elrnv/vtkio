@@ -12,7 +12,7 @@ This means that an additional pass is required to convert the XML type into the 
 `model::Vtk` type used for vtkio, which unifies legacy and xml I/O and facilitates the lazy loading
 of parallel XML formats. Performance sensitive applications may chose to work with the `xml::VTKFile`
 type directly, however the `model::Vtk` API is much more comprehensive and easier to work with.
-Notably, `xml::VTKFile` stores loaded data buffers as unecoded and potentially compressed strings
+Notably, `xml::VTKFile` stores loaded data buffers as unencoded and potentially compressed strings
 and byte arrays, whereas `model::Vtk` stores the decoded uncompressed data ready for processing.
 
 In order to facilitate import and export for both legacy and xml formats, the underlying VTK data
@@ -24,13 +24,11 @@ in version 0.4, particularly in the `model` module:
   `IOBuffer`s.
 
 - a `byte_order` field was added to the `Vtk` model to facilitate automatic determination byte order
-  on import and export. This means that `import` and `export` functions will automaticall encode
-  data in the byte order provided in that field. Byte order can still be overridden with
-  `import_{le,be}` and `export_{le,be}` or by using the lower level APIs like `parse_le` and
-  `parse_be` for importing as well as the byte order specific functions in the `WriteVtk` trait for
-  exporting.
+  on import and export. This means that `import` and `export` functions will automatically encode
+  data in the byte order provided in that field. Byte order can still be overridden
+  with `export_{le,be}` or by changing the `byte_order` field in the `Vtk` file directly.
 
-- `Attribute`s have been completely reformulated to distinguish beteween Field attributes which are
+- `Attribute`s have been completely reformulated to distinguish between Field attributes which are
   available only in Legacy VTK formats and the rest.
   The distinction between the "kind" of attribute (ColorScalars, Scalars, Vectors, etc.) is
   offloaded to a separate enum called `ElementType`. Because XML files don't necessarily need a
@@ -91,7 +89,7 @@ in version 0.4, particularly in the `model` module:
   Each `DataSet` can now contain multiple pieces. Each piece can be stored either inline alongside the
   data set (as before) or they can be loaded lazily from other referenced vtk files as described in
   the parallel XML vtk format. Since each loaded piece is itself a DataSet, there are in total 3
-  variants of a `Piece`: `Inline`, `Source` and `Loaded`. `Inline` pieces contain the actua piece
+  variants of a `Piece`: `Inline`, `Source` and `Loaded`. `Inline` pieces contain the actual piece
   data under the `PieceData` type. See the documentation for details.
 
 - An optional `MetaData` type is attached to a data set to store meta information about the pieces
@@ -108,7 +106,7 @@ in version 0.4, particularly in the `model` module:
   the extent of a grid-like structure (i.e. `ImageData`, `StructuredGrid` and `RectilinearGrid`
   data set types) or piece. See the documentation for details.
 
-- The coordinates of the `RectilinearGrid` type were split into a separate struct cotnaining the
+- The coordinates of the `RectilinearGrid` type were split into a separate struct containing the
   individual `x`, `y` and `z` coordinate data arrays.
 
 - Data arrays in the `Vtk` data structure can be stored in 3 different ways, two of which
