@@ -3,7 +3,7 @@ use std::convert::TryFrom;
 use std::fmt;
 use std::ops::RangeInclusive;
 
-use bytemuck::cast_vec;
+use bytemuck::{cast_slice, cast_vec};
 use num_derive::FromPrimitive;
 
 /**
@@ -226,6 +226,13 @@ impl IOBuffer {
         }
     }
 
+    /// Returns the number of bytes occupied by one scalar stored in this array.
+    ///
+    /// In case of a `Bit` array, this returns 1.
+    pub fn scalar_size(&self) -> usize {
+        self.scalar_type().size()
+    }
+
     pub fn len(&self) -> usize {
         match_buf!(self; v => v.len())
     }
@@ -234,15 +241,24 @@ impl IOBuffer {
         self.len() == 0
     }
 
-    pub fn into_bytes(self, bo: ByteOrder) -> Vec<u8> {
+    /// Convert this `IOBuffer` into an array of bytes with a prepended size of the scalar type in
+    /// bytes stored as a 64-bit integer.
+    ///
+    /// This is how VTK data arrays store data in the XML files.
+    pub fn into_bytes_with_size(self, bo: ByteOrder) -> Vec<u8> {
         use byteorder::WriteBytesExt;
         use byteorder::{BE, LE};
         let mut out: Vec<u8> = Vec::new();
+        let elem_size = self.scalar_size() as u64;
+        match bo {
+            ByteOrder::BigEndian => out.write_u64::<BE>(elem_size).unwrap(),
+            ByteOrder::LittleEndian => out.write_u64::<LE>(elem_size).unwrap(),
+        }
 
         match self {
-            IOBuffer::Bit(v) => out = v,
-            IOBuffer::U8(v) => out = v,
-            IOBuffer::I8(v) => out = cast_vec(v),
+            IOBuffer::Bit(mut v) => out.append(&mut v),
+            IOBuffer::U8(mut v) => out.append(&mut v),
+            IOBuffer::I8(v) => out.append(&mut cast_vec(v)),
             IOBuffer::U16(v) => {
                 out.reserve(v.len() * std::mem::size_of::<u16>());
                 match bo {
@@ -336,11 +352,7 @@ impl IOBuffer {
     }
 
     /// Construct an `IOBuffer` from a `Vec` of bytes and a corresponding scalar type.
-    pub fn from_bytes(
-        bytes: Vec<u8>,
-        scalar_type: ScalarType,
-        bo: ByteOrder,
-    ) -> Result<Self, Error> {
+    pub fn from_bytes(bytes: &[u8], scalar_type: ScalarType, bo: ByteOrder) -> Result<Self, Error> {
         match scalar_type {
             ScalarType::Bit => Ok(IOBuffer::u8_from_bytes(bytes)),
             ScalarType::I8 => Ok(IOBuffer::i8_from_bytes(bytes)),
@@ -356,46 +368,109 @@ impl IOBuffer {
         }
     }
 
+    pub fn from_byte_vec(
+        bytes: Vec<u8>,
+        scalar_type: ScalarType,
+        bo: ByteOrder,
+    ) -> Result<Self, Error> {
+        match scalar_type {
+            ScalarType::Bit => Ok(IOBuffer::u8_from_byte_vec(bytes)),
+            ScalarType::I8 => Ok(IOBuffer::i8_from_byte_vec(bytes)),
+            ScalarType::U8 => Ok(IOBuffer::u8_from_byte_vec(bytes)),
+            ScalarType::I16 => IOBuffer::i16_from_byte_vec(bytes, bo),
+            ScalarType::U16 => IOBuffer::u16_from_byte_vec(bytes, bo),
+            ScalarType::I32 => IOBuffer::i32_from_byte_vec(bytes, bo),
+            ScalarType::U32 => IOBuffer::u32_from_byte_vec(bytes, bo),
+            ScalarType::I64 => IOBuffer::i64_from_byte_vec(bytes, bo),
+            ScalarType::U64 => IOBuffer::u64_from_byte_vec(bytes, bo),
+            ScalarType::F32 => IOBuffer::f32_from_byte_vec(bytes, bo),
+            ScalarType::F64 => IOBuffer::f64_from_byte_vec(bytes, bo),
+        }
+    }
+
+    /// Construct an `IOBuffer` with `u8` elements from the given `slice` of bytes.
+    pub fn u8_from_bytes(bytes: &[u8]) -> Self {
+        // Nothing to do here
+        IOBuffer::U8(bytes.to_vec())
+    }
+    /// Construct an `IOBuffer` with `i8` elements from the given `slice` of bytes.
+    pub fn i8_from_bytes(bytes: &[u8]) -> Self {
+        IOBuffer::I8(cast_slice(bytes).to_vec())
+    }
+
+    /// Construct an `IOBuffer` with `u16` elements from the given `slice` of bytes.
+    pub fn u16_from_bytes(bytes: &[u8], bo: ByteOrder) -> Result<Self, Error> {
+        impl_bytes_constructor!(bytes, bo, read_u16_into, u16, U16)
+    }
+    /// Construct an `IOBuffer` with `i16` elements from the given `slice` of bytes.
+    pub fn i16_from_bytes(bytes: &[u8], bo: ByteOrder) -> Result<Self, Error> {
+        impl_bytes_constructor!(bytes, bo, read_i16_into, i16, I16)
+    }
+    /// Construct an `IOBuffer` with `u32` elements from the given `slice` of bytes.
+    pub fn u32_from_bytes(bytes: &[u8], bo: ByteOrder) -> Result<Self, Error> {
+        impl_bytes_constructor!(bytes, bo, read_u32_into, u32, U32)
+    }
+    /// Construct an `IOBuffer` with `i32` elements from the given `slice` of bytes.
+    pub fn i32_from_bytes(bytes: &[u8], bo: ByteOrder) -> Result<Self, Error> {
+        impl_bytes_constructor!(bytes, bo, read_i32_into, i32, I32)
+    }
+    /// Construct an `IOBuffer` with `u64` elements from the given `slice` of bytes.
+    pub fn u64_from_bytes(bytes: &[u8], bo: ByteOrder) -> Result<Self, Error> {
+        impl_bytes_constructor!(bytes, bo, read_u64_into, u64, U64)
+    }
+    /// Construct an `IOBuffer` with `i64` elements from the given `slice` of bytes.
+    pub fn i64_from_bytes(bytes: &[u8], bo: ByteOrder) -> Result<Self, Error> {
+        impl_bytes_constructor!(bytes, bo, read_i64_into, i64, I64)
+    }
+    /// Construct an `IOBuffer` with `f32` elements from the given `slice` of bytes.
+    pub fn f32_from_bytes(bytes: &[u8], bo: ByteOrder) -> Result<Self, Error> {
+        impl_bytes_constructor!(bytes, bo, read_f32_into, f32, F32)
+    }
+    /// Construct an `IOBuffer` with `f64` elements from the given `slice` of bytes.
+    pub fn f64_from_bytes(bytes: &[u8], bo: ByteOrder) -> Result<Self, Error> {
+        impl_bytes_constructor!(bytes, bo, read_f64_into, f64, F64)
+    }
+
     /// Construct an `IOBuffer` with `u8` elements from the given `Vec` of bytes.
-    pub fn u8_from_bytes(bytes: Vec<u8>) -> Self {
+    pub fn u8_from_byte_vec(bytes: Vec<u8>) -> Self {
         // Nothing to do here
         IOBuffer::U8(bytes)
     }
     /// Construct an `IOBuffer` with `i8` elements from the given `Vec` of bytes.
-    pub fn i8_from_bytes(bytes: Vec<u8>) -> Self {
+    pub fn i8_from_byte_vec(bytes: Vec<u8>) -> Self {
         IOBuffer::I8(cast_vec(bytes))
     }
 
     /// Construct an `IOBuffer` with `u16` elements from the given `Vec` of bytes.
-    pub fn u16_from_bytes(bytes: Vec<u8>, bo: ByteOrder) -> Result<Self, Error> {
+    pub fn u16_from_byte_vec(bytes: Vec<u8>, bo: ByteOrder) -> Result<Self, Error> {
         impl_bytes_constructor!(bytes, bo, read_u16_into, u16, U16)
     }
     /// Construct an `IOBuffer` with `i16` elements from the given `Vec` of bytes.
-    pub fn i16_from_bytes(bytes: Vec<u8>, bo: ByteOrder) -> Result<Self, Error> {
+    pub fn i16_from_byte_vec(bytes: Vec<u8>, bo: ByteOrder) -> Result<Self, Error> {
         impl_bytes_constructor!(bytes, bo, read_i16_into, i16, I16)
     }
     /// Construct an `IOBuffer` with `u32` elements from the given `Vec` of bytes.
-    pub fn u32_from_bytes(bytes: Vec<u8>, bo: ByteOrder) -> Result<Self, Error> {
+    pub fn u32_from_byte_vec(bytes: Vec<u8>, bo: ByteOrder) -> Result<Self, Error> {
         impl_bytes_constructor!(bytes, bo, read_u32_into, u32, U32)
     }
     /// Construct an `IOBuffer` with `i32` elements from the given `Vec` of bytes.
-    pub fn i32_from_bytes(bytes: Vec<u8>, bo: ByteOrder) -> Result<Self, Error> {
+    pub fn i32_from_byte_vec(bytes: Vec<u8>, bo: ByteOrder) -> Result<Self, Error> {
         impl_bytes_constructor!(bytes, bo, read_i32_into, i32, I32)
     }
     /// Construct an `IOBuffer` with `u64` elements from the given `Vec` of bytes.
-    pub fn u64_from_bytes(bytes: Vec<u8>, bo: ByteOrder) -> Result<Self, Error> {
+    pub fn u64_from_byte_vec(bytes: Vec<u8>, bo: ByteOrder) -> Result<Self, Error> {
         impl_bytes_constructor!(bytes, bo, read_u64_into, u64, U64)
     }
     /// Construct an `IOBuffer` with `i64` elements from the given `Vec` of bytes.
-    pub fn i64_from_bytes(bytes: Vec<u8>, bo: ByteOrder) -> Result<Self, Error> {
+    pub fn i64_from_byte_vec(bytes: Vec<u8>, bo: ByteOrder) -> Result<Self, Error> {
         impl_bytes_constructor!(bytes, bo, read_i64_into, i64, I64)
     }
     /// Construct an `IOBuffer` with `f32` elements from the given `Vec` of bytes.
-    pub fn f32_from_bytes(bytes: Vec<u8>, bo: ByteOrder) -> Result<Self, Error> {
+    pub fn f32_from_byte_vec(bytes: Vec<u8>, bo: ByteOrder) -> Result<Self, Error> {
         impl_bytes_constructor!(bytes, bo, read_f32_into, f32, F32)
     }
     /// Construct an `IOBuffer` with `f64` elements from the given `Vec` of bytes.
-    pub fn f64_from_bytes(bytes: Vec<u8>, bo: ByteOrder) -> Result<Self, Error> {
+    pub fn f64_from_byte_vec(bytes: Vec<u8>, bo: ByteOrder) -> Result<Self, Error> {
         impl_bytes_constructor!(bytes, bo, read_f64_into, f64, F64)
     }
 
@@ -414,45 +489,112 @@ impl IOBuffer {
     pub fn into_vec<T: Scalar>(self) -> Option<Vec<T>> {
         T::io_buf_into_vec(self)
     }
+
+    /// Cast a vector of integers into a given integer type `T`.
+    ///
+    /// In case of overflow, `None` is returned.
+    pub fn cast_into<T: Scalar>(self) -> Option<Vec<T>> {
+        use IOBuffer::*;
+        match self {
+            Bit(_) => None, // Not supported
+            U8(v) => v.into_iter().map(|x| T::from_u8(x)).collect(),
+            I8(v) => v.into_iter().map(|x| T::from_i8(x)).collect(),
+            U16(v) => v.into_iter().map(|x| T::from_u16(x)).collect(),
+            I16(v) => v.into_iter().map(|x| T::from_i16(x)).collect(),
+            U32(v) => v.into_iter().map(|x| T::from_u32(x)).collect(),
+            I32(v) => v.into_iter().map(|x| T::from_i32(x)).collect(),
+            U64(v) => v.into_iter().map(|x| T::from_u64(x)).collect(),
+            I64(v) => v.into_iter().map(|x| T::from_i64(x)).collect(),
+            F32(v) => v.into_iter().map(|x| T::from_f32(x)).collect(),
+            F64(v) => v.into_iter().map(|x| T::from_f64(x)).collect(),
+        }
+    }
 }
 
-pub trait Scalar
+macro_rules! impl_from_bytes {
+    ($bytes:ident, $bo:ident, $read:ident) => {{
+        use byteorder::ReadBytesExt;
+        let mut reader = std::io::Cursor::new($bytes);
+        Ok(match $bo {
+            ByteOrder::BigEndian => reader
+                .$read::<byteorder::BE>()
+                .map_err(|e| Error::InvalidCast(e))?,
+            ByteOrder::LittleEndian => reader
+                .$read::<byteorder::LE>()
+                .map_err(|e| Error::InvalidCast(e))?,
+        })
+    }};
+}
+
+pub trait Scalar: num_traits::FromPrimitive
 where
     Self: Sized,
 {
     fn io_buf_vec_ref(io_buf: &IOBuffer) -> Option<&Vec<Self>>;
     fn io_buf_into_vec(io_buf: IOBuffer) -> Option<Vec<Self>>;
+    /// Interpret a given slice of bytes as a number of this `ScalarType`.
+    fn from_bytes(bytes: &[u8], byte_order: ByteOrder) -> Result<Self, Error>;
 }
 
 macro_rules! impl_scalar {
-    ($t:ident, $v:ident) => {
-        impl Scalar for $t {
-            fn io_buf_vec_ref(io_buf: &IOBuffer) -> Option<&Vec<Self>> {
-                match io_buf {
-                    IOBuffer::$v(v) => Some(v),
-                    _ => None,
-                }
+    (@iobuf $t:ident, $v:ident) => {
+        fn io_buf_vec_ref(io_buf: &IOBuffer) -> Option<&Vec<Self>> {
+            match io_buf {
+                IOBuffer::$v(v) => Some(v),
+                _ => None,
             }
-            fn io_buf_into_vec(io_buf: IOBuffer) -> Option<Vec<Self>> {
-                match io_buf {
-                    IOBuffer::$v(v) => Some(v),
-                    _ => None,
-                }
+        }
+        fn io_buf_into_vec(io_buf: IOBuffer) -> Option<Vec<Self>> {
+            match io_buf {
+                IOBuffer::$v(v) => Some(v),
+                _ => None,
+            }
+        }
+    };
+    ($t:ident, $v:ident, read_u8) => {
+        impl Scalar for $t {
+            impl_scalar! { @iobuf $t, $v }
+
+            fn from_bytes(bytes: &[u8], _: ByteOrder) -> Result<Self, Error> {
+                use byteorder::ReadBytesExt;
+                std::io::Cursor::new(bytes)
+                    .read_u8()
+                    .map_err(|e| Error::InvalidCast(e))
+            }
+        }
+    };
+    ($t:ident, $v:ident, read_i8) => {
+        impl Scalar for $t {
+            impl_scalar! { @iobuf $t, $v }
+
+            fn from_bytes(bytes: &[u8], _: ByteOrder) -> Result<Self, Error> {
+                use byteorder::ReadBytesExt;
+                std::io::Cursor::new(bytes)
+                    .read_i8()
+                    .map_err(|e| Error::InvalidCast(e))
+            }
+        }
+    };
+    ($t:ident, $v:ident, $read:ident) => {
+        impl Scalar for $t {
+            impl_scalar! { @iobuf $t, $v }
+
+            fn from_bytes(bytes: &[u8], byte_order: ByteOrder) -> Result<Self, Error> {
+                impl_from_bytes!(bytes, byte_order, $read)
             }
         }
     };
 }
-
-impl_scalar!(u8, U8);
-impl_scalar!(i8, I8);
-impl_scalar!(u16, U16);
-impl_scalar!(i16, I16);
-impl_scalar!(u32, U32);
-impl_scalar!(i32, I32);
-impl_scalar!(u64, U64);
-impl_scalar!(i64, I64);
-impl_scalar!(f32, F32);
-impl_scalar!(f64, F64);
+impl_scalar!(u8, U8, read_u8);
+impl_scalar!(i8, I8, read_i8);
+impl_scalar!(u16, U16, read_u16);
+impl_scalar!(i16, I16, read_i16);
+impl_scalar!(u32, U32, read_u32);
+impl_scalar!(i32, I32, read_i32);
+impl_scalar!(u64, U64, read_u64);
+impl_scalar!(i64, I64, read_i64);
+impl_scalar!(f32, F32, read_f32);
+impl_scalar!(f64, F64, read_f64);
 
 impl std::fmt::Display for IOBuffer {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
@@ -910,9 +1052,9 @@ pub enum VertexNumbers {
     },
     XML {
         /// A contiguous array of all of the cells' point lists concatenated together.
-        connectivity: Vec<u32>,
+        connectivity: Vec<u64>,
         /// The offsets into the connectivity array indicating the end of each cell.
-        offsets: Vec<u32>,
+        offsets: Vec<u64>,
     },
 }
 
@@ -950,6 +1092,10 @@ impl VertexNumbers {
     /// Converts `self` into `Legacy` format.
     ///
     /// Returns a number of cells and vertices array pair as in the `Legacy` variant.
+    ///
+    /// # Panic
+    ///
+    /// Panics when the topology representation doesn't fit into 32-bit integer representation.
     pub fn into_legacy(self) -> (u32, Vec<u32>) {
         match self {
             VertexNumbers::Legacy {
@@ -965,20 +1111,21 @@ impl VertexNumbers {
                 let mut vertices = Vec::with_capacity(num_verts + num_cells);
                 let mut i = 0u32;
                 for off in offsets.into_iter() {
+                    let off = u32::try_from(off).unwrap();
                     vertices.push(off - i);
                     while i < off {
-                        vertices.push(connectivity[i as usize]);
+                        vertices.push(u32::try_from(connectivity[i as usize]).unwrap());
                         i += 1;
                     }
                 }
-                (num_cells as u32, vertices)
+                (u32::try_from(num_cells).unwrap(), vertices)
             }
         }
     }
     /// Converts `self` into `XML` format.
     ///
     /// Returns a connectivity and offsets array pair as in the `XML` variant.
-    pub fn into_xml(self) -> (Vec<u32>, Vec<u32>) {
+    pub fn into_xml(self) -> (Vec<u64>, Vec<u64>) {
         match self {
             VertexNumbers::Legacy {
                 num_cells,
@@ -991,13 +1138,14 @@ impl VertexNumbers {
                 let mut n = -1i64;
                 let mut prev_off = 0;
                 for v in vertices {
+                    let v = u64::from(v);
                     if n > 0 {
                         connectivity.push(v);
                         n -= 1;
                     } else {
                         offsets.push(v + prev_off);
                         prev_off += v;
-                        n = v.into();
+                        n = v as i64;
                     }
                 }
                 assert_eq!(connectivity.len(), num_verts - num_cells);
@@ -1096,6 +1244,7 @@ impl PolyDataTopology {
 /// `vtkCell.h` in the vtk SDK.
 #[derive(Copy, Clone, PartialEq, Debug, FromPrimitive)]
 pub enum CellType {
+    // Linear cells
     Vertex = 1,
     PolyVertex = 2,
     Line = 3,
@@ -1110,11 +1259,67 @@ pub enum CellType {
     Hexahedron = 12,
     Wedge = 13,
     Pyramid = 14,
+
+    // Quadratic, isoparametric cells
     QuadraticEdge = 21,
     QuadraticTriangle = 22,
     QuadraticQuad = 23,
     QuadraticTetra = 24,
     QuadraticHexahedron = 25,
+    QuadraticWedge = 26,
+    QuadraticPyramid = 27,
+    BiquadraticQuad = 28,
+    TriquadraticHexahedron = 29,
+    QuadraticLinearQuad = 30,
+    QuadraticLinearWedge = 31,
+    BiquadraticQuadraticWedge = 32,
+    BiquadraticQuadraticHexahedron = 33,
+    BiquadraticTriangle = 34,
+
+    // cubic, isoparametric cell
+    CubicLine = 35,
+
+    // special class of cells formed by convex group of points
+    ConvexPointSet = 41,
+
+    // polyhedron cell (consisting of polygonal faces)
+    Polyhedron = 42,
+
+    // higher order cells in parametric form
+    ParametricCurve = 51,
+    ParametricSurface = 52,
+    ParametricTriSurface = 53,
+    ParametricQuadSurface = 54,
+    ParametricTetraRegion = 55,
+    ParametricHexRegion = 56,
+
+    // higher order cells
+    HigherOrderEdge = 60,
+    HigherOrderTriangle = 61,
+    HigherOrderQuad = 62,
+    HigherOrderPolygon = 63,
+    HigherOrderTetrahedron = 64,
+    HigherOrderWedge = 65,
+    HigherOrderPyramid = 66,
+    HigherOrderHexahedron = 67,
+
+    // arbitrary order lagrange elements (formulated separated from generic higher order cells)
+    LagrangeCurve = 68,
+    LagrangeTriangle = 69,
+    LagrangeQuadrilateral = 70,
+    LagrangeTetrahedron = 71,
+    LagrangeHexahedron = 72,
+    LagrangeWedge = 73,
+    LagrangePyramid = 74,
+
+    // arbitrary order bezier elements (formulated separated from generic higher order cells)
+    BezierCurve = 75,
+    BezierTriangle = 76,
+    BezierQuadrilateral = 77,
+    BezierTetrahedron = 78,
+    BezierHexahedron = 79,
+    BezierWedge = 80,
+    BezierPyramid = 81,
 }
 
 /// Point coordinates on a `RectilinearGrid` corresponding to `x`, `y` and `z` axes.
@@ -1196,15 +1401,15 @@ impl Extent {
     }
 
     /// Compute the total number of points represented by this extent.
-    pub fn num_points(&self) -> u32 {
+    pub fn num_points(&self) -> u64 {
         let [nx, ny, nz] = self.clone().into_dims();
-        nx * ny * nz
+        nx as u64 * ny as u64 * nz as u64
     }
 
     /// Compute the total number of cells represented by this extent.
-    pub fn num_cells(&self) -> u32 {
+    pub fn num_cells(&self) -> u64 {
         let [nx, ny, nz] = self.clone().into_dims();
-        (nx - 1) * (ny - 1) * (nz - 1)
+        (nx as u64 - 1) * (ny as u64 - 1) * (nz as u64 - 1)
     }
 }
 
@@ -1464,6 +1669,28 @@ pub enum ScalarType {
     F32,
     /// Data is interpreted as `f64` (double precision) floats.
     F64,
+}
+
+impl ScalarType {
+    /// Returns the number of bytes of the corresponding scalar type.
+    ///
+    /// In case of a `Bit` array, this returns 1.
+    pub fn size(self) -> usize {
+        use std::mem::size_of;
+        match self {
+            ScalarType::Bit => size_of::<u8>(),
+            ScalarType::I8 => size_of::<i8>(),
+            ScalarType::U8 => size_of::<u8>(),
+            ScalarType::I16 => size_of::<i16>(),
+            ScalarType::U16 => size_of::<u16>(),
+            ScalarType::I32 => size_of::<i32>(),
+            ScalarType::U32 => size_of::<u32>(),
+            ScalarType::I64 => size_of::<i64>(),
+            ScalarType::U64 => size_of::<u64>(),
+            ScalarType::F32 => size_of::<f32>(),
+            ScalarType::F64 => size_of::<f64>(),
+        }
+    }
 }
 
 impl fmt::Display for ScalarType {

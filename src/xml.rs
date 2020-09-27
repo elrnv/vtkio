@@ -12,7 +12,6 @@ mod se;
 
 //use std::io::BufRead;
 //use std::collections::HashMap;
-use bytemuck::allocation::cast_vec;
 use quick_xml::de;
 use std::convert::{TryFrom, TryInto};
 use std::path::Path;
@@ -482,6 +481,10 @@ mod data {
     use serde::ser::{Serialize, Serializer};
     use std::fmt;
 
+    /*
+     * Data in an AppendedData element
+     */
+
     struct RawDataVisitor;
 
     impl<'de> Visitor<'de> for RawDataVisitor {
@@ -494,13 +497,13 @@ mod data {
         fn visit_bytes<E: serde::de::Error>(self, v: &[u8]) -> Result<Self::Value, E> {
             eprintln!("Deserializing as bytes");
             // Skip the first byte which always corresponds to the preceeding underscore
+            if v.is_empty() {
+                return Ok(RawData(Vec::new()));
+            }
+            if v[0] != b'_' {
+                return Err(serde::de::Error::custom("Missing preceeding underscore"));
+            }
             Ok(RawData(v[1..].to_vec()))
-        }
-        fn visit_str<E: serde::de::Error>(self, v: &str) -> Result<Self::Value, E> {
-            eprintln!("Deserializing as str: {}", v);
-            Ok(RawData(base64::decode(v[1..].as_bytes()).map_err(|e| {
-                serde::de::Error::custom(&format!("Failed to decode from base64: {:?}", e))
-            })?))
         }
     }
 
@@ -1422,20 +1425,25 @@ impl Cells {
             .into_iter()
             .map(|x| model::CellType::from_u8(x).ok_or_else(|| ValidationError::InvalidCellType(x)))
             .collect();
+        let types = types?;
 
-        let connectivity: Option<Vec<i32>> =
-            self.connectivity.into_io_buffer(l, appended, bo)?.into();
-        let connectivity = connectivity.ok_or_else(|| ValidationError::InvalidDataFormat)?;
-        let offsets: Option<Vec<i32>> = self.offsets.into_io_buffer(l, appended, bo)?.into();
+        let offsets: Option<Vec<u64>> = self.offsets.into_io_buffer(l, appended, bo)?.cast_into();
         let offsets = offsets.ok_or_else(|| ValidationError::InvalidDataFormat)?;
-        debug_assert!(connectivity.iter().all(|&x| x >= 0));
-        debug_assert!(offsets.iter().all(|&x| x >= 0));
+
+        // Count the total number of vertices we expect in the connectivity array.
+        let num_vertices: usize = offsets.last().map(|&x| x as usize).unwrap_or(0);
+
+        let connectivity: Option<Vec<u64>> = self
+            .connectivity
+            .into_io_buffer(num_vertices, appended, bo)?
+            .cast_into();
+        let connectivity = connectivity.ok_or_else(|| ValidationError::InvalidDataFormat)?;
         Ok(model::Cells {
             cell_verts: model::VertexNumbers::XML {
-                connectivity: cast_vec(connectivity),
-                offsets: cast_vec(offsets),
+                connectivity,
+                offsets,
             },
-            types: types?,
+            types,
         })
     }
 }
@@ -1457,9 +1465,11 @@ impl Topo {
         appended: Option<&AppendedData>,
         bo: model::ByteOrder,
     ) -> std::result::Result<model::VertexNumbers, ValidationError> {
-        let connectivity: Option<Vec<u32>> =
-            self.connectivity.into_io_buffer(l, appended, bo)?.into();
-        let offsets: Option<Vec<u32>> = self.offsets.into_io_buffer(l, appended, bo)?.into();
+        let connectivity: Option<Vec<u64>> = self
+            .connectivity
+            .into_io_buffer(l, appended, bo)?
+            .cast_into();
+        let offsets: Option<Vec<u64>> = self.offsets.into_io_buffer(l, appended, bo)?.cast_into();
         Ok(model::VertexNumbers::XML {
             connectivity: connectivity.ok_or_else(|| ValidationError::InvalidDataFormat)?,
             offsets: offsets.ok_or_else(|| ValidationError::InvalidDataFormat)?,
@@ -1553,7 +1563,6 @@ impl AttributeData {
         for attrib in attribs {
             match attrib {
                 model::Attribute::DataArray(data) => {
-                    let num_comp = data.num_comp();
                     // Only pick the first found attribute as the active one.
                     match data.elem {
                         model::ElementType::Scalars { .. } => {
@@ -1583,13 +1592,9 @@ impl AttributeData {
                         }
                         _ => {}
                     }
-                    attribute_data.data_array.push(DataArray {
-                        scalar_type: data.scalar_type().into(),
-                        name: data.name,
-                        num_comp: u32::try_from(num_comp).unwrap(),
-                        data: Data::Data(base64::encode(data.data.into_bytes(byte_order))),
-                        ..Default::default()
-                    });
+                    attribute_data
+                        .data_array
+                        .push(DataArray::from_model_data_array(data, byte_order));
                 }
                 // Field attributes are not supported, they are simply ignored.
                 _ => {}
@@ -1696,7 +1701,7 @@ pub struct DataArray {
     #[serde(rename = "RangeMax")]
     pub range_max: Option<f64>,
     #[serde(rename = "$value", default)]
-    pub data: Data,
+    pub data: Vec<Data>,
 }
 
 // For dummy arrays useful in debugging.
@@ -1710,12 +1715,21 @@ impl Default for DataArray {
             num_comp: 1,
             range_min: None,
             range_max: None,
-            data: Data::default(),
+            data: vec![Data::default()],
         }
     }
 }
 
 impl DataArray {
+    /// Construct a binary `DataArray` from a given `model::DataArray`.
+    pub fn from_model_data_array(data: model::DataArray, bo: model::ByteOrder) -> Self {
+        let num_comp = u32::try_from(data.num_comp()).unwrap();
+        DataArray {
+            name: data.name,
+            num_comp,
+            ..DataArray::from_io_buffer(data.data, bo)
+        }
+    }
     /// Construct a binary `DataArray` from a given `model::FieldArray`.
     pub fn from_field_array(field: model::FieldArray, bo: model::ByteOrder) -> Self {
         DataArray {
@@ -1728,7 +1742,7 @@ impl DataArray {
     pub fn from_io_buffer(buf: model::IOBuffer, bo: model::ByteOrder) -> Self {
         DataArray {
             scalar_type: buf.scalar_type().into(),
-            data: Data::Data(base64::encode(buf.into_bytes(bo))),
+            data: vec![Data::Data(base64::encode(buf.into_bytes_with_size(bo)))],
             ..Default::default()
         }
     }
@@ -1757,9 +1771,27 @@ impl DataArray {
         let data = match format {
             DataArrayFormat::Appended => {
                 if let Some(appended) = appended {
-                    let start: usize = offset.unwrap_or(0).try_into().unwrap();
-                    let bytes = appended.data.0[start..l * scalar_type.size()].to_vec();
-                    let buf = IOBuffer::from_bytes(bytes, scalar_type.into(), byte_order)?;
+                    let mut start: usize = offset.unwrap_or(0).try_into().unwrap();
+                    let buf = match appended.encoding {
+                        Encoding::Raw => {
+                            // Skip the first 64 bits which gives the size of each component in bytes
+                            start += 8;
+                            let bytes = &appended.data.0[start..start + l * scalar_type.size()];
+                            IOBuffer::from_bytes(bytes, scalar_type.into(), byte_order)?
+                        }
+                        Encoding::Base64 => {
+                            let num_target_bytes = l * scalar_type.size();
+                            // Add one 64-bit integer that specifies the size of each component in bytes.
+                            let num_target_bits = (num_target_bytes) * 8 + 64;
+                            // Compute how many base64 chars we need to decode l elements.
+                            let num_source_bytes =
+                                num_target_bits / 6 + if num_target_bits % 6 == 0 { 0 } else { 1 };
+                            let bytes = &appended.data.0[start..start + num_source_bytes];
+                            let bytes = base64::decode(bytes)?;
+                            // Skip the first 64 bits which gives the size of each component in bytes
+                            IOBuffer::from_bytes(&bytes[8..], scalar_type.into(), byte_order)?
+                        }
+                    };
                     if buf.len() != l {
                         return Err(ValidationError::DataArraySizeMismatch {
                             expected: l,
@@ -1772,8 +1804,9 @@ impl DataArray {
                 }
             }
             DataArrayFormat::Binary => {
-                let bytes = base64::decode(data.into_string())?;
-                let buf = IOBuffer::from_bytes(bytes, scalar_type.into(), byte_order)?;
+                // First byte gives the bytes
+                let bytes = base64::decode(data[0].clone().into_string())?;
+                let buf = IOBuffer::from_bytes(&bytes[8..], scalar_type.into(), byte_order)?;
                 if buf.len() != l {
                     return Err(ValidationError::DataArraySizeMismatch {
                         expected: l,
@@ -1783,7 +1816,7 @@ impl DataArray {
                 buf
             }
             DataArrayFormat::Ascii => {
-                let string = data.into_string();
+                let string = data[0].clone().into_string();
                 let slice = string.as_str();
                 fn parse_num_seq<E, T>(s: &str) -> std::result::Result<Vec<T>, ValidationError>
                 where
@@ -1993,9 +2026,6 @@ pub struct AppendedData {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct RawData(Vec<u8>);
-//    Base64(String),
-//    Binary(Vec<u8>),
-//}
 
 impl Default for RawData {
     fn default() -> RawData {
@@ -2410,7 +2440,7 @@ impl TryFrom<VTKFile> for model::Vtk {
                             }
                             Ok(model::Piece::Inline(Box::new(model::PieceData::PolyData {
                                 points: points.unwrap().data.into_io_buffer(
-                                    number_of_points,
+                                    number_of_points * 3,
                                     appended_data,
                                     byte_order,
                                 )?,
@@ -2492,7 +2522,7 @@ impl TryFrom<VTKFile> for model::Vtk {
                                 model::PieceData::StructuredGrid {
                                     extent,
                                     points: points.unwrap().data.into_io_buffer(
-                                        number_of_points,
+                                        number_of_points * 3,
                                         appended_data,
                                         byte_order,
                                     )?,
@@ -2538,7 +2568,7 @@ impl TryFrom<VTKFile> for model::Vtk {
                                 Ok(model::Piece::Inline(Box::new(
                                     model::PieceData::UnstructuredGrid {
                                         points: points.unwrap().data.into_io_buffer(
-                                            number_of_points,
+                                            number_of_points * 3,
                                             appended_data,
                                             byte_order,
                                         )?,
@@ -3112,13 +3142,59 @@ mod tests {
     }
 
     #[test]
-    fn rectilinear_grid_raw_binary() -> Result<()> {
+    fn rectilinear_grid_appended_base64() -> Result<()> {
+        let vtk = import("assets/RectilinearGridAppendedBase64.vtr")?;
+        eprintln!("{:#?}", &vtk);
+        let as_bytes = se::to_bytes(&vtk)?;
+        eprintln!("{:?}", &as_bytes);
+        let vtk_roundtrip = de::from_reader(as_bytes.as_slice()).unwrap();
+        assert_eq!(vtk, vtk_roundtrip);
+        Ok(())
+    }
+
+    #[test]
+    fn rectilinear_grid_appended_raw_binary() -> Result<()> {
         let vtk = import("assets/RectilinearGridRawBinary.vtr")?;
         //eprintln!("{:#?}", &vtk);
         let as_bytes = se::to_bytes(&vtk)?;
         eprintln!("{:?}", &as_bytes);
         let vtk_roundtrip = de::from_reader(as_bytes.as_slice()).unwrap();
         assert_eq!(vtk, vtk_roundtrip);
+        Ok(())
+    }
+
+    #[test]
+    fn rectilinear_grid_inline_binary() -> Result<()> {
+        let vtk = import("assets/RectilinearGridInlineBinary.vtr")?;
+        //eprintln!("{:#?}", &vtk);
+        let as_bytes = se::to_bytes(&vtk)?;
+        eprintln!("{:?}", &as_bytes);
+        let vtk_roundtrip = de::from_reader(as_bytes.as_slice()).unwrap();
+        assert_eq!(vtk, vtk_roundtrip);
+        Ok(())
+    }
+
+    #[test]
+    fn single_point() -> Result<()> {
+        let inline_raw = import("assets/point.vtp")?;
+        let vtk_inline_raw: model::Vtk = inline_raw.try_into()?;
+        let vtk_ascii: model::Vtk = import("assets/point_ascii.vtp")?.try_into()?;
+        assert_eq!(&vtk_inline_raw, &vtk_ascii);
+        Ok(())
+    }
+
+    // Ensure that all binary formats produce identical (lossless) instances.
+    #[test]
+    fn rectilinear_grid_binary_all() -> Result<()> {
+        let inline_raw = import("assets/RectilinearGridInlineBinary.vtr")?;
+        let vtk_inline_raw: model::Vtk = inline_raw.try_into()?;
+        let vtk_app_raw: model::Vtk = import("assets/RectilinearGridRawBinary.vtr")?.try_into()?;
+        let vtk_app_base64: model::Vtk =
+            import("assets/RectilinearGridAppendedBase64.vtr")?.try_into()?;
+        //let vtk = import("assets/RectilinearGridCompressed.vtr")?;
+        //let vtk = import("assets/RectilinearGrid.pvtr")?;
+        assert_eq!(&vtk_inline_raw, &vtk_app_raw);
+        assert_eq!(&vtk_inline_raw, &vtk_app_base64);
         Ok(())
     }
 
@@ -3163,6 +3239,34 @@ mod tests {
         eprintln!("{}", &as_str);
         let vtk_roundtrip = de::from_str(&as_str).unwrap();
         assert_eq!(vtk, vtk_roundtrip);
+        Ok(())
+    }
+
+    #[test]
+    fn unstructured_cube_ascii() -> Result<()> {
+        let vtk = import("assets/cube_ascii.vtu")?;
+        eprintln!("{:#?}", &vtk);
+        let as_str = se::to_string(&vtk).unwrap();
+        eprintln!("{}", &as_str);
+        let vtk_roundtrip = de::from_str(&as_str).unwrap();
+        assert_eq!(vtk, vtk_roundtrip);
+        Ok(())
+    }
+
+    #[test]
+    fn unstructured_cube_inline_binary() -> Result<()> {
+        let vtk = import("assets/cube_inline_binary.vtu")?;
+        eprintln!("{:#?}", &vtk);
+        let as_str = se::to_string(&vtk).unwrap();
+        eprintln!("{}", &as_str);
+        let vtk_roundtrip = de::from_str(&as_str).unwrap();
+        assert_eq!(vtk, vtk_roundtrip);
+        let vtk_ascii = import("assets/cube_ascii.vtu")?;
+        eprintln!("{:#?}", &vtk_ascii);
+        // Verify that the ascii cube is the same as the inline binary cube.
+        let vtk_ascii = model::Vtk::try_from(vtk_ascii.clone())?;
+        let vtk_binary = model::Vtk::try_from(vtk.clone())?;
+        assert_eq!(&vtk_ascii, &vtk_binary);
         Ok(())
     }
 
@@ -3266,7 +3370,6 @@ mod tests {
     fn xml_to_vtk_conversion() -> Result<()> {
         use model::*;
         let xml = import("assets/RectilinearGrid_ascii.vtr")?;
-        std::dbg!(&xml);
         let vtk: Vtk = xml.clone().try_into()?;
         assert_eq!(
             vtk,
@@ -3302,7 +3405,6 @@ mod tests {
     fn vtk_xml_conversion_round_trip() -> Result<()> {
         use model::*;
         let xml = import("assets/RectilinearGrid_ascii.vtr")?;
-        std::dbg!(&xml);
         let vtk: Vtk = xml.clone().try_into()?;
         let xml_round_trip: VTKFile = vtk.clone().try_into()?;
         let vtk_round_trip: Vtk = xml_round_trip.clone().try_into()?;
