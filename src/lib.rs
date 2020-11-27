@@ -34,6 +34,7 @@ extern crate nom;
 #[macro_use]
 pub mod basic;
 
+#[macro_use]
 pub mod model;
 pub mod parser;
 pub mod writer;
@@ -260,7 +261,7 @@ pub fn import_be(file_path: impl AsRef<Path>) -> Result<model::Vtk, Error> {
 ///     version: Version::new((4,1)),
 ///     byte_order: ByteOrder::BigEndian,
 ///     title: String::from("Tetrahedron"),
-///     data: DataSet::inline(PieceData::UnstructuredGrid {
+///     data: DataSet::inline(UnstructuredGridPiece {
 ///         points: vec![0.0f32, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, -1.0, 0.0, 1.0, 0.0].into(),
 ///         cells: Cells {
 ///             cell_verts: VertexNumbers::Legacy {
@@ -338,7 +339,7 @@ pub fn export_be(data: model::Vtk, file_path: impl AsRef<Path>) -> Result<(), Er
 ///     version: Version::new((4,1)),
 ///     title: String::from("Tetrahedron"),
 ///     byte_order: ByteOrder::BigEndian,
-///     data: DataSet::inline(PieceData::UnstructuredGrid {
+///     data: DataSet::inline(UnstructuredGridPiece {
 ///         points: vec![0.0f32, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, -1.0, 0.0, 1.0, 0.0].into(),
 ///         cells: Cells {
 ///             cell_verts: VertexNumbers::Legacy {

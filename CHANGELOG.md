@@ -86,11 +86,12 @@ in version 0.4, particularly in the `model` module:
   ```
 
 - `DataSet` has been decomposed into `Piece`s to be compatible with the XML vtk format.
+  Use the `load_piece_data` function to retrieve data corresponding to each piece.
   Each `DataSet` can now contain multiple pieces. Each piece can be stored either inline alongside the
   data set (as before) or they can be loaded lazily from other referenced vtk files as described in
   the parallel XML vtk format. Since each loaded piece is itself a DataSet, there are in total 3
   variants of a `Piece`: `Inline`, `Source` and `Loaded`. `Inline` pieces contain the actual piece
-  data under the `PieceData` type. See the documentation for details.
+  data. See the documentation for details.
 
 - An optional `MetaData` type is attached to a data set to store meta information about the pieces
   referenced within. This is only useful when the pieces are not loaded eagerly with the data set.

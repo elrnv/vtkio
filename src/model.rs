@@ -1,3 +1,14 @@
+//!
+//! VTK Data Model
+//!
+//! This module defines the main data structures used to represent a VTK file.
+//! The structure of the main [`Vtk`] struct is general enough to represent both Legacy as well as
+//! serial and parallel XML file formats. See the [official VTK documentation] for details.
+//!
+//! [`Vtk`]: struct.Vtk.html
+//! [official VTK documentation]: https://lorensen.github.io/VTKExamples/site/VTKFileFormats/
+//!
+
 use std::any::TypeId;
 use std::convert::TryFrom;
 use std::fmt;
@@ -5,10 +16,7 @@ use std::ops::RangeInclusive;
 
 use bytemuck::{cast_slice, cast_vec};
 use num_derive::FromPrimitive;
-
-/**
- * VTK Data Model
- */
+use num_traits::ToPrimitive;
 
 /// Error type describing failure modes of various model processing tasks and validation.
 #[derive(Debug)]
@@ -16,6 +24,7 @@ pub enum Error {
     InvalidCast(std::io::Error),
     FailedToLoadPieceData,
     MissingPieceData,
+    PieceDataMismatch,
     IO(std::io::Error),
     VTKIO(Box<crate::Error>),
 }
@@ -25,6 +34,7 @@ impl std::fmt::Display for Error {
         match self {
             Error::InvalidCast(source) => write!(f, "Invalid cast error: {:?}", source),
             Error::MissingPieceData => write!(f, "Missing piece data"),
+            Error::PieceDataMismatch => write!(f, "Piece type doesn't match data set type"),
             Error::IO(source) => write!(f, "IO error: {:?}", source),
             Error::VTKIO(source) => write!(f, "VTK IO error: {:?}", source),
             Error::FailedToLoadPieceData => write!(f, "Failed to load piece data"),
@@ -132,6 +142,37 @@ impl Default for IOBuffer {
     }
 }
 
+impl IOBuffer {
+    /// Construct an `IOBuffer` from a given generic `Vec<T>`.
+    ///
+    /// This function will deduce the type `T`, and if `T` is none of the supported types, will
+    /// convert it to `f64`.
+    ///
+    /// # Panics
+    ///
+    /// This function will panic if `T` cannot be converted to an `f64`.
+    pub fn new<T: ToPrimitive + 'static>(v: Vec<T>) -> Self {
+        use std::mem::transmute;
+        // SAFETY: in each case we definitively determine the type of the incoming Vec, so the
+        // transmute is a noop.
+        unsafe {
+            match TypeId::of::<T>() {
+                x if x == TypeId::of::<u8>() => IOBuffer::U8(transmute(v)),
+                x if x == TypeId::of::<i8>() => IOBuffer::I8(transmute(v)),
+                x if x == TypeId::of::<u16>() => IOBuffer::U16(transmute(v)),
+                x if x == TypeId::of::<i16>() => IOBuffer::I16(transmute(v)),
+                x if x == TypeId::of::<u32>() => IOBuffer::U32(transmute(v)),
+                x if x == TypeId::of::<i32>() => IOBuffer::I32(transmute(v)),
+                x if x == TypeId::of::<u64>() => IOBuffer::U64(transmute(v)),
+                x if x == TypeId::of::<i64>() => IOBuffer::I64(transmute(v)),
+                x if x == TypeId::of::<f32>() => IOBuffer::F32(transmute(v)),
+                x if x == TypeId::of::<f64>() => IOBuffer::F64(transmute(v)),
+                _ => v.into_iter().map(|x| x.to_f64().unwrap()).collect(),
+            }
+        }
+    }
+}
+
 macro_rules! impl_io_buffer_convert {
     ($t:ident <=> $v:ident) => {
         impl From<Vec<$t>> for IOBuffer {
@@ -175,7 +216,7 @@ impl_io_buffer_convert!(f64 <=> F64);
 /// Evaluate the expression `$e` given a `Vec` `$v`.
 #[macro_export]
 macro_rules! match_buf {
-    ($buf:expr; $v:pat => $e:expr) => {
+    ($buf:expr, $v:pat => $e:expr) => {
         match $buf {
             IOBuffer::Bit($v) => $e,
             IOBuffer::U8($v) => $e,
@@ -234,7 +275,7 @@ impl IOBuffer {
     }
 
     pub fn len(&self) -> usize {
-        match_buf!(self; v => v.len())
+        match_buf!(self, v => v.len())
     }
 
     pub fn is_empty(&self) -> bool {
@@ -598,7 +639,7 @@ impl_scalar!(f64, F64, read_f64);
 
 impl std::fmt::Display for IOBuffer {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        match_buf!(self; v => {
+        match_buf!(self, v => {
             let mut iter = v.iter();
             if let Some(next) = iter.next() {
                 write!(f, "{}", next)?;
@@ -670,17 +711,17 @@ impl From<IOBuffer> for DataArray {
 }
 
 impl<E> DataArrayBase<E> {
-    /// Get the scalar data type stored by the underlying buffer.
+    /// Returns the scalar data type stored by the underlying buffer.
     pub fn scalar_type(&self) -> ScalarType {
         self.data.scalar_type()
     }
-    /// Get the number of elements stored by this data array.
+    /// Returns the number of elements stored by this data array.
     ///
     /// This is equal to `self.len() / self.num_comp()`.
     pub fn num_elem(&self) -> usize {
         self.data.len()
     }
-    /// Get the raw length of the underlying buffer.
+    /// Returns the raw length of the underlying buffer.
     ///
     /// This is equal to `self.num_elem() * self.num_comp()`.
     pub fn len(&self) -> usize {
@@ -691,18 +732,40 @@ impl<E> DataArrayBase<E> {
         self.data.is_empty()
     }
 
-    /// Set the data of this named array to the given buffer.
+    /// Assigns data from a `Vec` to this attribute.
+    ///
+    /// If `T` is not one of the types supported by `IOBuffer`, then the given vector will be
+    /// converted into a `Vec<f64>` before being assigned. This makes `with_vec` more forgiving
+    /// than `with_data`.
+    ///
+    /// Use this only when the type `T` is not known ahead of time, otherwise use `with_data`.
     ///
     /// If the data was previously already set, it will be overwritten with the one given in this
     /// function.
-    pub fn with_data(mut self, data: impl Into<IOBuffer>) -> Self {
-        self.data = data.into();
+    pub fn with_vec<T: ToPrimitive + 'static>(self, data: Vec<T>) -> Self {
+        self.with_buf(IOBuffer::new(data))
+    }
+
+    /// Assigns data from an `IOBuffer` to this attribute.
+    ///
+    /// If the data was previously already set, it will be overwritten with the one given in this
+    /// function.
+    pub fn with_buf(mut self, data: IOBuffer) -> Self {
+        self.data = data;
         self
+    }
+
+    /// Sets the data of this data array to the given buffer.
+    ///
+    /// If the data was previously already set, it will be overwritten with the one given in this
+    /// function.
+    pub fn with_data(self, new_data: impl Into<IOBuffer>) -> Self {
+        self.with_buf(new_data.into())
     }
 }
 
 impl DataArray {
-    /// Construct an empty scalars array with the given lookup table.
+    /// Constructs an empty scalars array with the given lookup table.
     pub fn scalars_with_lookup(
         name: impl Into<String>,
         num_comp: u32,
@@ -717,7 +780,7 @@ impl DataArray {
             ..Default::default()
         }
     }
-    /// Construct an empty scalars array.
+    /// Constructs an empty scalars array.
     pub fn scalars(name: impl Into<String>, num_comp: u32) -> Self {
         DataArray {
             name: name.into(),
@@ -728,7 +791,7 @@ impl DataArray {
             ..Default::default()
         }
     }
-    /// Construct an empty color scalars array.
+    /// Constructs an empty color scalars array.
     pub fn color_scalars(name: impl Into<String>, num_comp: u32) -> Self {
         DataArray {
             name: name.into(),
@@ -736,7 +799,7 @@ impl DataArray {
             ..Default::default()
         }
     }
-    /// Construct an empty lookup table.
+    /// Constructs an empty lookup table.
     pub fn lookup_table(name: impl Into<String>) -> Self {
         DataArray {
             name: name.into(),
@@ -744,7 +807,7 @@ impl DataArray {
             ..Default::default()
         }
     }
-    /// Construct an empty vectors array.
+    /// Constructs an empty vectors array.
     pub fn vectors(name: impl Into<String>) -> Self {
         DataArray {
             name: name.into(),
@@ -752,7 +815,7 @@ impl DataArray {
             ..Default::default()
         }
     }
-    /// Construct an empty normals array.
+    /// Constructs an empty normals array.
     pub fn normals(name: impl Into<String>) -> Self {
         DataArray {
             name: name.into(),
@@ -760,7 +823,7 @@ impl DataArray {
             ..Default::default()
         }
     }
-    /// Construct an empty tensors array.
+    /// Constructs an empty tensors array.
     pub fn tensors(name: impl Into<String>) -> Self {
         DataArray {
             name: name.into(),
@@ -768,7 +831,7 @@ impl DataArray {
             ..Default::default()
         }
     }
-    /// Construct an empty texture coordinates array with the given dimensionality.
+    /// Constructs an empty texture coordinates array with the given dimensionality.
     pub fn tcoords(name: impl Into<String>, num_comp: u32) -> Self {
         DataArray {
             name: name.into(),
@@ -776,7 +839,7 @@ impl DataArray {
             ..Default::default()
         }
     }
-    /// Construct an empty generic array with the given number of components.
+    /// Constructs an empty generic array with the given number of components.
     pub fn new(name: impl Into<String>, num_comp: u32) -> Self {
         DataArray {
             name: name.into(),
@@ -785,7 +848,7 @@ impl DataArray {
         }
     }
 
-    /// Get the number of components per element.
+    /// Returns the number of components per element.
     ///
     /// This is equal to `self.len() / self.num_elem()`.
     pub fn num_comp(&self) -> usize {
@@ -794,7 +857,7 @@ impl DataArray {
 }
 
 impl FieldArray {
-    /// Construct an empty field array with the given number of components.
+    /// Constructs an empty field array with the given number of components.
     pub fn new(name: impl Into<String>, num_comp: u32) -> FieldArray {
         FieldArray {
             name: name.into(),
@@ -803,7 +866,7 @@ impl FieldArray {
         }
     }
 
-    /// Get the number of components per element.
+    /// Returns the number of components per element.
     ///
     /// This is equal to `self.len() / self.num_elem()`.
     pub fn num_comp(&self) -> usize {
@@ -882,7 +945,7 @@ impl Default for ElementType {
 }
 
 impl ElementType {
-    /// Get the number of components for this element as a 32 bit integer.
+    /// Returns the number of components for this element as a 32 bit integer.
     pub fn num_comp(&self) -> u32 {
         match self {
             ElementType::ColorScalars(n) => *n,
@@ -923,7 +986,7 @@ pub enum Attribute {
 }
 
 impl Attribute {
-    /// Construct a new scalars attribute with an associated lookup table.
+    /// Constructs a new scalars attribute with an associated lookup table.
     pub fn scalars_with_lookup(
         name: impl Into<String>,
         num_comp: u32,
@@ -931,39 +994,39 @@ impl Attribute {
     ) -> Attribute {
         Attribute::DataArray(DataArray::scalars_with_lookup(name, num_comp, lookup_table))
     }
-    /// Construct a new scalars attribute.
+    /// Constructs a new scalars attribute.
     pub fn scalars(name: impl Into<String>, num_comp: u32) -> Attribute {
         Attribute::DataArray(DataArray::scalars(name, num_comp))
     }
-    /// Construct a new color scalars attribute.
+    /// Constructs a new color scalars attribute.
     pub fn color_scalars(name: impl Into<String>, num_comp: u32) -> Attribute {
         Attribute::DataArray(DataArray::color_scalars(name, num_comp))
     }
-    /// Construct a new lookup table attribute.
+    /// Constructs a new lookup table attribute.
     pub fn lookup_table(name: impl Into<String>) -> Attribute {
         Attribute::DataArray(DataArray::lookup_table(name))
     }
-    /// Construct a new vectors attribute.
+    /// Constructs a new vectors attribute.
     pub fn vectors(name: impl Into<String>) -> Attribute {
         Attribute::DataArray(DataArray::vectors(name))
     }
-    /// Construct a new normals attribute.
+    /// Constructs a new normals attribute.
     pub fn normals(name: impl Into<String>) -> Attribute {
         Attribute::DataArray(DataArray::normals(name))
     }
-    /// Construct a new tensors attribute.
+    /// Constructs a new tensors attribute.
     pub fn tensors(name: impl Into<String>) -> Attribute {
         Attribute::DataArray(DataArray::tensors(name))
     }
-    /// Construct a new texture coordinates attribute with the given dimensionality.
+    /// Constructs a new texture coordinates attribute with the given dimensionality.
     pub fn tcoords(name: impl Into<String>, num_comp: u32) -> Attribute {
         Attribute::DataArray(DataArray::tcoords(name, num_comp))
     }
-    /// Construct a new generic attribute with the given number of components.
+    /// Constructs a new generic attribute with the given number of components.
     pub fn generic(name: impl Into<String>, num_comp: u32) -> Attribute {
         Attribute::DataArray(DataArray::new(name, num_comp))
     }
-    /// Construct a new field attribute with the given name.
+    /// Constructs a new field attribute with the given name.
     pub fn field(name: impl Into<String>) -> Attribute {
         Attribute::Field {
             name: name.into(),
@@ -971,7 +1034,7 @@ impl Attribute {
         }
     }
 
-    /// Set the data of this attribute to the given buffer.
+    /// Sets the data of this attribute to the given buffer.
     ///
     /// If this attribute is a `Field`, then nothing is changed.
     ///
@@ -984,9 +1047,36 @@ impl Attribute {
         self
     }
 
-    /// Add a field array to the field attribute.
+    /// Adds a vector of `FieldArray`s to this field attribute.
     ///
-    /// If this attribute is not a `Field`, nothing is changed.
+    /// If this attribute is not a `Field`, then nothing is changed.
+    ///
+    /// # Examples
+    ///
+    /// If it is more convenient to construct all field arrays individually,
+    /// one can collect them all at once as follows
+    ///
+    /// ```
+    /// use vtkio::model::{Attribute, FieldArray};
+    ///
+    /// let field_arrays = vec![
+    ///     FieldArray::new("A", 1),
+    ///     FieldArray::new("B", 2),
+    ///     FieldArray::new("C", 5),
+    /// ];
+    ///
+    /// let field = Attribute::field("Data").with_field_data(field_arrays);
+    /// ```
+    pub fn with_field_data(mut self, arrays: impl IntoIterator<Item = FieldArray>) -> Self {
+        if let Attribute::Field { data_array, .. } = &mut self {
+            data_array.extend(arrays.into_iter());
+        }
+        self
+    }
+
+    /// Adds a field array to the field attribute.
+    ///
+    /// If this attribute is not a `Field`, then nothing is changed.
     ///
     /// # Examples
     ///
@@ -1189,43 +1279,63 @@ impl Cells {
     }
 }
 
+/// Topology information for a `PolyData` type data set.
+///
+/// This enum represents all potential types of cells that can be represented by a `PolyData` data
+/// set.
 #[derive(Clone, PartialEq, Debug)]
 pub enum PolyDataTopology {
-    /// Polygon data toplogy structure for vertices.
+    /// Vertex topology. This is called `Verts` in XML.
     Vertices(VertexNumbers),
-    /// Polygon data toplogy structure for lines.
+    /// Poly lines topology. This is called `Lines` in XML.
     Lines(VertexNumbers),
-    /// Polygon data toplogy structure for polygons.
+    /// Polygon topology.  This is called `Polys` in XML.
     Polygons(VertexNumbers),
-    /// Polygon data toplogy structure for triangle strips.
+    /// Triangle strip topology. This is called `Strips` in XML.
     TriangleStrips(VertexNumbers),
 }
 
 impl PolyDataTopology {
+    /// Gives the total number of vertices represented by this topology.
+    ///
+    /// Non-zero only for the `Vertices` variant.
     pub fn num_verts(&self) -> usize {
         match self {
             PolyDataTopology::Vertices(vert_nums) => vert_nums.num_cells(),
             _ => 0,
         }
     }
+    /// Gives the total number of lines represented by this topology.
+    ///
+    /// Non-zero only for the `Lines` variant.
     pub fn num_lines(&self) -> usize {
         match self {
             PolyDataTopology::Lines(vert_nums) => vert_nums.num_cells(),
             _ => 0,
         }
     }
+    /// Gives the total number of polygons represented by this topology.
+    ///
+    /// Non-zero only for the `Polygons` variant.
     pub fn num_polys(&self) -> usize {
         match self {
             PolyDataTopology::Polygons(vert_nums) => vert_nums.num_cells(),
             _ => 0,
         }
     }
+    /// Gives the total number of triangle strips represented by this topology.
+    ///
+    /// Non-zero only for the `TriangleStrips` variant.
     pub fn num_strips(&self) -> usize {
         match self {
             PolyDataTopology::TriangleStrips(vert_nums) => vert_nums.num_cells(),
             _ => 0,
         }
     }
+    /// Gives the total number of cells represented by this topology regardless of type.
+    ///
+    /// Here cell refers to a vertex, line, polygon or a triangle strip depending on the variant
+    /// used.
     pub fn num_cells(&self) -> usize {
         match self {
             PolyDataTopology::Vertices(vert_nums)
@@ -1236,12 +1346,11 @@ impl PolyDataTopology {
     }
 }
 
-/// This enum describes the types of Cells representable by vtk files.
+/// This enum describes the types of Cells representable by VTK files.
 ///
 /// These are explicitly written in `UnstructuredGrid`s and some are referred to in `PolyData`
 /// datasets.  For more details on each of these types see, the [VTK file
-/// formats](https://www.vtk.org/wp-content/uploads/2015/04/file-formats.pdf) documentation or
-/// `vtkCell.h` in the vtk SDK.
+/// formats](https://lorensen.github.io/VTKExamples/site/VTKFileFormats/) documentation.
 #[derive(Copy, Clone, PartialEq, Debug, FromPrimitive)]
 pub enum CellType {
     // Linear cells
@@ -1276,16 +1385,16 @@ pub enum CellType {
     BiquadraticQuadraticHexahedron = 33,
     BiquadraticTriangle = 34,
 
-    // cubic, isoparametric cell
+    // Cubic, isoparametric cell
     CubicLine = 35,
 
-    // special class of cells formed by convex group of points
+    // Special class of cells formed by convex group of points
     ConvexPointSet = 41,
 
-    // polyhedron cell (consisting of polygonal faces)
+    // Polyhedron cell (consisting of polygonal faces)
     Polyhedron = 42,
 
-    // higher order cells in parametric form
+    // Higher order cells in parametric form
     ParametricCurve = 51,
     ParametricSurface = 52,
     ParametricTriSurface = 53,
@@ -1293,7 +1402,7 @@ pub enum CellType {
     ParametricTetraRegion = 55,
     ParametricHexRegion = 56,
 
-    // higher order cells
+    // Higher order cells
     HigherOrderEdge = 60,
     HigherOrderTriangle = 61,
     HigherOrderQuad = 62,
@@ -1303,7 +1412,7 @@ pub enum CellType {
     HigherOrderPyramid = 66,
     HigherOrderHexahedron = 67,
 
-    // arbitrary order lagrange elements (formulated separated from generic higher order cells)
+    // Arbitrary order lagrange elements (formulated separated from generic higher order cells)
     LagrangeCurve = 68,
     LagrangeTriangle = 69,
     LagrangeQuadrilateral = 70,
@@ -1312,7 +1421,7 @@ pub enum CellType {
     LagrangeWedge = 73,
     LagrangePyramid = 74,
 
-    // arbitrary order bezier elements (formulated separated from generic higher order cells)
+    // Arbitrary order bezier elements (formulated separated from generic higher order cells)
     BezierCurve = 75,
     BezierTriangle = 76,
     BezierQuadrilateral = 77,
@@ -1426,7 +1535,7 @@ impl Default for Extent {
 /// corresponding piece data set, or as inline piece data as described in serial XML formats or
 /// legacy formats.
 #[derive(Clone, Debug, PartialEq)]
-pub enum Piece {
+pub enum Piece<P> {
     /// A reference to a piece as a file path.
     ///
     /// This variant is used with "Parallel" XML formats, which distribute their data among a
@@ -1439,76 +1548,106 @@ pub enum Piece {
     /// Piece data stored inline with the rest of the host file.
     ///
     /// This corresponds to `Piece` elements stored in serial XML formats.
-    Inline(Box<PieceData>),
+    Inline(Box<P>),
 }
 
-impl Piece {
+pub trait PieceData: Sized {
+    fn from_data_set(data_set: DataSet) -> Result<Self, Error>;
+}
+
+impl<P: PieceData> Piece<P> {
     /// Converts `self` to loaded piece data.
     ///
-    /// If the piece is not yet loaded, this funciton will load it and return the reference to the
+    /// If the piece is not yet loaded, this function will load it and return the reference to the
     /// resulting data.
-    pub fn load_into_piece_data(mut self) -> Result<PieceData, Error> {
+    pub fn load_piece_data(mut self) -> Result<P, Error> {
         match self {
             Piece::Source(path, _) => {
                 let piece_vtk = crate::import(&path)?;
                 let piece = Box::new(piece_vtk.data);
                 self = Piece::Loaded(piece);
-                self.load_into_piece_data()
+                self.load_piece_data()
             }
-            Piece::Loaded(data_set) => match *data_set {
-                DataSet::ImageData { pieces, .. }
-                | DataSet::StructuredGrid { pieces, .. }
-                | DataSet::RectilinearGrid { pieces, .. }
-                | DataSet::UnstructuredGrid { pieces, .. }
-                | DataSet::PolyData { pieces, .. } => pieces
-                    .into_iter()
-                    .next()
-                    .ok_or(Error::MissingPieceData)?
-                    .load_into_piece_data(),
-                _ => return Err(Error::MissingPieceData),
-            },
+            Piece::Loaded(data_set) => P::from_data_set(*data_set),
             Piece::Inline(piece_data) => Ok(*piece_data),
         }
     }
 }
 
-/// Storage for piece data.
+/// ImageData piece data.
 #[derive(Clone, Debug, PartialEq)]
-pub enum PieceData {
-    ImageData {
-        extent: Extent,
-        data: Attributes,
-    },
-    RectilinearGrid {
-        extent: Extent,
-        coords: Coordinates,
-        data: Attributes,
-    },
-    StructuredGrid {
-        extent: Extent,
-        points: IOBuffer,
-        data: Attributes,
-    },
-    /// PolyData piece data.
-    ///
-    /// For XML formats, to get the corresponding `NumberOfVerts`, `NumberOfLines` etc. use the
-    /// `num_cells` function of `PolyDataTopology`, which will give the appropriate number
-    /// depending on the type of geometry. To get `NumberOfPoints`, simply take the length of
-    /// `points`.
-    PolyData {
-        /// A contiguous array of coordinates (x,y,z) representing the points in the mesh.
-        points: IOBuffer,
-        topo: Vec<PolyDataTopology>,
-        data: Attributes,
-    },
-    /// UnstructuredGrid piece data.
-    UnstructuredGrid {
-        /// A contiguous array of coordinates (x,y,z) representing the points in the mesh.
-        points: IOBuffer,
-        cells: Cells,
-        data: Attributes,
-    },
+pub struct ImageDataPiece {
+    pub extent: Extent,
+    pub data: Attributes,
 }
+
+/// RectilinearGrid piece data.
+#[derive(Clone, Debug, PartialEq)]
+pub struct RectilinearGridPiece {
+    pub extent: Extent,
+    pub coords: Coordinates,
+    pub data: Attributes,
+}
+
+/// StructuredGrid piece data.
+#[derive(Clone, Debug, PartialEq)]
+pub struct StructuredGridPiece {
+    pub extent: Extent,
+    pub points: IOBuffer,
+    pub data: Attributes,
+}
+
+/// PolyData piece data.
+///
+/// For XML formats, to get the corresponding `NumberOfVerts`, `NumberOfLines` etc. use the
+/// `num_cells` function of `PolyDataTopology`, which will give the appropriate number
+/// depending on the type of geometry. To get `NumberOfPoints`, simply take the length of
+/// `points`.
+#[derive(Clone, Debug, PartialEq)]
+pub struct PolyDataPiece {
+    /// A contiguous array of coordinates (x,y,z) representing the points in the mesh.
+    pub points: IOBuffer,
+    pub topo: Vec<PolyDataTopology>,
+    pub data: Attributes,
+}
+
+/// UnstructuredGrid piece data.
+#[derive(Clone, Debug, PartialEq)]
+pub struct UnstructuredGridPiece {
+    /// A contiguous array of coordinates (x,y,z) representing the points in the mesh.
+    pub points: IOBuffer,
+    pub cells: Cells,
+    pub data: Attributes,
+}
+
+macro_rules! impl_piece_data {
+    ($data_set:ident, $piece:ident) => {
+        impl TryFrom<DataSet> for $piece {
+            type Error = Error;
+            fn try_from(data_set: DataSet) -> Result<Self, Error> {
+                Self::from_data_set(data_set)
+            }
+        }
+        impl PieceData for $piece {
+            fn from_data_set(data_set: DataSet) -> Result<Self, Error> {
+                match data_set {
+                    DataSet::$data_set { pieces, .. } => pieces
+                        .into_iter()
+                        .next()
+                        .ok_or(Error::MissingPieceData)?
+                        .load_piece_data(),
+                    _ => Err(Error::PieceDataMismatch),
+                }
+            }
+        }
+    };
+}
+
+impl_piece_data!(ImageData, ImageDataPiece);
+impl_piece_data!(RectilinearGrid, RectilinearGridPiece);
+impl_piece_data!(StructuredGrid, StructuredGridPiece);
+impl_piece_data!(PolyData, PolyDataPiece);
+impl_piece_data!(UnstructuredGrid, UnstructuredGridPiece);
 
 /// Dataset described in the file.
 ///
@@ -1527,27 +1666,27 @@ pub enum DataSet {
         origin: [f32; 3],
         spacing: [f32; 3],
         meta: Option<Box<MetaData>>,
-        pieces: Vec<Piece>,
+        pieces: Vec<Piece<ImageDataPiece>>,
     },
     StructuredGrid {
         extent: Extent,
         meta: Option<Box<MetaData>>,
-        pieces: Vec<Piece>,
+        pieces: Vec<Piece<StructuredGridPiece>>,
     },
     RectilinearGrid {
         extent: Extent,
         meta: Option<Box<MetaData>>,
-        pieces: Vec<Piece>,
+        pieces: Vec<Piece<RectilinearGridPiece>>,
     },
     /// 3D Unstructured grid. Note that `cells.num_cells` must equal `cell_types.len()`.
     UnstructuredGrid {
         meta: Option<Box<MetaData>>,
-        pieces: Vec<Piece>,
+        pieces: Vec<Piece<UnstructuredGridPiece>>,
     },
     /// 3D Polygon data.
     PolyData {
         meta: Option<Box<MetaData>>,
-        pieces: Vec<Piece>,
+        pieces: Vec<Piece<PolyDataPiece>>,
     },
     /// Same as one field attribute.
     Field {
@@ -1561,33 +1700,53 @@ impl DataSet {
     ///
     /// When creating an `ImageData` set, the default origin is `[0.0; 3]` and spacing `[1.0; 3]` is
     /// used.
-    pub fn inline(p: PieceData) -> DataSet {
-        match &p {
-            PieceData::ImageData { extent, .. } => DataSet::ImageData {
-                extent: extent.clone(),
-                origin: [0.0; 3],
-                spacing: [1.0; 3],
-                meta: None,
-                pieces: vec![Piece::Inline(Box::new(p))],
-            },
-            PieceData::StructuredGrid { extent, .. } => DataSet::StructuredGrid {
-                extent: extent.clone(),
-                meta: None,
-                pieces: vec![Piece::Inline(Box::new(p))],
-            },
-            PieceData::RectilinearGrid { extent, .. } => DataSet::RectilinearGrid {
-                extent: extent.clone(),
-                meta: None,
-                pieces: vec![Piece::Inline(Box::new(p))],
-            },
-            PieceData::UnstructuredGrid { .. } => DataSet::UnstructuredGrid {
-                meta: None,
-                pieces: vec![Piece::Inline(Box::new(p))],
-            },
-            PieceData::PolyData { .. } => DataSet::PolyData {
-                meta: None,
-                pieces: vec![Piece::Inline(Box::new(p))],
-            },
+    pub fn inline(p: impl Into<DataSet>) -> DataSet {
+        p.into()
+    }
+}
+
+impl From<ImageDataPiece> for DataSet {
+    fn from(p: ImageDataPiece) -> DataSet {
+        DataSet::ImageData {
+            extent: p.extent.clone(),
+            origin: [0.0; 3],
+            spacing: [1.0; 3],
+            meta: None,
+            pieces: vec![Piece::Inline(Box::new(p))],
+        }
+    }
+}
+impl From<StructuredGridPiece> for DataSet {
+    fn from(p: StructuredGridPiece) -> DataSet {
+        DataSet::StructuredGrid {
+            extent: p.extent.clone(),
+            meta: None,
+            pieces: vec![Piece::Inline(Box::new(p))],
+        }
+    }
+}
+impl From<RectilinearGridPiece> for DataSet {
+    fn from(p: RectilinearGridPiece) -> DataSet {
+        DataSet::RectilinearGrid {
+            extent: p.extent.clone(),
+            meta: None,
+            pieces: vec![Piece::Inline(Box::new(p))],
+        }
+    }
+}
+impl From<UnstructuredGridPiece> for DataSet {
+    fn from(p: UnstructuredGridPiece) -> DataSet {
+        DataSet::UnstructuredGrid {
+            meta: None,
+            pieces: vec![Piece::Inline(Box::new(p))],
+        }
+    }
+}
+impl From<PolyDataPiece> for DataSet {
+    fn from(p: PolyDataPiece) -> DataSet {
+        DataSet::PolyData {
+            meta: None,
+            pieces: vec![Piece::Inline(Box::new(p))],
         }
     }
 }

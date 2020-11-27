@@ -56,7 +56,7 @@ fn para_tet_test() -> Result {
         version: Version::new((4, 2)),
         byte_order: ByteOrder::BigEndian,
         title: String::from("vtk output"),
-        data: DataSet::inline(PieceData::UnstructuredGrid {
+        data: DataSet::inline(UnstructuredGridPiece {
             points: vec![
                 0.0f64, 0.0, 0.0, 0.0, 0.0, -1.0, 0.0, 1.0, 0.0, 1.0, 0.0, 0.0,
             ]
@@ -93,7 +93,7 @@ fn para_tets_test() -> Result {
         version: Version::new((4, 2)),
         byte_order: ByteOrder::BigEndian,
         title: String::from("vtk output"),
-        data: DataSet::inline(PieceData::UnstructuredGrid {
+        data: DataSet::inline(UnstructuredGridPiece {
             points: vec![
                 13.2, 135.4, -7.7, 13.7, 134.2, -8.7, 12.2, 134.7, -8.6, 12.7, 133.6, -7.0, 3.6,
                 119.4, -0.3, -2.3, 137.0, -2.5, 5.4, 119.7, 0.0, -2.7, 135.9, -1.2, -2.9, 137.5,
@@ -165,7 +165,7 @@ fn tet_test() -> Result {
         version: Version::new((4, 2)),
         byte_order: ByteOrder::BigEndian,
         title: String::from("Tetrahedron example"),
-        data: DataSet::inline(PieceData::UnstructuredGrid {
+        data: DataSet::inline(UnstructuredGridPiece {
             points: vec![
                 0.0f32, 0.0, 0.0, 0.0, 0.0, -1.0, 0.0, 1.0, 0.0, 1.0, 0.0, 0.0,
             ]
@@ -197,7 +197,7 @@ fn tri_test() -> Result {
         version: Version::new((2, 0)),
         byte_order: ByteOrder::BigEndian,
         title: String::from("Triangle example"),
-        data: DataSet::inline(PieceData::PolyData {
+        data: DataSet::inline(PolyDataPiece {
             points: vec![0.0f32, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, -1.0].into(),
             topo: vec![PolyDataTopology::Polygons(VertexNumbers::Legacy {
                 num_cells: 1,
@@ -219,7 +219,7 @@ fn tri_attrib_ascii_test() -> Result {
         version: Version::new((2, 0)),
         byte_order: ByteOrder::BigEndian,
         title: String::from("Triangle example"),
-        data: DataSet::inline(PieceData::PolyData {
+        data: DataSet::inline(PolyDataPiece {
             points: vec![0.0f32, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, -1.0].into(),
             topo: vec![PolyDataTopology::Polygons(VertexNumbers::Legacy {
                 num_cells: 1,
@@ -261,7 +261,7 @@ fn tri_attrib_binary_test() -> Result {
         version: Version::new((4, 2)),
         byte_order: ByteOrder::BigEndian,
         title: String::from("Triangle example"),
-        data: DataSet::inline(PieceData::PolyData {
+        data: DataSet::inline(PolyDataPiece {
             points: vec![0.0f32, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, -1.0].into(),
             topo: vec![PolyDataTopology::Polygons(VertexNumbers::Legacy {
                 num_cells: 1,
@@ -303,7 +303,7 @@ fn square_test() -> Result {
         version: Version::new((2, 0)),
         byte_order: ByteOrder::BigEndian,
         title: String::from("Square example"),
-        data: DataSet::inline(PieceData::PolyData {
+        data: DataSet::inline(PolyDataPiece {
             points: vec![
                 0.0f32, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, -1.0, 0.0, 0.0, -1.0,
             ]
@@ -330,7 +330,7 @@ fn cube_test() -> Result {
         version: Version::new((4, 2)),
         byte_order: ByteOrder::BigEndian,
         title: String::from("Cube example"),
-        data: DataSet::inline(PieceData::UnstructuredGrid {
+        data: DataSet::inline(UnstructuredGridPiece {
             points: vec![
                 0.0, 0.0, 0.0, 0.0, 0.0, -1.0, 0.0, 1.0, 0.0, 0.0, 1.0, -1.0, 1.0, 0.0, 0.0, 1.0,
                 0.0, -1.0, 1.0, 1.0, 0.0, 1.0, 1.0, -1.0f32,
@@ -361,7 +361,7 @@ fn structured_grid_test() -> Result {
         version: Version::new((3, 0)),
         byte_order: ByteOrder::BigEndian,
         title: String::from("vtk output"),
-        data: DataSet::inline(PieceData::StructuredGrid {
+        data: DataSet::inline(StructuredGridPiece {
             extent: Extent::Dims([2, 2, 2]),
             points: vec![
                 0_f32, 0.2, 0., 0.1, 0.184843, 0., 0., 0.25, 0., 0.1, 0.234843, 0., 0., 0.2,
@@ -417,7 +417,7 @@ fn rectilinear_grid_test() -> Result {
         version: Version::new((3, 0)),
         byte_order: ByteOrder::BigEndian,
         title: String::from("vtk output"),
-        data: DataSet::inline(PieceData::RectilinearGrid {
+        data: DataSet::inline(RectilinearGridPiece {
             extent: Extent::Dims([3, 4, 1]),
             coords: Coordinates {
                 x: vec![0_f32, 2.0, 4.0].into(),
@@ -561,7 +561,7 @@ fn cube_complex_test() -> Result {
         version: Version::new((2, 0)),
         byte_order: ByteOrder::BigEndian,
         title: String::from("Cube example"),
-        data: DataSet::inline(PieceData::PolyData {
+        data: DataSet::inline(PolyDataPiece {
             points: points.clone(),
             topo: topo.clone(),
             data: attributes.clone(),
@@ -614,7 +614,7 @@ fn cube_complex_test() -> Result {
     ];
 
     let out2 = Vtk {
-        data: DataSet::inline(PieceData::PolyData {
+        data: DataSet::inline(PolyDataPiece {
             points: points.clone(),
             topo: topo.clone(),
             data: attributes.clone(),
@@ -641,7 +641,7 @@ fn unstructured_grid_complex_test() -> Result {
         version: Version::new((2, 0)),
         byte_order: ByteOrder::BigEndian,
         title: String::from("Unstructured Grid Example"),
-        data: DataSet::inline(PieceData::UnstructuredGrid {
+        data: DataSet::inline(UnstructuredGridPiece {
             points: vec![
                 0.0f32, 0., 0., 1., 0., 0., 2., 0., 0., 0., 1., 0., 1., 1., 0., 2., 1., 0., 0., 0.,
                 1., 1., 0., 1., 2., 0., 1., 0., 1., 1., 1., 1., 1., 2., 1., 1., 0., 1., 2., 1., 1.,
@@ -728,7 +728,7 @@ fn volume_complex_test() -> Result {
         version: Version::new((2, 0)),
         byte_order: ByteOrder::BigEndian,
         title: String::from("Volume example"),
-        data: DataSet::inline(PieceData::ImageData {
+        data: DataSet::inline(ImageDataPiece {
             extent: Extent::Dims([3, 4, 6]),
             data: Attributes {
                 point: vec![Attribute::DataArray(DataArray {
@@ -770,7 +770,7 @@ fn dodecagon_test() -> Result {
         version: Version::new((4, 2)),
         byte_order: ByteOrder::BigEndian,
         title: String::from("Dodecagon example"),
-        data: DataSet::inline(PieceData::UnstructuredGrid {
+        data: DataSet::inline(UnstructuredGridPiece {
             points: vec![
                 0.5f32,
                 0.,
@@ -836,7 +836,7 @@ fn dodecagon_with_meta_test() {
         version: Version::new((4, 2)),
         byte_order: ByteOrder::BigEndian,
         title: String::from("Dodecagon example"),
-        data: DataSet::inline(PieceData::UnstructuredGrid {
+        data: DataSet::inline(UnstructuredGridPiece {
             points: vec![
                 0.5f32,
                 0.,
@@ -897,7 +897,7 @@ fn binary_dodecagon_test() {
         version: Version::new((4, 2)),
         byte_order: ByteOrder::BigEndian,
         title: String::from("Dodecagon example"),
-        data: DataSet::inline(PieceData::UnstructuredGrid {
+        data: DataSet::inline(UnstructuredGridPiece {
             points: vec![
                 0.5f32,
                 0.,
