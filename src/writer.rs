@@ -377,9 +377,7 @@ mod write_vtk_impl {
                         .into_iter()
                         .next()
                         .ok_or(DataSetError::MissingPieceData)?;
-                    if let Ok(PieceData::PolyData { points, topo, data }) =
-                        piece.load_into_piece_data()
-                    {
+                    if let Ok(PolyDataPiece { points, topo, data }) = piece.load_piece_data() {
                         writeln!(self, "DATASET POLYDATA").map_err(|_| {
                             Error::DataSet(DataSetError::PolyData(DataSetPart::Tags))
                         })?;
@@ -456,11 +454,11 @@ mod write_vtk_impl {
                         .into_iter()
                         .next()
                         .ok_or(DataSetError::MissingPieceData)?;
-                    if let Ok(PieceData::UnstructuredGrid {
+                    if let Ok(UnstructuredGridPiece {
                         points,
                         cells,
                         data,
-                    }) = piece.load_into_piece_data()
+                    }) = piece.load_piece_data()
                     {
                         writeln!(self, "DATASET UNSTRUCTURED_GRID").map_err(|_| {
                             Error::DataSet(DataSetError::UnstructuredGrid(DataSetPart::Tags))
@@ -521,7 +519,7 @@ mod write_vtk_impl {
                         .into_iter()
                         .next()
                         .ok_or(DataSetError::MissingPieceData)?;
-                    if let Ok(PieceData::ImageData { data, .. }) = piece.load_into_piece_data() {
+                    if let Ok(ImageDataPiece { data, .. }) = piece.load_piece_data() {
                         writeln!(self, "DATASET STRUCTURED_POINTS").map_err(|_| {
                             Error::DataSet(DataSetError::StructuredPoints(DataSetPart::Tags))
                         })?;
@@ -569,9 +567,7 @@ mod write_vtk_impl {
                         .into_iter()
                         .next()
                         .ok_or(DataSetError::MissingPieceData)?;
-                    if let Ok(PieceData::StructuredGrid { points, data, .. }) =
-                        piece.load_into_piece_data()
-                    {
+                    if let Ok(StructuredGridPiece { points, data, .. }) = piece.load_piece_data() {
                         writeln!(self, "DATASET STRUCTURED_GRID").map_err(|_| {
                             Error::DataSet(DataSetError::StructuredGrid(DataSetPart::Tags))
                         })?;
@@ -609,9 +605,7 @@ mod write_vtk_impl {
                         .into_iter()
                         .next()
                         .ok_or(DataSetError::MissingPieceData)?;
-                    if let Ok(PieceData::RectilinearGrid { coords, data, .. }) =
-                        piece.load_into_piece_data()
-                    {
+                    if let Ok(RectilinearGridPiece { coords, data, .. }) = piece.load_piece_data() {
                         writeln!(self, "DATASET RECTILINEAR_GRID").map_err(|_| {
                             Error::DataSet(DataSetError::RectilinearGrid(DataSetPart::Tags))
                         })?;

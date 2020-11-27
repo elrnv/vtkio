@@ -527,7 +527,7 @@ impl<BO: ByteOrder> VtkParser<BO> {
                         origin: parms.1,
                         spacing: parms.2,
                         meta: None,
-                        pieces: vec![Piece::Inline(Box::new(PieceData::ImageData {
+                        pieces: vec![Piece::Inline(Box::new(ImageDataPiece {
                             extent: Extent::Dims(parms.0),
                             data
                         }))]
@@ -552,7 +552,7 @@ impl<BO: ByteOrder> VtkParser<BO> {
                     >> points: call!(Self::points, ft)
                     >> opt!(Self::meta)
                     >> data: call!(Self::attributes, ft)
-                    >> (DataSet::inline(PieceData::StructuredGrid {
+                    >> (DataSet::inline(StructuredGridPiece {
                         extent: Extent::Dims(dims),
                         points,
                         data
@@ -579,7 +579,7 @@ impl<BO: ByteOrder> VtkParser<BO> {
                     >> z: call!(Self::coordinates, Axis::Z, ft)
                     >> data: call!(Self::attributes, ft)
                     >> opt!(complete!(Self::meta))
-                    >> (DataSet::inline(PieceData::RectilinearGrid {
+                    >> (DataSet::inline(RectilinearGridPiece {
                         extent: Extent::Dims(dims),
                         coords: Coordinates { x, y, z },
                         data
@@ -643,7 +643,7 @@ impl<BO: ByteOrder> VtkParser<BO> {
                     >> cell_verts: call!(Self::cell_verts, "CELLS", ft)
                     >> types: call!(Self::cell_types, ft)
                     >> data: call!(Self::attributes, ft)
-                    >> (DataSet::inline(PieceData::UnstructuredGrid {
+                    >> (DataSet::inline(UnstructuredGridPiece {
                         points: p,
                         cells: Cells { cell_verts, types },
                         data
@@ -678,7 +678,7 @@ impl<BO: ByteOrder> VtkParser<BO> {
                 >> opt!(Self::meta)
                 >> topo: many_m_n!(0, 4, call!(Self::poly_data_topo, ft))
                 >> data: call!(Self::attributes, ft)
-                >> (DataSet::inline(PieceData::PolyData { points, topo, data }))
+                >> (DataSet::inline(PolyDataPiece { points, topo, data }))
         )
     }
 
@@ -840,7 +840,7 @@ mod tests {
         let in1 = "UNSTRUCTURED_GRID\nPOINTS 4 float\n\
                    2 45 2 3 4 1 46 2 0 4 32 1\nCELLS 2 10\n4 0 1 2 3\n4 3 2 1 0
                    CELL_TYPES 2\n 10 10\nother";
-        let out1 = DataSet::inline(PieceData::UnstructuredGrid {
+        let out1 = DataSet::inline(UnstructuredGridPiece {
             points: vec![2.0f32, 45., 2., 3., 4., 1., 46., 2., 0., 4., 32., 1.].into(),
             cells: Cells {
                 cell_verts: VertexNumbers::Legacy {
@@ -911,7 +911,7 @@ mod tests {
     #[test]
     fn dataset_simple_test() {
         let in1 = "DATASET UNSTRUCTURED_GRID\nPOINTS 0 float\nCELLS 0 0\nCELL_TYPES 0\n";
-        let out1 = DataSet::inline(PieceData::UnstructuredGrid {
+        let out1 = DataSet::inline(UnstructuredGridPiece {
             points: Vec::<f32>::new().into(),
             cells: Cells {
                 cell_verts: VertexNumbers::Legacy {
@@ -928,7 +928,7 @@ mod tests {
     fn dataset_test() {
         let in1 = "DATASET UNSTRUCTURED_GRID\nPOINTS 3 float\n2 45 2 3 4 1 46 2 0\
                    CELLS 0 0\nCELL_TYPES 0\n";
-        let out1 = DataSet::inline(PieceData::UnstructuredGrid {
+        let out1 = DataSet::inline(UnstructuredGridPiece {
             points: vec![2.0f32, 45., 2., 3., 4., 1., 46., 2., 0.].into(),
             cells: Cells {
                 cell_verts: VertexNumbers::Legacy {

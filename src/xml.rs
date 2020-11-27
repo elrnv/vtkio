@@ -2359,7 +2359,7 @@ impl TryFrom<VTKFile> for model::Vtk {
                             let extent: model::Extent = extent.unwrap_or(whole_extent).into();
                             let number_of_points = extent.num_points().try_into().unwrap();
                             let number_of_cells = extent.num_cells().try_into().unwrap();
-                            model::Piece::Inline(Box::new(model::PieceData::ImageData {
+                            model::Piece::Inline(Box::new(model::ImageDataPiece {
                                 extent,
                                 data: attributes(
                                     number_of_points,
@@ -2438,7 +2438,7 @@ impl TryFrom<VTKFile> for model::Vtk {
                                     )?,
                                 ));
                             }
-                            Ok(model::Piece::Inline(Box::new(model::PieceData::PolyData {
+                            Ok(model::Piece::Inline(Box::new(model::PolyDataPiece {
                                 points: points.unwrap().data.into_io_buffer(
                                     number_of_points * 3,
                                     appended_data,
@@ -2454,7 +2454,7 @@ impl TryFrom<VTKFile> for model::Vtk {
                             })))
                         },
                     )
-                    .collect::<Result<Vec<model::Piece>>>()?,
+                    .collect::<Result<Vec<model::Piece<model::PolyDataPiece>>>>()?,
             },
             DataSet::RectilinearGrid(Grid {
                 whole_extent,
@@ -2484,7 +2484,7 @@ impl TryFrom<VTKFile> for model::Vtk {
                                 byte_order,
                             )?;
                             Ok(model::Piece::Inline(Box::new(
-                                model::PieceData::RectilinearGrid {
+                                model::RectilinearGridPiece {
                                     extent,
                                     coords,
                                     data: attributes(
@@ -2497,7 +2497,7 @@ impl TryFrom<VTKFile> for model::Vtk {
                             )))
                         },
                     )
-                    .collect::<Result<Vec<model::Piece>>>()?,
+                    .collect::<Result<Vec<model::Piece<model::RectilinearGridPiece>>>>()?,
             },
             DataSet::StructuredGrid(Grid {
                 whole_extent,
@@ -2518,25 +2518,23 @@ impl TryFrom<VTKFile> for model::Vtk {
                             let extent: model::Extent = extent.unwrap_or(whole_extent).into();
                             let number_of_points = extent.num_points().try_into().unwrap();
                             let number_of_cells = extent.num_cells().try_into().unwrap();
-                            Ok(model::Piece::Inline(Box::new(
-                                model::PieceData::StructuredGrid {
-                                    extent,
-                                    points: points.unwrap().data.into_io_buffer(
-                                        number_of_points * 3,
-                                        appended_data,
-                                        byte_order,
-                                    )?,
-                                    data: attributes(
-                                        number_of_points,
-                                        number_of_cells,
-                                        point_data,
-                                        cell_data,
-                                    ),
-                                },
-                            )))
+                            Ok(model::Piece::Inline(Box::new(model::StructuredGridPiece {
+                                extent,
+                                points: points.unwrap().data.into_io_buffer(
+                                    number_of_points * 3,
+                                    appended_data,
+                                    byte_order,
+                                )?,
+                                data: attributes(
+                                    number_of_points,
+                                    number_of_cells,
+                                    point_data,
+                                    cell_data,
+                                ),
+                            })))
                         },
                     )
-                    .collect::<Result<Vec<model::Piece>>>()?,
+                    .collect::<Result<Vec<model::Piece<model::StructuredGridPiece>>>>()?,
             },
             DataSet::UnstructuredGrid(Unstructured { pieces }) => {
                 model::DataSet::UnstructuredGrid {
@@ -2566,7 +2564,7 @@ impl TryFrom<VTKFile> for model::Vtk {
                                     .transpose()?
                                     .unwrap_or_default();
                                 Ok(model::Piece::Inline(Box::new(
-                                    model::PieceData::UnstructuredGrid {
+                                    model::UnstructuredGridPiece {
                                         points: points.unwrap().data.into_io_buffer(
                                             number_of_points * 3,
                                             appended_data,
@@ -2583,7 +2581,7 @@ impl TryFrom<VTKFile> for model::Vtk {
                                 )))
                             },
                         )
-                        .collect::<Result<Vec<model::Piece>>>()?,
+                        .collect::<Result<Vec<model::Piece<model::UnstructuredGridPiece>>>>()?,
                 }
             }
             DataSet::PImageData(PImageData {
@@ -2614,7 +2612,7 @@ impl TryFrom<VTKFile> for model::Vtk {
                     .map(|PieceSource { source, extent }| {
                         Ok(model::Piece::Source(source, extent.map(From::from)))
                     })
-                    .collect::<Result<Vec<model::Piece>>>()?,
+                    .collect::<Result<Vec<model::Piece<model::ImageDataPiece>>>>()?,
             },
             DataSet::PPolyData(PUnstructured {
                 ghost_level,
@@ -2640,7 +2638,7 @@ impl TryFrom<VTKFile> for model::Vtk {
                     .map(|PieceSource { source, extent }| {
                         Ok(model::Piece::Source(source, extent.map(From::from)))
                     })
-                    .collect::<Result<Vec<model::Piece>>>()?,
+                    .collect::<Result<Vec<model::Piece<model::PolyDataPiece>>>>()?,
             },
             DataSet::PRectilinearGrid(PRectilinearGrid {
                 ghost_level,
@@ -2672,7 +2670,7 @@ impl TryFrom<VTKFile> for model::Vtk {
                     .map(|PieceSource { source, extent }| {
                         Ok(model::Piece::Source(source, extent.map(From::from)))
                     })
-                    .collect::<Result<Vec<model::Piece>>>()?,
+                    .collect::<Result<Vec<model::Piece<model::RectilinearGridPiece>>>>()?,
             },
             DataSet::PStructuredGrid(PStructuredGrid {
                 ghost_level,
@@ -2700,7 +2698,7 @@ impl TryFrom<VTKFile> for model::Vtk {
                     .map(|PieceSource { source, extent }| {
                         Ok(model::Piece::Source(source, extent.map(From::from)))
                     })
-                    .collect::<Result<Vec<model::Piece>>>()?,
+                    .collect::<Result<Vec<model::Piece<model::StructuredGridPiece>>>>()?,
             },
             DataSet::PUnstructuredGrid(PUnstructured {
                 ghost_level,
@@ -2726,7 +2724,7 @@ impl TryFrom<VTKFile> for model::Vtk {
                     .map(|PieceSource { source, extent }| {
                         Ok(model::Piece::Source(source, extent.map(From::from)))
                     })
-                    .collect::<Result<Vec<model::Piece>>>()?,
+                    .collect::<Result<Vec<model::Piece<model::UnstructuredGridPiece>>>>()?,
             },
         };
 
@@ -2766,21 +2764,16 @@ impl TryFrom<model::Vtk> for VTKFile {
                 pieces: pieces
                     .into_iter()
                     .map(|piece| {
-                        let piece_data = piece.load_into_piece_data()?;
-                        if let model::PieceData::ImageData { extent, data } = piece_data {
-                            Ok(Piece {
-                                extent: Some(extent.into()),
-                                point_data: AttributeData::from_model_attributes(
-                                    data.point, byte_order,
-                                ),
-                                cell_data: AttributeData::from_model_attributes(
-                                    data.cell, byte_order,
-                                ),
-                                ..Default::default()
-                            })
-                        } else {
-                            return Err(Error::Model(model::Error::MissingPieceData));
-                        }
+                        let piece_data = piece.load_piece_data()?;
+                        let model::ImageDataPiece { extent, data } = piece_data;
+                        Ok(Piece {
+                            extent: Some(extent.into()),
+                            point_data: AttributeData::from_model_attributes(
+                                data.point, byte_order,
+                            ),
+                            cell_data: AttributeData::from_model_attributes(data.cell, byte_order),
+                            ..Default::default()
+                        })
                     })
                     .collect::<Result<Vec<Piece>>>()?,
             }),
@@ -2794,27 +2787,21 @@ impl TryFrom<model::Vtk> for VTKFile {
                 pieces: pieces
                     .into_iter()
                     .map(|piece| {
-                        let piece_data = piece.load_into_piece_data()?;
-                        if let model::PieceData::StructuredGrid {
+                        let piece_data = piece.load_piece_data()?;
+                        let model::StructuredGridPiece {
                             extent,
                             points,
                             data,
-                        } = piece_data
-                        {
-                            Ok(Piece {
-                                extent: Some(extent.into()),
-                                points: Some(Points::from_io_buffer(points, byte_order)),
-                                point_data: AttributeData::from_model_attributes(
-                                    data.point, byte_order,
-                                ),
-                                cell_data: AttributeData::from_model_attributes(
-                                    data.cell, byte_order,
-                                ),
-                                ..Default::default()
-                            })
-                        } else {
-                            return Err(Error::Model(model::Error::MissingPieceData));
-                        }
+                        } = piece_data;
+                        Ok(Piece {
+                            extent: Some(extent.into()),
+                            points: Some(Points::from_io_buffer(points, byte_order)),
+                            point_data: AttributeData::from_model_attributes(
+                                data.point, byte_order,
+                            ),
+                            cell_data: AttributeData::from_model_attributes(data.cell, byte_order),
+                            ..Default::default()
+                        })
                     })
                     .collect::<Result<Vec<Piece>>>()?,
             }),
@@ -2828,29 +2815,21 @@ impl TryFrom<model::Vtk> for VTKFile {
                 pieces: pieces
                     .into_iter()
                     .map(|piece| {
-                        let piece_data = piece.load_into_piece_data()?;
-                        if let model::PieceData::RectilinearGrid {
+                        let piece_data = piece.load_piece_data()?;
+                        let model::RectilinearGridPiece {
                             extent,
                             coords,
                             data,
-                        } = piece_data
-                        {
-                            Ok(Piece {
-                                extent: Some(extent.into()),
-                                coordinates: Some(Coordinates::from_model_coords(
-                                    coords, byte_order,
-                                )),
-                                point_data: AttributeData::from_model_attributes(
-                                    data.point, byte_order,
-                                ),
-                                cell_data: AttributeData::from_model_attributes(
-                                    data.cell, byte_order,
-                                ),
-                                ..Default::default()
-                            })
-                        } else {
-                            return Err(Error::Model(model::Error::MissingPieceData));
-                        }
+                        } = piece_data;
+                        Ok(Piece {
+                            extent: Some(extent.into()),
+                            coordinates: Some(Coordinates::from_model_coords(coords, byte_order)),
+                            point_data: AttributeData::from_model_attributes(
+                                data.point, byte_order,
+                            ),
+                            cell_data: AttributeData::from_model_attributes(data.cell, byte_order),
+                            ..Default::default()
+                        })
                     })
                     .collect::<Result<Vec<Piece>>>()?,
             }),
@@ -2862,29 +2841,23 @@ impl TryFrom<model::Vtk> for VTKFile {
                 pieces: pieces
                     .into_iter()
                     .map(|piece| {
-                        let piece_data = piece.load_into_piece_data()?;
-                        if let model::PieceData::UnstructuredGrid {
+                        let piece_data = piece.load_piece_data()?;
+                        let model::UnstructuredGridPiece {
                             points,
                             cells,
                             data,
-                        } = piece_data
-                        {
-                            Ok(Piece {
-                                number_of_points: u32::try_from(points.len()).unwrap(),
-                                number_of_cells: u32::try_from(cells.num_cells()).unwrap(),
-                                points: Some(Points::from_io_buffer(points, byte_order)),
-                                cells: Some(Cells::from_model_cells(cells, byte_order)),
-                                point_data: AttributeData::from_model_attributes(
-                                    data.point, byte_order,
-                                ),
-                                cell_data: AttributeData::from_model_attributes(
-                                    data.cell, byte_order,
-                                ),
-                                ..Default::default()
-                            })
-                        } else {
-                            return Err(Error::Model(model::Error::MissingPieceData));
-                        }
+                        } = piece_data;
+                        Ok(Piece {
+                            number_of_points: u32::try_from(points.len()).unwrap(),
+                            number_of_cells: u32::try_from(cells.num_cells()).unwrap(),
+                            points: Some(Points::from_io_buffer(points, byte_order)),
+                            cells: Some(Cells::from_model_cells(cells, byte_order)),
+                            point_data: AttributeData::from_model_attributes(
+                                data.point, byte_order,
+                            ),
+                            cell_data: AttributeData::from_model_attributes(data.cell, byte_order),
+                            ..Default::default()
+                        })
                     })
                     .collect::<Result<Vec<Piece>>>()?,
             }),
@@ -2896,32 +2869,27 @@ impl TryFrom<model::Vtk> for VTKFile {
                 pieces: pieces
                     .into_iter()
                     .map(|piece| {
-                        let piece_data = piece.load_into_piece_data()?;
-                        if let model::PieceData::PolyData { points, topo, data } = piece_data {
-                            let number_of_lines: usize = topo.iter().map(|x| x.num_lines()).sum();
-                            let number_of_verts: usize = topo.iter().map(|x| x.num_verts()).sum();
-                            let number_of_polys: usize = topo.iter().map(|x| x.num_polys()).sum();
-                            let number_of_strips: usize = topo.iter().map(|x| x.num_strips()).sum();
+                        let piece_data = piece.load_piece_data()?;
+                        let model::PolyDataPiece { points, topo, data } = piece_data;
+                        let number_of_lines: usize = topo.iter().map(|x| x.num_lines()).sum();
+                        let number_of_verts: usize = topo.iter().map(|x| x.num_verts()).sum();
+                        let number_of_polys: usize = topo.iter().map(|x| x.num_polys()).sum();
+                        let number_of_strips: usize = topo.iter().map(|x| x.num_strips()).sum();
 
-                            Ok(Piece {
-                                number_of_points: u32::try_from(points.len()).unwrap(),
-                                number_of_lines: u32::try_from(number_of_lines).unwrap(),
-                                number_of_verts: u32::try_from(number_of_verts).unwrap(),
-                                number_of_polys: u32::try_from(number_of_polys).unwrap(),
-                                number_of_strips: u32::try_from(number_of_strips).unwrap(),
-                                points: Some(Points::from_io_buffer(points, byte_order)),
-                                polys: None,
-                                point_data: AttributeData::from_model_attributes(
-                                    data.point, byte_order,
-                                ),
-                                cell_data: AttributeData::from_model_attributes(
-                                    data.cell, byte_order,
-                                ),
-                                ..Default::default()
-                            })
-                        } else {
-                            return Err(Error::Model(model::Error::MissingPieceData));
-                        }
+                        Ok(Piece {
+                            number_of_points: u32::try_from(points.len()).unwrap(),
+                            number_of_lines: u32::try_from(number_of_lines).unwrap(),
+                            number_of_verts: u32::try_from(number_of_verts).unwrap(),
+                            number_of_polys: u32::try_from(number_of_polys).unwrap(),
+                            number_of_strips: u32::try_from(number_of_strips).unwrap(),
+                            points: Some(Points::from_io_buffer(points, byte_order)),
+                            polys: None,
+                            point_data: AttributeData::from_model_attributes(
+                                data.point, byte_order,
+                            ),
+                            cell_data: AttributeData::from_model_attributes(data.cell, byte_order),
+                            ..Default::default()
+                        })
                     })
                     .collect::<Result<Vec<Piece>>>()?,
             }),
@@ -3377,7 +3345,7 @@ mod tests {
                 version: Version::new((1, 0)),
                 byte_order: ByteOrder::LittleEndian,
                 title: String::new(),
-                data: DataSet::inline(PieceData::RectilinearGrid {
+                data: DataSet::inline(RectilinearGridPiece {
                     extent: Extent::Ranges([0..=3, 0..=1, 0..=1]),
                     coords: Coordinates {
                         x: vec![-3.0, -1.0, 1.0, 3.0].into(),
