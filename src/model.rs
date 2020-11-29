@@ -173,45 +173,43 @@ impl IOBuffer {
     }
 }
 
-macro_rules! impl_io_buffer_convert {
-    ($t:ident <=> $v:ident) => {
-        impl From<Vec<$t>> for IOBuffer {
-            fn from(v: Vec<$t>) -> IOBuffer {
-                IOBuffer::$v(v)
-            }
-        }
-
-        impl Into<Option<Vec<$t>>> for IOBuffer {
-            fn into(self) -> Option<Vec<$t>> {
-                if let IOBuffer::$v(v) = self {
-                    Some(v)
-                } else {
-                    None
-                }
-            }
-        }
-
-        impl std::iter::FromIterator<$t> for IOBuffer {
-            fn from_iter<T>(iter: T) -> Self
-            where
-                T: IntoIterator<Item = $t>,
-            {
-                iter.into_iter().collect::<Vec<$t>>().into()
-            }
-        }
-    };
+impl<T: ToPrimitive + 'static> From<Vec<T>> for IOBuffer {
+    fn from(v: Vec<T>) -> IOBuffer {
+        IOBuffer::new(v)
+    }
 }
 
-impl_io_buffer_convert!(u8 <=> U8);
-impl_io_buffer_convert!(i8 <=> I8);
-impl_io_buffer_convert!(u16 <=> U16);
-impl_io_buffer_convert!(i16 <=> I16);
-impl_io_buffer_convert!(u32 <=> U32);
-impl_io_buffer_convert!(i32 <=> I32);
-impl_io_buffer_convert!(u64 <=> U64);
-impl_io_buffer_convert!(i64 <=> I64);
-impl_io_buffer_convert!(f32 <=> F32);
-impl_io_buffer_convert!(f64 <=> F64);
+impl<T: ToPrimitive + 'static> std::iter::FromIterator<T> for IOBuffer {
+    fn from_iter<I>(iter: I) -> Self
+    where
+        I: IntoIterator<Item = T>,
+    {
+        IOBuffer::new(iter.into_iter().collect::<Vec<T>>())
+    }
+}
+
+impl<T: 'static> Into<Option<Vec<T>>> for IOBuffer {
+    fn into(self) -> Option<Vec<T>> {
+        use std::mem::transmute;
+        // SAFETY: in each case we definitively determine the type of the expected Vec, so the
+        // transmute is a noop.
+        unsafe {
+            Some(match self {
+                IOBuffer::U8(v) if TypeId::of::<T>() == TypeId::of::<u8>() => transmute(v),
+                IOBuffer::I8(v) if TypeId::of::<T>() == TypeId::of::<i8>() => transmute(v),
+                IOBuffer::U16(v) if TypeId::of::<T>() == TypeId::of::<u16>() => transmute(v),
+                IOBuffer::I16(v) if TypeId::of::<T>() == TypeId::of::<i16>() => transmute(v),
+                IOBuffer::U32(v) if TypeId::of::<T>() == TypeId::of::<u32>() => transmute(v),
+                IOBuffer::I32(v) if TypeId::of::<T>() == TypeId::of::<i32>() => transmute(v),
+                IOBuffer::U64(v) if TypeId::of::<T>() == TypeId::of::<u64>() => transmute(v),
+                IOBuffer::I64(v) if TypeId::of::<T>() == TypeId::of::<i64>() => transmute(v),
+                IOBuffer::F32(v) if TypeId::of::<T>() == TypeId::of::<f32>() => transmute(v),
+                IOBuffer::F64(v) if TypeId::of::<T>() == TypeId::of::<f64>() => transmute(v),
+                _ => return None,
+            })
+        }
+    }
+}
 
 /// Evaluate the expression `$e` given a `Vec` `$v`.
 #[macro_export]
@@ -531,7 +529,7 @@ impl IOBuffer {
         T::io_buf_into_vec(self)
     }
 
-    /// Cast a vector of integers into a given integer type `T`.
+    /// Cast a vector of numbers into a given number type `T`.
     ///
     /// In case of overflow, `None` is returned.
     pub fn cast_into<T: Scalar>(self) -> Option<Vec<T>> {
@@ -986,6 +984,13 @@ pub enum Attribute {
 }
 
 impl Attribute {
+    /// Get the name of this attribute.
+    pub fn name(&self) -> &str {
+        match self {
+            Attribute::Field { name, .. } => name.as_str(),
+            Attribute::DataArray(data_array) => data_array.name.as_str(),
+        }
+    }
     /// Constructs a new scalars attribute with an associated lookup table.
     pub fn scalars_with_lookup(
         name: impl Into<String>,
@@ -1901,9 +1906,9 @@ mod tests {
     }
 
     #[test]
-    fn io_buffer_into_vec() {
-        let v = vec![1, 2, 3, 4];
-        let buf = IOBuffer::U32(v.clone());
+    fn io_buffer_from_into_vec() {
+        let v = vec![1_u32, 2, 3, 4];
+        let buf = IOBuffer::from(v.clone());
         assert!(buf.clone().into_vec::<f32>().is_none());
         assert_eq!(buf.into_vec::<u32>(), Some(v));
     }
