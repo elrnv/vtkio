@@ -12,7 +12,7 @@ This means that an additional pass is required to convert the XML type into the 
 `model::Vtk` type used for vtkio, which unifies legacy and xml I/O and facilitates the lazy loading
 of parallel XML formats. Performance sensitive applications may chose to work with the `xml::VTKFile`
 type directly, however the `model::Vtk` API is much more comprehensive and easier to work with.
-Notably, `xml::VTKFile` stores loaded data buffers as unencoded and potentially compressed strings
+Notably, `xml::VTKFile` stores loaded data buffers as encoded and potentially compressed strings
 and byte arrays, whereas `model::Vtk` stores the decoded uncompressed data ready for processing.
 
 In order to facilitate import and export for both legacy and xml formats, the underlying VTK data
