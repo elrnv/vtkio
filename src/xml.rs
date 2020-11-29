@@ -2946,6 +2946,14 @@ pub(crate) fn import(file_path: impl AsRef<Path>) -> Result<VTKFile> {
     Ok(de::from_reader(std::io::BufReader::new(f))?)
 }
 
+/// Import an XML VTK file from the specified path.
+#[cfg(feature = "async_blocked")]
+pub(crate) async fn import_async(file_path: impl AsRef<Path>) -> Result<VTKFile> {
+    let f = tokio::fs::File::open(file_path).await?;
+    // Blocked on async support from quick-xml (e.g. https://github.com/tafia/quick-xml/pull/233)
+    Ok(de::from_reader(std::io::BufReader::new(f))?)
+}
+
 /// Export an XML VTK file to the specified path.
 pub(crate) fn export(file_path: impl AsRef<Path>, vtk: &VTKFile) -> Result<()> {
     let f = std::fs::File::create(file_path)?;

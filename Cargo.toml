@@ -28,8 +28,10 @@ base64 = "0.12"
 bytemuck = { version = "1.4", features = ["extern_crate_alloc"], optional = true }
 quick-xml = { version = "0.20", features = ["serialize"], optional = true }
 serde = { version = "1.0", features = ["derive"], optional = true }
+tokio = { version = "0.3", features = ["fs", "io-util"], optional = true }
 
 [features]
 default = ["xml"]
+async = ["tokio"]
 xml = ["quick-xml", "serde", "bytemuck"]
 unstable = []

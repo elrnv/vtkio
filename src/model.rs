@@ -1577,6 +1577,23 @@ impl<P: PieceData> Piece<P> {
             Piece::Inline(piece_data) => Ok(*piece_data),
         }
     }
+
+    /// Converts `self` to loaded piece data.
+    ///
+    /// This is the async version of `load_piece_data` function.
+    #[cfg(feature = "async_blocked")]
+    pub async fn load_piece_data_async(mut self) -> Result<P, Error> {
+        match self {
+            Piece::Source(path, _) => {
+                let piece_vtk = crate::import_async(&path).await?;
+                let piece = Box::new(piece_vtk.data);
+                self = Piece::Loaded(piece);
+                self.load_piece_data() // Not async since the piece is now loaded.
+            }
+            Piece::Loaded(data_set) => P::from_data_set(*data_set),
+            Piece::Inline(piece_data) => Ok(*piece_data),
+        }
+    }
 }
 
 /// ImageData piece data.
