@@ -140,6 +140,26 @@ where
     }
 }
 
+#[cfg(feature = "async_blocked")]
+async fn import_vtk_async<F>(file_path: &Path, parse: F) -> Result<model::Vtk, Error>
+where
+    F: Fn(&[u8]) -> nom::IResult<&[u8], model::Vtk>,
+{
+    use crate::io::Read;
+    use nom::IResult;
+    use tokio::fs::File;
+    use tokio::io::AsyncReadExt;
+
+    let mut file = File::open(file_path).await?;
+    let mut buf = Vec::new();
+    file.read_to_end(&mut buf).await?;
+    match parse(&buf) {
+        IResult::Done(_, vtk) => Ok(vtk),
+        IResult::Error(e) => Err(Error::Parse(e.into_error_kind())),
+        IResult::Incomplete(_) => Err(Error::Unknown),
+    }
+}
+
 /// Import a VTK file at the specified path.
 ///
 /// This function determines the vtk file type from the extension as prescribed by the [VTK
@@ -183,6 +203,62 @@ pub fn import(file_path: impl AsRef<Path>) -> Result<model::Vtk, Error> {
             let ft = xml::FileType::try_from_ext(ext)
                 .ok_or(Error::UnknownFileExtension(Some(ext.to_string())))?;
             let vtk_file = xml::import(path)?;
+            let exp_ft = xml::FileType::from(vtk_file.data_set_type);
+            if ft != exp_ft {
+                Err(Error::XML(xml::Error::TypeExtensionMismatch))
+            } else {
+                Ok(vtk_file.try_into()?)
+            }
+        }
+    }
+}
+
+/// Import a VTK file at the specified path.
+///
+/// This is the async version of [`import`](crate::import).
+///
+/// This function determines the vtk file type from the extension as prescribed by the [VTK
+/// file formats documentation](https://lorensen.github.io/VTKExamples/site/VTKFileFormats/):
+///
+///  - Legacy (`.vtk`) -- Simple legacy file format (Non-XML)
+///  - Image data (`.vti`) -- Serial vtkImageData (structured)
+///  - PolyData (`.vtp`) -- Serial vtkPolyData (unstructured)
+///  - RectilinearGrid (`.vtr`) -- Serial vtkRectilinearGrid (structured)
+///  - StructuredGrid (`.vts`) -- Serial vtkStructuredGrid (structured)
+///  - UnstructuredGrid (`.vtu`) -- Serial vtkUnstructuredGrid (unstructured)
+///  - PImageData (`.pvti`) -- Parallel vtkImageData (structured)
+///  - PPolyData (`.pvtp`) -- Parallel vtkPolyData (unstructured)
+///  - PRectilinearGrid (`.pvtr`) -- Parallel vtkRectilinearGrid (structured)
+///  - PStructuredGrid (`.pvts`) -- Parallel vtkStructuredGrid (structured)
+///  - PUnstructuredGrid (`.pvtu`) -- Parallel vtkUnstructuredGrid (unstructured)
+///
+/// # Examples
+///
+/// The following example imports a legacy `.vtk` file called `tet.vtk`, and panics with an
+/// appropriate error message if the file fails to load.
+///
+/// ```should_panic
+/// use vtkio::{model, import, export_ascii};
+/// use std::path::PathBuf;
+///
+/// let file_path = PathBuf::from("tet.vtk");
+///
+/// let mut vtk_file = import_async(&file_path).await
+///     .expect(&format!("Failed to load file: {:?}", file_path));
+/// ```
+#[cfg(feature = "async_blocked")]
+pub async fn import_async(file_path: impl AsRef<Path>) -> Result<model::Vtk, Error> {
+    let path = file_path.as_ref();
+    let ext = path
+        .extension()
+        .and_then(|s| s.to_str())
+        .ok_or(Error::UnknownFileExtension(None))?;
+    match ext {
+        "vtk" => import_vtk_async(path, parser::parse_be).await,
+        ext => {
+            let ft = xml::FileType::try_from_ext(ext)
+                .ok_or(Error::UnknownFileExtension(Some(ext.to_string())))?;
+            let vtk_file = xml::import_async(path).await?;
             let exp_ft = xml::FileType::from(vtk_file.data_set_type);
             if ft != exp_ft {
                 Err(Error::XML(xml::Error::TypeExtensionMismatch))
