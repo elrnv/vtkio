@@ -7,11 +7,8 @@
 //!
 
 mod se;
-//mod de;
-//mod escape;
 
-//use std::io::BufRead;
-//use std::collections::HashMap;
+use std::io::BufRead;
 use quick_xml::de;
 use std::convert::{TryFrom, TryInto};
 use std::path::Path;
@@ -2943,7 +2940,12 @@ impl TryFrom<model::Vtk> for VTKFile {
 /// Import an XML VTK file from the specified path.
 pub(crate) fn import(file_path: impl AsRef<Path>) -> Result<VTKFile> {
     let f = std::fs::File::open(file_path)?;
-    Ok(de::from_reader(std::io::BufReader::new(f))?)
+    parse(std::io::BufReader::new(f))
+}
+
+/// Parse an XML VTK file from the given reader.
+pub(crate) fn parse(reader: impl BufRead) -> Result<VTKFile> {
+    Ok(de::from_reader(reader)?)
 }
 
 /// Import an XML VTK file from the specified path.

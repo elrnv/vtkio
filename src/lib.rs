@@ -42,7 +42,7 @@ pub mod xml;
 
 use std::convert::{TryFrom, TryInto};
 use std::fs::File;
-use std::io::{self, BufWriter};
+use std::io::{self, BufWriter, BufRead, Read};
 use std::path::Path;
 
 use crate::io::Write;
@@ -122,22 +122,62 @@ impl From<writer::Error> for Error {
     }
 }
 
-/// Helper function that implements the actual importing routine for legacy VTK files.
-fn import_vtk<F>(file_path: &Path, parse: F) -> Result<model::Vtk, Error>
+/// Helper for parsing legacy VTK files.
+fn parse_vtk<F>(mut reader: impl Read, parse: F, buf: &mut Vec<u8>) -> Result<model::Vtk, Error>
 where
     F: Fn(&[u8]) -> nom::IResult<&[u8], model::Vtk>,
 {
-    use crate::io::Read;
     use nom::IResult;
-
-    let mut file = File::open(file_path)?;
-    let mut buf = Vec::new();
-    file.read_to_end(&mut buf)?;
-    match parse(&buf) {
+    reader.read_to_end(buf)?;
+    match parse(buf) {
         IResult::Done(_, vtk) => Ok(vtk),
         IResult::Error(e) => Err(Error::Parse(e.into_error_kind())),
         IResult::Incomplete(_) => Err(Error::Unknown),
     }
+}
+
+/// Helper for importing legacy VTK files from the given path.
+fn import_vtk<F>(file_path: &Path, parse: F) -> Result<model::Vtk, Error>
+where
+    F: Fn(&[u8]) -> nom::IResult<&[u8], model::Vtk>,
+{
+    let file = File::open(file_path)?;
+    parse_vtk(file, parse, &mut Vec::new())
+}
+
+/// Parse a legacy VTK file in big endian format from the given reader.
+pub fn parse_vtk_be(reader: impl Read) -> Result<model::Vtk, Error> {
+    parse_vtk(reader, parser::parse_be, &mut Vec::new())
+}
+
+/// Parse a legacy VTK file in little endian format from the given reader.
+pub fn parse_vtk_le(reader: impl Read) -> Result<model::Vtk, Error> {
+    parse_vtk(reader, parser::parse_le, &mut Vec::new())
+}
+
+/// Parse a legacy VTK file in big endian format from the given reader and a buffer.
+///
+/// This is the buffered version of `parse_vtk_be`, which allows one to reuse the same
+/// heap allocated space when reading many files.
+pub fn parse_vtk_buf_be(reader: impl Read, buf: &mut Vec<u8>) -> Result<model::Vtk, Error> {
+    parse_vtk(reader, parser::parse_be, buf)
+}
+
+/// Parse a legacy VTK file in little endian format from the given reader and a buffer.
+///
+/// This is the buffered version of `parse_vtk_le`, which allows one to reuse the same
+/// heap allocated space when reading many files.
+pub fn parse_vtk_buf_le(reader: impl Read, buf: &mut Vec<u8>) -> Result<model::Vtk, Error> {
+    parse_vtk(reader, parser::parse_le, buf)
+}
+
+/// Parse a modern XML style VTK file from a given reader.
+pub fn parse_xml(reader: impl BufRead) -> Result<model::Vtk, Error> {
+    // There is no extension to check with the data is provided directly.
+    // Luckily the xml file contains all the data necessary to determine which data is
+    // being parsed.
+    let vtk_file = xml::parse(reader)?;
+    Ok(vtk_file.try_into()?)
 }
 
 #[cfg(feature = "async_blocked")]
@@ -145,7 +185,6 @@ async fn import_vtk_async<F>(file_path: &Path, parse: F) -> Result<model::Vtk, E
 where
     F: Fn(&[u8]) -> nom::IResult<&[u8], model::Vtk>,
 {
-    use crate::io::Read;
     use nom::IResult;
     use tokio::fs::File;
     use tokio::io::AsyncReadExt;
@@ -298,7 +337,7 @@ pub fn import_xml(file_path: impl AsRef<Path>) -> Result<xml::VTKFile, Error> {
 
 /// Import a legacy VTK file at the specified path.
 ///
-/// If the file is in binary, numeric types will be interpreted in little-endian format.
+/// If the file is in binary, numeric types will be interpreted in little endian format.
 /// For the default byte order used by most `.vtk` files use [`import`] or [`import_be`].
 ///
 /// [`import`]: fn.import.html
@@ -309,7 +348,7 @@ pub fn import_le(file_path: impl AsRef<Path>) -> Result<model::Vtk, Error> {
 
 /// Import a legacy VTK file at the specified path.
 ///
-/// If the file is in binary, numeric types will be interpreted in big-endian format.
+/// If the file is in binary, numeric types will be interpreted in big endian format.
 /// This function behaves the same as [`import`], but expects the given file to be strictly in
 /// legacy `.vtk` format.
 ///
