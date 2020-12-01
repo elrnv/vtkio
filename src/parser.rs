@@ -21,6 +21,7 @@ use crate::model::ByteOrder as ByteOrderTag;
 // Parse the file version
 named!(version<&[u8], Version>, sp!(
  do_parse!(
+     take_until!("#") >>
      tag!("#") >>
      tag_no_case!("vtk") >>
      tag_no_case!("DataFile") >>
@@ -751,7 +752,7 @@ mod tests {
     }
     #[test]
     fn version_test() {
-        let f = version("\t# vtk DataFile Version 2.0  \ntitle\n".as_bytes());
+        let f = version("\n\t# vtk DataFile Version 2.0  \ntitle\n".as_bytes());
         assert_eq!(f, IResult::Done("title\n".as_bytes(), Version::new((2, 0))));
     }
     #[test]

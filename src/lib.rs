@@ -42,10 +42,9 @@ pub mod xml;
 
 use std::convert::{TryFrom, TryInto};
 use std::fs::File;
-use std::io::{self, BufWriter, BufRead, Read};
+use std::io::{self, BufRead, BufWriter, Read, Write};
 use std::path::Path;
 
-use crate::io::Write;
 use crate::writer::{AsciiWriter, BinaryWriter, WriteVtk};
 
 pub use model::IOBuffer;
@@ -145,12 +144,94 @@ where
     parse_vtk(file, parse, &mut Vec::new())
 }
 
-/// Parse a legacy VTK file in big endian format from the given reader.
+/// Parse a legacy VTK file from the given reader.
+///
+/// If the file is in binary format, numeric types will be interpreted in big endian format.
+/// Note that this function and [`parse_vtk_le`](crate::parse_vtk_le) also work equally well for
+/// parsing VTK files in ASCII format.
+///
+/// # Examples
+///
+/// Parsing an ASCII file:
+///
+/// ```
+/// use vtkio::model::*; // import model definition of a VTK file
+/// let vtk_ascii: &[u8] = b"
+/// ## vtk DataFile Version 2.0
+/// Triangle example
+/// ASCII
+/// DATASET POLYDATA
+/// POINTS 3 float
+/// 0.0 0.0 0.0
+/// 1.0 0.0 0.0
+/// 0.0 0.0 -1.0
+///
+/// POLYGONS 1 4
+/// 3 0 1 2
+/// ";
+///
+/// let vtk = vtkio::parse_vtk_be(vtk_ascii).expect("Failed to parse vtk file");
+///
+/// assert_eq!(vtk, Vtk {
+///     version: Version::new((2,0)),
+///     byte_order: ByteOrder::BigEndian, // This is default
+///     title: String::from("Triangle example"),
+///     data: DataSet::inline(PolyDataPiece {
+///         points: vec![0.0f32, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, -1.0].into(),
+///         topo: vec![PolyDataTopology::Polygons(VertexNumbers::Legacy {
+///             num_cells: 1,
+///             vertices: vec![3, 0, 1, 2]
+///         })],
+///         data: Attributes::new(),
+///     })
+/// });
+/// ```
 pub fn parse_vtk_be(reader: impl Read) -> Result<model::Vtk, Error> {
     parse_vtk(reader, parser::parse_be, &mut Vec::new())
 }
 
-/// Parse a legacy VTK file in little endian format from the given reader.
+/// Parse a legacy VTK file from the given reader.
+///
+/// If the file is in binary format, numeric types will be interpreted in little endian format.
+/// Note that this function and [`parse_vtk_lb`](crate::parse_vtk_be) also work equally well for
+/// parsing VTK files in ASCII format.
+///
+/// # Examples
+///
+/// Parsing an ASCII file:
+///
+/// ```
+/// use vtkio::model::*; // import model definition of a VTK file
+/// let vtk_ascii: &[u8] = b"
+/// ## vtk DataFile Version 2.0
+/// Triangle example
+/// ASCII
+/// DATASET POLYDATA
+/// POINTS 3 float
+/// 0.0 0.0 0.0
+/// 1.0 0.0 0.0
+/// 0.0 0.0 -1.0
+///
+/// POLYGONS 1 4
+/// 3 0 1 2
+/// ";
+///
+/// let vtk = vtkio::parse_vtk_le(vtk_ascii).expect("Failed to parse vtk file");
+///
+/// assert_eq!(vtk, Vtk {
+///     version: Version::new((2,0)),
+///     byte_order: ByteOrder::BigEndian, // This is default
+///     title: String::from("Triangle example"),
+///     data: DataSet::inline(PolyDataPiece {
+///         points: vec![0.0f32, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, -1.0].into(),
+///         topo: vec![PolyDataTopology::Polygons(VertexNumbers::Legacy {
+///             num_cells: 1,
+///             vertices: vec![3, 0, 1, 2]
+///         })],
+///         data: Attributes::new(),
+///     })
+/// });
+/// ```
 pub fn parse_vtk_le(reader: impl Read) -> Result<model::Vtk, Error> {
     parse_vtk(reader, parser::parse_le, &mut Vec::new())
 }
@@ -231,7 +312,11 @@ where
 ///     .expect(&format!("Failed to load file: {:?}", file_path));
 /// ```
 pub fn import(file_path: impl AsRef<Path>) -> Result<model::Vtk, Error> {
-    let path = file_path.as_ref();
+    import_impl(file_path.as_ref())
+}
+
+/// A non-generic helper for the `import` function.
+fn import_impl(path: &Path) -> Result<model::Vtk, Error> {
     let ext = path
         .extension()
         .and_then(|s| s.to_str())
@@ -337,8 +422,8 @@ pub fn import_xml(file_path: impl AsRef<Path>) -> Result<xml::VTKFile, Error> {
 
 /// Import a legacy VTK file at the specified path.
 ///
-/// If the file is in binary, numeric types will be interpreted in little endian format.
-/// For the default byte order used by most `.vtk` files use [`import`] or [`import_be`].
+/// if the file is in binary format, numeric types will be interpreted in little endian format.
+/// for the default byte order used by most `.vtk` files use [`import`] or [`import_be`].
 ///
 /// [`import`]: fn.import.html
 /// [`import_be`]: fn.import_be.html
@@ -348,7 +433,7 @@ pub fn import_le(file_path: impl AsRef<Path>) -> Result<model::Vtk, Error> {
 
 /// Import a legacy VTK file at the specified path.
 ///
-/// If the file is in binary, numeric types will be interpreted in big endian format.
+/// If the file is in binary format, numeric types will be interpreted in big endian format.
 /// This function behaves the same as [`import`], but expects the given file to be strictly in
 /// legacy `.vtk` format.
 ///
@@ -394,14 +479,18 @@ pub fn import_be(file_path: impl AsRef<Path>) -> Result<model::Vtk, Error> {
 /// [`Vtk`]: struct.Vtk.html
 /// [`export_ascii`]: fn.export_ascii.html
 pub fn export(data: model::Vtk, file_path: impl AsRef<Path>) -> Result<(), Error> {
-    let path = file_path.as_ref();
+    export_impl(data, file_path.as_ref())
+}
+
+/// A non-generic helper for the expor function.
+fn export_impl(data: model::Vtk, path: &Path) -> Result<(), Error> {
     let ext = path
         .extension()
         .and_then(|s| s.to_str())
         .ok_or(Error::UnknownFileExtension(None))?;
     match ext {
         "vtk" => {
-            let file = File::create(file_path.as_ref())?;
+            let file = File::create(path)?;
             BinaryWriter(BufWriter::new(file)).write_vtk(data)?;
             Ok(())
         }
@@ -413,11 +502,139 @@ pub fn export(data: model::Vtk, file_path: impl AsRef<Path>) -> Result<(), Error
             if ft != exp_ft {
                 Err(Error::XML(xml::Error::TypeExtensionMismatch))
             } else {
-                xml::export(path, &vtk_file)?;
+                xml::export(&vtk_file, path)?;
                 Ok(())
             }
         }
     }
+}
+
+/// Write the given VTK file in binary legacy format to the specified `Write`r.
+///
+/// # Examples
+///
+/// Writing a binary file in big endian format representing a polygon mesh consisting of a single
+/// triangle:
+///
+/// ```
+/// use vtkio::model::*; // import model definition of a VTK file
+///
+/// let mut vtk_bytes = Vec::<u8>::new();
+///
+/// vtkio::write_legacy(Vtk {
+///     version: Version::new((2,0)),
+///     byte_order: ByteOrder::BigEndian, // This is default
+///     title: String::from("Triangle example"),
+///     data: DataSet::inline(PolyDataPiece {
+///         points: vec![0.0f32, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, -1.0].into(),
+///         topo: vec![PolyDataTopology::Polygons(VertexNumbers::Legacy {
+///             num_cells: 1,
+///             vertices: vec![3, 0, 1, 2]
+///         })],
+///         data: Attributes::new(),
+///     })
+/// }, &mut vtk_bytes);
+///
+/// println!("{}", String::from_utf8_lossy(&vtk_bytes));
+/// ```
+pub fn write_legacy(vtk: model::Vtk, writer: impl std::io::Write) -> Result<(), Error> {
+    BinaryWriter(writer).write_vtk(vtk)?;
+    Ok(())
+}
+
+/// Write the given VTK file in binary legacy format to the specified `Write`r.
+///
+/// # Examples
+///
+/// Writing an ASCII file representing a polygon mesh consisting of a single triangle:
+///
+/// ```
+/// use vtkio::model::*; // import model definition of a VTK file
+///
+/// let mut vtk_string = String::new();
+///
+/// vtkio::write_legacy_ascii(Vtk {
+///     version: Version::new((2,0)),
+///     byte_order: ByteOrder::BigEndian, // This is default
+///     title: String::from("Triangle example"),
+///     data: DataSet::inline(PolyDataPiece {
+///         points: vec![0.0f32, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, -1.0].into(),
+///         topo: vec![PolyDataTopology::Polygons(VertexNumbers::Legacy {
+///             num_cells: 1,
+///             vertices: vec![3, 0, 1, 2]
+///         })],
+///         data: Attributes::new(),
+///     })
+/// }, &mut vtk_string);
+///
+/// assert_eq!(vtk_string.as_str(), "\
+/// ## vtk DataFile Version 2.0
+/// Triangle example
+/// ASCII
+///
+/// DATASET POLYDATA
+/// POINTS 3 float
+/// 0 0 0 1 0 0 0 0 -1
+///
+/// POLYGONS 1 4
+/// 3 0 1 2
+///
+/// POINT_DATA 3
+///
+/// CELL_DATA 1
+///
+/// ");
+/// ```
+pub fn write_legacy_ascii(vtk: model::Vtk, writer: impl std::fmt::Write) -> Result<(), Error> {
+    AsciiWriter(writer).write_vtk(vtk)?;
+    Ok(())
+}
+
+/// Write the given VTK file in modern XML format to the specified `Write`r.
+///
+/// # Examples
+///
+/// Writing a binary file in big endian format representing a polygon mesh consisting of a single
+/// triangle:
+///
+/// ```
+/// use vtkio::model::*; // import model definition of a VTK file
+///
+/// let mut vtk_bytes = Vec::<u8>::new();
+///
+/// vtkio::write_xml(Vtk {
+///     version: Version::new((2,0)),
+///     byte_order: ByteOrder::BigEndian, // This is default
+///     title: String::from("Triangle example"),
+///     data: DataSet::inline(PolyDataPiece {
+///         points: vec![0.0f32, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, -1.0].into(),
+///         topo: vec![PolyDataTopology::Polygons(VertexNumbers::Legacy {
+///             num_cells: 1,
+///             vertices: vec![3, 0, 1, 2]
+///         })],
+///         data: Attributes::new(),
+///     })
+/// }, &mut vtk_bytes);
+///
+/// assert_eq!(String::from_utf8_lossy(&vtk_bytes), "\
+/// <VTKFile type=\"PolyData\" version=\"2.0\" byte_order=\"BigEndian\">\
+///   <PolyData>\
+///     <Piece NumberOfPoints=\"9\" NumberOfCells=\"0\" NumberOfLines=\"0\" NumberOfStrips=\"0\" NumberOfPolys=\"1\" NumberOfVerts=\"0\">\
+///       <PointData/>\
+///       <CellData/>\
+///       <Points>\
+///         <DataArray type=\"Float32\" format=\"binary\" NumberOfComponents=\"1\">\
+///           AAAAAAAAAAQAAAAAAAAAAAAAAAA/gAAAAAAAAAAAAAAAAAAAAAAAAL+AAAA=\
+///         </DataArray>\
+///       </Points>\
+///     </Piece>\
+///   </PolyData>\
+/// </VTKFile>");
+/// ```
+pub fn write_xml(vtk: model::Vtk, writer: impl Write) -> Result<(), Error> {
+    let vtk_file = xml::VTKFile::try_from(vtk)?;
+    xml::write(&vtk_file, writer)?;
+    Ok(())
 }
 
 /// Export the given `Vtk` file to the specified file in little endian binary format.

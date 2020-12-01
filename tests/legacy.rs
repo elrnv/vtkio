@@ -206,6 +206,8 @@ fn tri_test() -> Result {
             data: Attributes::new(),
         }),
     };
+    test!(parse_be(in1) => out1);
+    test!(parse_le(in1) => out1);
     test!(parse_ne(in1) => out1);
     test_b!(parse_ne(String::new().write_vtk_ne(out1.clone())?.as_bytes()) => out1);
     test_b!(parse_ne(Vec::<u8>::new().write_vtk_ne(out1.clone())?) => out1);

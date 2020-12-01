@@ -8,9 +8,9 @@
 
 mod se;
 
-use std::io::BufRead;
 use quick_xml::de;
 use std::convert::{TryFrom, TryInto};
+use std::io::{BufRead, Write};
 use std::path::Path;
 
 use serde::{Deserialize, Serialize};
@@ -2957,9 +2957,14 @@ pub(crate) async fn import_async(file_path: impl AsRef<Path>) -> Result<VTKFile>
 }
 
 /// Export an XML VTK file to the specified path.
-pub(crate) fn export(file_path: impl AsRef<Path>, vtk: &VTKFile) -> Result<()> {
+pub(crate) fn export(vtk: &VTKFile, file_path: impl AsRef<Path>) -> Result<()> {
     let f = std::fs::File::create(file_path)?;
-    Ok(se::to_writer(std::io::BufWriter::new(f), &vtk)?)
+    write(vtk, std::io::BufWriter::new(f))
+}
+
+/// Write an XML VTK file to the specified writer.
+pub(crate) fn write(vtk: &VTKFile, writer: impl Write) -> Result<()> {
+    Ok(se::to_writer(writer, &vtk)?)
 }
 
 impl std::fmt::Display for VTKFile {
