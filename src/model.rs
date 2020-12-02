@@ -1579,25 +1579,37 @@ impl PolyDataPiece {
     ///
     /// Non-zero only for the `Vertices` variant.
     pub fn num_verts(&self) -> usize {
-        self.verts.as_ref().map(|verts| verts.num_cells()).unwrap_or(0)
+        self.verts
+            .as_ref()
+            .map(|verts| verts.num_cells())
+            .unwrap_or(0)
     }
     /// Gives the total number of lines in this piece.
     ///
     /// Non-zero only for the `Lines` variant.
     pub fn num_lines(&self) -> usize {
-        self.lines.as_ref().map(|lines| lines.num_cells()).unwrap_or(0)
+        self.lines
+            .as_ref()
+            .map(|lines| lines.num_cells())
+            .unwrap_or(0)
     }
     /// Gives the total number of polygons in this piece.
     ///
     /// Non-zero only for the `Polygons` variant.
     pub fn num_polys(&self) -> usize {
-        self.polys.as_ref().map(|polys| polys.num_cells()).unwrap_or(0)
+        self.polys
+            .as_ref()
+            .map(|polys| polys.num_cells())
+            .unwrap_or(0)
     }
     /// Gives the total number of triangle strips in this piece.
     ///
     /// Non-zero only for the `TriangleStrips` variant.
     pub fn num_strips(&self) -> usize {
-        self.strips.as_ref().map(|strips| strips.num_cells()).unwrap_or(0)
+        self.strips
+            .as_ref()
+            .map(|strips| strips.num_cells())
+            .unwrap_or(0)
     }
     /// Gives the total number of cells in this piece regardless of type.
     ///

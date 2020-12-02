@@ -92,7 +92,7 @@ enum PolyDataTopology {
     Verts = 0,
     Lines,
     Polys,
-    Strips
+    Strips,
 }
 
 impl<BO: ByteOrder> VtkParser<BO> {
@@ -663,7 +663,10 @@ impl<BO: ByteOrder> VtkParser<BO> {
     }
 
     /// Parse PolyData topology
-    fn poly_data_topo(input: &[u8], ft: FileType) -> IResult<&[u8], (PolyDataTopology, VertexNumbers)> {
+    fn poly_data_topo(
+        input: &[u8],
+        ft: FileType,
+    ) -> IResult<&[u8], (PolyDataTopology, VertexNumbers)> {
         alt_complete!(
             input,
             map!(call!(Self::cell_verts, "LINES", ft), |x| {
@@ -692,20 +695,42 @@ impl<BO: ByteOrder> VtkParser<BO> {
                 >> topo4: opt!(call!(Self::poly_data_topo, ft))
                 >> data: call!(Self::attributes, ft)
                 >> ({
-
                     // The following algorithm is just to avoid unnecessary cloning.
                     // There may be a simpler way to do this.
                     let mut topos = [topo1, topo2, topo3, topo4];
-                    let vertsi = topos.iter().position(|x| x.as_ref().map(|x| x.0) == Some(PolyDataTopology::Verts));
-                    let linesi = topos.iter().position(|x| x.as_ref().map(|x| x.0) == Some(PolyDataTopology::Lines));
-                    let polysi = topos.iter().position(|x| x.as_ref().map(|x| x.0) == Some(PolyDataTopology::Polys));
-                    let stripsi = topos.iter().position(|x| x.as_ref().map(|x| x.0) == Some(PolyDataTopology::Strips));
-                    let mut indices = [0,1,2,3];
+                    let vertsi = topos
+                        .iter()
+                        .position(|x| x.as_ref().map(|x| x.0) == Some(PolyDataTopology::Verts));
+                    let linesi = topos
+                        .iter()
+                        .position(|x| x.as_ref().map(|x| x.0) == Some(PolyDataTopology::Lines));
+                    let polysi = topos
+                        .iter()
+                        .position(|x| x.as_ref().map(|x| x.0) == Some(PolyDataTopology::Polys));
+                    let stripsi = topos
+                        .iter()
+                        .position(|x| x.as_ref().map(|x| x.0) == Some(PolyDataTopology::Strips));
+                    let mut indices = [0, 1, 2, 3];
 
-                    vertsi.map(|i| {indices.swap(i, 0); topos.swap(i, 0)});
-                    linesi.map(|i| {let i = indices[i]; indices.swap(i, 1); topos.swap(i, 1)});
-                    polysi.map(|i| {let i = indices[i]; indices.swap(i, 2); topos.swap(i, 2)});
-                    stripsi.map(|i| {let i = indices[i]; indices.swap(i, 3); topos.swap(i, 3)});
+                    vertsi.map(|i| {
+                        indices.swap(i, 0);
+                        topos.swap(i, 0)
+                    });
+                    linesi.map(|i| {
+                        let i = indices[i];
+                        indices.swap(i, 1);
+                        topos.swap(i, 1)
+                    });
+                    polysi.map(|i| {
+                        let i = indices[i];
+                        indices.swap(i, 2);
+                        topos.swap(i, 2)
+                    });
+                    stripsi.map(|i| {
+                        let i = indices[i];
+                        indices.swap(i, 3);
+                        topos.swap(i, 3)
+                    });
 
                     let [verts, lines, polys, strips] = topos;
 
@@ -715,7 +740,7 @@ impl<BO: ByteOrder> VtkParser<BO> {
                         lines: lines.map(|x| x.1),
                         polys: polys.map(|x| x.1),
                         strips: strips.map(|x| x.1),
-                        data
+                        data,
                     })
                 })
         )

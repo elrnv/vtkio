@@ -383,8 +383,9 @@ mod write_vtk_impl {
                         lines,
                         polys,
                         strips,
-                        data
-                    }) = piece.load_piece_data() {
+                        data,
+                    }) = piece.load_piece_data()
+                    {
                         writeln!(self, "DATASET POLYDATA").map_err(|_| {
                             Error::DataSet(DataSetError::PolyData(DataSetPart::Tags))
                         })?;
@@ -406,8 +407,7 @@ mod write_vtk_impl {
 
                         let mut num_cells = 0;
                         let mut write_topo = |cell_verts: VertexNumbers, title: &str| -> Result {
-                            write!(self, "{}", title)
-                            .map_err(|_| {
+                            write!(self, "{}", title).map_err(|_| {
                                 Error::DataSet(DataSetError::PolyData(DataSetPart::Cells(
                                     EntryPart::Tags,
                                 )))
@@ -438,11 +438,17 @@ mod write_vtk_impl {
                             num_cells += cur_num_cells as usize;
                             Ok(())
                         };
-                        
-                        verts.map(|verts| write_topo(verts, "VERTICES")).transpose()?;
+
+                        verts
+                            .map(|verts| write_topo(verts, "VERTICES"))
+                            .transpose()?;
                         lines.map(|verts| write_topo(verts, "LINES")).transpose()?;
-                        polys.map(|verts| write_topo(verts, "POLYGONS")).transpose()?;
-                        strips.map(|verts| write_topo(verts, "TRIANGLE_STRIPS")).transpose()?;
+                        polys
+                            .map(|verts| write_topo(verts, "POLYGONS"))
+                            .transpose()?;
+                        strips
+                            .map(|verts| write_topo(verts, "TRIANGLE_STRIPS"))
+                            .transpose()?;
 
                         self.write_attributes::<BO>(data, num_points, num_cells)?;
                     }

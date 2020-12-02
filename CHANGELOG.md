@@ -12,6 +12,11 @@ In particular the following API was changed:
   struct. This makes it unabiguous that there is at most one of each topology sections in each
   piece.
 
+- A new parse and write API is introduced for easily reading and writing legacy and xml files from
+  standard byte buffers (and string slices for ASCII files).
+  Specifically the functions `parse_vtk_{be|le}`, `parse_vtk_buf_{be|le}`, `parse_xml`,
+  `write_legacy`, `write_legacy_ascii`, and `write_xml` are added.
+
 # Release 0.4
 
 This release most notably adds support for importing and exporting VTK files in the modern XML
