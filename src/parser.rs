@@ -86,6 +86,15 @@ enum Axis {
  */
 pub struct VtkParser<BO: ByteOrder>(PhantomData<BO>);
 
+/// Helper struct for parsing polygon topology sections.
+#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+enum PolyDataTopology {
+    Verts = 0,
+    Lines,
+    Polys,
+    Strips
+}
+
 impl<BO: ByteOrder> VtkParser<BO> {
     #[allow(unused_variables)]
     fn points(input: &[u8], ft: FileType) -> IResult<&[u8], IOBuffer> {
@@ -654,17 +663,17 @@ impl<BO: ByteOrder> VtkParser<BO> {
     }
 
     /// Parse PolyData topology
-    fn poly_data_topo(input: &[u8], ft: FileType) -> IResult<&[u8], PolyDataTopology> {
+    fn poly_data_topo(input: &[u8], ft: FileType) -> IResult<&[u8], (PolyDataTopology, VertexNumbers)> {
         alt_complete!(
             input,
             map!(call!(Self::cell_verts, "LINES", ft), |x| {
-                PolyDataTopology::Lines(x)
+                (PolyDataTopology::Lines, x)
             }) | map!(call!(Self::cell_verts, "POLYGONS", ft), |x| {
-                PolyDataTopology::Polygons(x)
+                (PolyDataTopology::Polys, x)
             }) | map!(call!(Self::cell_verts, "VERTICES", ft), |x| {
-                PolyDataTopology::Vertices(x)
+                (PolyDataTopology::Verts, x)
             }) | map!(call!(Self::cell_verts, "TRIANGLE_STRIPS", ft), |x| {
-                PolyDataTopology::TriangleStrips(x)
+                (PolyDataTopology::Strips, x)
             })
         )
     }
@@ -677,9 +686,38 @@ impl<BO: ByteOrder> VtkParser<BO> {
             tag_no_case!("POLYDATA")
                 >> points: call!(Self::points, ft)
                 >> opt!(Self::meta)
-                >> topo: many_m_n!(0, 4, call!(Self::poly_data_topo, ft))
+                >> topo1: opt!(call!(Self::poly_data_topo, ft))
+                >> topo2: opt!(call!(Self::poly_data_topo, ft))
+                >> topo3: opt!(call!(Self::poly_data_topo, ft))
+                >> topo4: opt!(call!(Self::poly_data_topo, ft))
                 >> data: call!(Self::attributes, ft)
-                >> (DataSet::inline(PolyDataPiece { points, topo, data }))
+                >> ({
+
+                    // The following algorithm is just to avoid unnecessary cloning.
+                    // There may be a simpler way to do this.
+                    let mut topos = [topo1, topo2, topo3, topo4];
+                    let vertsi = topos.iter().position(|x| x.as_ref().map(|x| x.0) == Some(PolyDataTopology::Verts));
+                    let linesi = topos.iter().position(|x| x.as_ref().map(|x| x.0) == Some(PolyDataTopology::Lines));
+                    let polysi = topos.iter().position(|x| x.as_ref().map(|x| x.0) == Some(PolyDataTopology::Polys));
+                    let stripsi = topos.iter().position(|x| x.as_ref().map(|x| x.0) == Some(PolyDataTopology::Strips));
+                    let mut indices = [0,1,2,3];
+
+                    vertsi.map(|i| {indices.swap(i, 0); topos.swap(i, 0)});
+                    linesi.map(|i| {let i = indices[i]; indices.swap(i, 1); topos.swap(i, 1)});
+                    polysi.map(|i| {let i = indices[i]; indices.swap(i, 2); topos.swap(i, 2)});
+                    stripsi.map(|i| {let i = indices[i]; indices.swap(i, 3); topos.swap(i, 3)});
+
+                    let [verts, lines, polys, strips] = topos;
+
+                    DataSet::inline(PolyDataPiece {
+                        points,
+                        verts: verts.map(|x| x.1),
+                        lines: lines.map(|x| x.1),
+                        polys: polys.map(|x| x.1),
+                        strips: strips.map(|x| x.1),
+                        data
+                    })
+                })
         )
     }
 

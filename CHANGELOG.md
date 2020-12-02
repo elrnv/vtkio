@@ -1,4 +1,17 @@
 
+# Release 0.5
+
+This is a small update to v0.4 that simplifies the Polygon data topology fields. This realease also
+fixes bugs in parsing and writing files in XML format, espcially involving Polygon data.
+
+In particular the following API was changed:
+
+- Polygon data topology (`PolyDataTopology`) was previously stored as a `Vec` of enums identifying
+  the topology type (one of Vertices, Lines, Polygons, or Triangle Strips).  This is removed in
+  favor of storing the specific types of topolgies in a dedicated field of the new `PolyDataPiece`
+  struct. This makes it unabiguous that there is at most one of each topology sections in each
+  piece.
+
 # Release 0.4
 
 This release most notably adds support for importing and exporting VTK files in the modern XML
@@ -114,4 +127,3 @@ in version 0.4, particularly in the `model` module:
   specialize the generic `DataArrayBase` struct and one is a plain old `IOBuffer`.
   Most data arrays can now be named, with the exception of `Coordinates`, `Points` and `Cells`
   arrays, since those are always unique.
-

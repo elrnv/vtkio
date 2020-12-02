@@ -377,7 +377,14 @@ mod write_vtk_impl {
                         .into_iter()
                         .next()
                         .ok_or(DataSetError::MissingPieceData)?;
-                    if let Ok(PolyDataPiece { points, topo, data }) = piece.load_piece_data() {
+                    if let Ok(PolyDataPiece {
+                        points,
+                        verts,
+                        lines,
+                        polys,
+                        strips,
+                        data
+                    }) = piece.load_piece_data() {
                         writeln!(self, "DATASET POLYDATA").map_err(|_| {
                             Error::DataSet(DataSetError::PolyData(DataSetPart::Tags))
                         })?;
@@ -398,27 +405,13 @@ mod write_vtk_impl {
                         writeln!(self).map_err(|_| Error::NewLine)?;
 
                         let mut num_cells = 0;
-                        for topo_type in topo {
-                            match topo_type {
-                                PolyDataTopology::Vertices(_) => write!(self, "VERTICES"),
-                                PolyDataTopology::Lines(_) => write!(self, "LINES"),
-                                PolyDataTopology::Polygons(_) => write!(self, "POLYGONS"),
-                                PolyDataTopology::TriangleStrips(_) => {
-                                    write!(self, "TRIANGLE_STRIPS")
-                                }
-                            }
+                        let mut write_topo = |cell_verts: VertexNumbers, title: &str| -> Result {
+                            write!(self, "{}", title)
                             .map_err(|_| {
                                 Error::DataSet(DataSetError::PolyData(DataSetPart::Cells(
                                     EntryPart::Tags,
                                 )))
                             })?;
-
-                            let cell_verts = match topo_type {
-                                PolyDataTopology::Vertices(c) => c,
-                                PolyDataTopology::Lines(c) => c,
-                                PolyDataTopology::Polygons(c) => c,
-                                PolyDataTopology::TriangleStrips(c) => c,
-                            };
 
                             let cur_num_cells = cell_verts.num_cells();
 
@@ -443,7 +436,13 @@ mod write_vtk_impl {
                             })?;
 
                             num_cells += cur_num_cells as usize;
-                        }
+                            Ok(())
+                        };
+                        
+                        verts.map(|verts| write_topo(verts, "VERTICES")).transpose()?;
+                        lines.map(|verts| write_topo(verts, "LINES")).transpose()?;
+                        polys.map(|verts| write_topo(verts, "POLYGONS")).transpose()?;
+                        strips.map(|verts| write_topo(verts, "TRIANGLE_STRIPS")).transpose()?;
 
                         self.write_attributes::<BO>(data, num_points, num_cells)?;
                     }

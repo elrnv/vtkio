@@ -199,11 +199,12 @@ fn tri_test() -> Result {
         title: String::from("Triangle example"),
         data: DataSet::inline(PolyDataPiece {
             points: vec![0.0f32, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, -1.0].into(),
-            topo: vec![PolyDataTopology::Polygons(VertexNumbers::Legacy {
+            polys: Some(VertexNumbers::Legacy {
                 num_cells: 1,
                 vertices: vec![3, 0, 1, 2],
-            })],
+            }),
             data: Attributes::new(),
+            ..Default::default()
         }),
     };
     test!(parse_be(in1) => out1);
@@ -223,10 +224,10 @@ fn tri_attrib_ascii_test() -> Result {
         title: String::from("Triangle example"),
         data: DataSet::inline(PolyDataPiece {
             points: vec![0.0f32, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, -1.0].into(),
-            topo: vec![PolyDataTopology::Polygons(VertexNumbers::Legacy {
+            polys: Some(VertexNumbers::Legacy {
                 num_cells: 1,
                 vertices: vec![3, 0, 1, 2],
-            })],
+            }),
             data: Attributes {
                 point: vec![],
                 cell: vec![
@@ -247,6 +248,7 @@ fn tri_attrib_ascii_test() -> Result {
                     }),
                 ],
             },
+            ..Default::default()
         }),
     };
     test!(parse_ne(in1) => out1);
@@ -265,10 +267,10 @@ fn tri_attrib_binary_test() -> Result {
         title: String::from("Triangle example"),
         data: DataSet::inline(PolyDataPiece {
             points: vec![0.0f32, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, -1.0].into(),
-            topo: vec![PolyDataTopology::Polygons(VertexNumbers::Legacy {
+            polys: Some(VertexNumbers::Legacy {
                 num_cells: 1,
                 vertices: vec![3, 0, 1, 2],
-            })],
+            }),
             data: Attributes {
                 point: vec![],
                 cell: vec![
@@ -289,6 +291,7 @@ fn tri_attrib_binary_test() -> Result {
                     }),
                 ],
             },
+            ..Default::default()
         }),
     };
     test_ignore_rem!(parse_be(in1) => out1);
@@ -310,11 +313,12 @@ fn square_test() -> Result {
                 0.0f32, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, -1.0, 0.0, 0.0, -1.0,
             ]
             .into(),
-            topo: vec![PolyDataTopology::Polygons(VertexNumbers::Legacy {
+            polys: Some(VertexNumbers::Legacy {
                 num_cells: 1,
                 vertices: vec![4, 0, 1, 2, 3],
-            })],
+            }),
             data: Attributes::new(),
+            ..Default::default()
         }),
     };
     test!(parse_ne(in1) => out1);
@@ -489,13 +493,13 @@ fn field_test() -> Result {
 
 #[test]
 fn cube_complex_test() -> Result {
-    let mut topo = vec![PolyDataTopology::Polygons(VertexNumbers::Legacy {
+    let polys = Some(VertexNumbers::Legacy {
         num_cells: 6,
         vertices: vec![
             4, 0, 1, 2, 3, 4, 4, 5, 6, 7, 4, 0, 1, 5, 4, 4, 2, 3, 7, 6, 4, 0, 4, 7, 3, 4, 1, 2, 6,
             5,
         ],
-    })];
+    });
 
     let mut attributes = Attributes {
         point: vec![
@@ -565,17 +569,18 @@ fn cube_complex_test() -> Result {
         title: String::from("Cube example"),
         data: DataSet::inline(PolyDataPiece {
             points: points.clone(),
-            topo: topo.clone(),
+            polys: polys.clone(),
             data: attributes.clone(),
+            ..Default::default()
         }),
     };
 
     let in2 = include_bytes!("../assets/cube_complex_topo.vtk");
 
-    topo.push(PolyDataTopology::Vertices(VertexNumbers::Legacy {
+    let verts = Some(VertexNumbers::Legacy {
         num_cells: 2,
         vertices: vec![2, 0, 1, 2, 2, 3],
-    }));
+    });
 
     attributes.cell = vec![
         Attribute::DataArray(DataArray {
@@ -618,8 +623,10 @@ fn cube_complex_test() -> Result {
     let out2 = Vtk {
         data: DataSet::inline(PolyDataPiece {
             points: points.clone(),
-            topo: topo.clone(),
+            polys: polys.clone(),
+            verts: verts.clone(),
             data: attributes.clone(),
+            ..Default::default()
         }),
         ..out1.clone()
     };

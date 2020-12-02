@@ -178,11 +178,12 @@ where
 ///     title: String::from("Triangle example"),
 ///     data: DataSet::inline(PolyDataPiece {
 ///         points: vec![0.0f32, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, -1.0].into(),
-///         topo: vec![PolyDataTopology::Polygons(VertexNumbers::Legacy {
+///         polys: Some(VertexNumbers::Legacy {
 ///             num_cells: 1,
 ///             vertices: vec![3, 0, 1, 2]
-///         })],
+///         }),
 ///         data: Attributes::new(),
+///         ..Default::default()
 ///     })
 /// });
 /// ```
@@ -224,11 +225,12 @@ pub fn parse_vtk_be(reader: impl Read) -> Result<model::Vtk, Error> {
 ///     title: String::from("Triangle example"),
 ///     data: DataSet::inline(PolyDataPiece {
 ///         points: vec![0.0f32, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, -1.0].into(),
-///         topo: vec![PolyDataTopology::Polygons(VertexNumbers::Legacy {
+///         polys: Some(VertexNumbers::Legacy {
 ///             num_cells: 1,
 ///             vertices: vec![3, 0, 1, 2]
-///         })],
+///         }),
 ///         data: Attributes::new(),
+///         ..Default::default()
 ///     })
 /// });
 /// ```
@@ -253,6 +255,55 @@ pub fn parse_vtk_buf_le(reader: impl Read, buf: &mut Vec<u8>) -> Result<model::V
 }
 
 /// Parse a modern XML style VTK file from a given reader.
+///
+/// # Examples
+///
+/// Parsing a binary file in big endian format representing a polygon mesh consisting of a single
+/// triangle:
+///
+/// ```
+/// use vtkio::model::*; // import model definition of a VTK file
+///
+/// let input: &[u8] = b"\
+/// <VTKFile type=\"PolyData\" version=\"2.0\" byte_order=\"BigEndian\">\
+///   <PolyData>\
+///     <Piece NumberOfPoints=\"3\" NumberOfLines=\"0\" NumberOfStrips=\"0\" NumberOfPolys=\"1\" NumberOfVerts=\"0\">\
+///       <PointData/>\
+///       <CellData/>\
+///       <Points>\
+///         <DataArray type=\"Float32\" format=\"binary\" NumberOfComponents=\"3\">\
+///           AAAAAAAAAAQAAAAAAAAAAAAAAAA/gAAAAAAAAAAAAAAAAAAAAAAAAL+AAAA=\
+///         </DataArray>\
+///       </Points>\
+///       <Polys>\
+///         <DataArray type=\"UInt64\" Name=\"connectivity\" format=\"binary\" NumberOfComponents=\"1\">\
+///           AAAAAAAAAAgAAAAAAAAAAAAAAAAAAAABAAAAAAAAAAI=\
+///         </DataArray>\
+///         <DataArray type=\"UInt64\" Name=\"offsets\" format=\"binary\" NumberOfComponents=\"1\">\
+///           AAAAAAAAAAgAAAAAAAAAAw==\
+///         </DataArray>\
+///       </Polys>\
+///     </Piece>\
+///   </PolyData>\
+/// </VTKFile>";
+///
+/// let vtk = vtkio::parse_xml(input).expect("Failed to parse XML VTK file");
+///
+/// assert_eq!(vtk, Vtk {
+///     version: Version::new((2,0)),
+///     byte_order: ByteOrder::BigEndian, // This is default
+///     title: String::new(),
+///     data: DataSet::inline(PolyDataPiece {
+///         points: vec![0.0f32, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, -1.0].into(),
+///         polys: Some(VertexNumbers::XML {
+///             connectivity: vec![0, 1, 2],
+///             offsets: vec![3]
+///         }),
+///         data: Attributes::new(),
+///         ..Default::default()
+///     })
+/// });
+/// ```
 pub fn parse_xml(reader: impl BufRead) -> Result<model::Vtk, Error> {
     // There is no extension to check with the data is provided directly.
     // Luckily the xml file contains all the data necessary to determine which data is
@@ -527,11 +578,12 @@ fn export_impl(data: model::Vtk, path: &Path) -> Result<(), Error> {
 ///     title: String::from("Triangle example"),
 ///     data: DataSet::inline(PolyDataPiece {
 ///         points: vec![0.0f32, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, -1.0].into(),
-///         topo: vec![PolyDataTopology::Polygons(VertexNumbers::Legacy {
+///         polys: Some(VertexNumbers::Legacy {
 ///             num_cells: 1,
 ///             vertices: vec![3, 0, 1, 2]
-///         })],
+///         }),
 ///         data: Attributes::new(),
+///         ..Default::default()
 ///     })
 /// }, &mut vtk_bytes);
 ///
@@ -559,11 +611,12 @@ pub fn write_legacy(vtk: model::Vtk, writer: impl std::io::Write) -> Result<(), 
 ///     title: String::from("Triangle example"),
 ///     data: DataSet::inline(PolyDataPiece {
 ///         points: vec![0.0f32, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, -1.0].into(),
-///         topo: vec![PolyDataTopology::Polygons(VertexNumbers::Legacy {
+///         polys: Some(VertexNumbers::Legacy {
 ///             num_cells: 1,
 ///             vertices: vec![3, 0, 1, 2]
-///         })],
+///         }),
 ///         data: Attributes::new(),
+///         ..Default::default()
 ///     })
 /// }, &mut vtk_string);
 ///
@@ -608,25 +661,34 @@ pub fn write_legacy_ascii(vtk: model::Vtk, writer: impl std::fmt::Write) -> Resu
 ///     title: String::from("Triangle example"),
 ///     data: DataSet::inline(PolyDataPiece {
 ///         points: vec![0.0f32, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, -1.0].into(),
-///         topo: vec![PolyDataTopology::Polygons(VertexNumbers::Legacy {
+///         polys: Some(VertexNumbers::Legacy {
 ///             num_cells: 1,
 ///             vertices: vec![3, 0, 1, 2]
-///         })],
+///         }),
 ///         data: Attributes::new(),
+///         ..Default::default()
 ///     })
 /// }, &mut vtk_bytes);
 ///
 /// assert_eq!(String::from_utf8_lossy(&vtk_bytes), "\
 /// <VTKFile type=\"PolyData\" version=\"2.0\" byte_order=\"BigEndian\">\
 ///   <PolyData>\
-///     <Piece NumberOfPoints=\"9\" NumberOfCells=\"0\" NumberOfLines=\"0\" NumberOfStrips=\"0\" NumberOfPolys=\"1\" NumberOfVerts=\"0\">\
+///     <Piece NumberOfPoints=\"3\" NumberOfLines=\"0\" NumberOfStrips=\"0\" NumberOfPolys=\"1\" NumberOfVerts=\"0\">\
 ///       <PointData/>\
 ///       <CellData/>\
 ///       <Points>\
-///         <DataArray type=\"Float32\" format=\"binary\" NumberOfComponents=\"1\">\
+///         <DataArray type=\"Float32\" format=\"binary\" NumberOfComponents=\"3\">\
 ///           AAAAAAAAAAQAAAAAAAAAAAAAAAA/gAAAAAAAAAAAAAAAAAAAAAAAAL+AAAA=\
 ///         </DataArray>\
 ///       </Points>\
+///       <Polys>\
+///         <DataArray type=\"UInt64\" Name=\"connectivity\" format=\"binary\" NumberOfComponents=\"1\">\
+///           AAAAAAAAAAgAAAAAAAAAAAAAAAAAAAABAAAAAAAAAAI=\
+///         </DataArray>\
+///         <DataArray type=\"UInt64\" Name=\"offsets\" format=\"binary\" NumberOfComponents=\"1\">\
+///           AAAAAAAAAAgAAAAAAAAAAw==\
+///         </DataArray>\
+///       </Polys>\
 ///     </Piece>\
 ///   </PolyData>\
 /// </VTKFile>");

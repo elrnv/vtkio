@@ -1336,13 +1336,16 @@ impl From<Extent> for model::Extent {
     }
 }
 
+// Helper for serializing number_of_cells
+fn is_zero(n: &u32) -> bool { *n == 0 }
+
 #[derive(Clone, Debug, PartialEq, Default, Serialize)]
 #[serde(rename_all = "PascalCase")]
 pub struct Piece {
     pub extent: Option<Extent>,
     #[serde(default)]
     pub number_of_points: u32,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if="is_zero")]
     pub number_of_cells: u32,
     #[serde(default)]
     pub number_of_lines: u32,
@@ -1372,7 +1375,7 @@ pub struct Points {
 impl Points {
     pub fn from_io_buffer(buf: model::IOBuffer, bo: model::ByteOrder) -> Points {
         Points {
-            data: DataArray::from_io_buffer(buf, bo),
+            data: DataArray::from_io_buffer(buf, bo).with_num_comp(3),
         }
     }
 }
@@ -1392,20 +1395,18 @@ impl Cells {
         let model::Cells { cell_verts, types } = cells;
         let (connectivity, offsets) = cell_verts.into_xml();
         Cells {
-            connectivity: DataArray::from_io_buffer(connectivity.into(), bo),
-            offsets: DataArray::from_io_buffer(offsets.into(), bo),
+            connectivity: DataArray::from_io_buffer(connectivity.into(), bo).with_name("connectivity"),
+            offsets: DataArray::from_io_buffer(offsets.into(), bo).with_name("offsets"),
             types: DataArray::from_io_buffer(
                 types
                     .into_iter()
                     .map(|x| x as u8)
                     .collect::<model::IOBuffer>(),
                 bo,
-            ),
+            ).with_name("types"),
         }
     }
-}
 
-impl Cells {
     /// Given the expected number of elements and an optional appended data,
     /// converts this `Topo` struct into a `mode::VertexNumbers` type.
     pub fn into_model_cells(
@@ -1454,22 +1455,36 @@ pub struct Topo {
 }
 
 impl Topo {
+    /// Convert model topology type into `Topo`.
+    fn from_model_topo(topo: model::VertexNumbers, bo: model::ByteOrder) -> Topo {
+        let (connectivity, offsets) = topo.into_xml();
+        Topo {
+            connectivity: DataArray::from_io_buffer(connectivity.into(), bo).with_name("connectivity"),
+            offsets: DataArray::from_io_buffer(offsets.into(), bo).with_name("offsets"),
+        }
+    }
+
     /// Given the expected number of elements and an optional appended data,
     /// converts this `Topo` struct into a `mode::VertexNumbers` type.
     pub fn into_vertex_numbers(
         self,
-        l: usize,
+        num_elements: usize,
         appended: Option<&AppendedData>,
         bo: model::ByteOrder,
     ) -> std::result::Result<model::VertexNumbers, ValidationError> {
+        let offsets: Option<Vec<u64>> = self.offsets.into_io_buffer(num_elements, appended, bo)?.cast_into();
+        let offsets = offsets.ok_or_else(|| ValidationError::InvalidDataFormat)?;
+
+        // Get the number of elements in the connectivity array from the last offset.
+        let num_values = usize::try_from(*offsets.last().unwrap_or(&0))
+            .map_err(|_| ValidationError::MissingTopologyOffsets)?;
         let connectivity: Option<Vec<u64>> = self
             .connectivity
-            .into_io_buffer(l, appended, bo)?
+            .into_io_buffer(num_values, appended, bo)?
             .cast_into();
-        let offsets: Option<Vec<u64>> = self.offsets.into_io_buffer(l, appended, bo)?.cast_into();
         Ok(model::VertexNumbers::XML {
             connectivity: connectivity.ok_or_else(|| ValidationError::InvalidDataFormat)?,
-            offsets: offsets.ok_or_else(|| ValidationError::InvalidDataFormat)?,
+            offsets
         })
     }
 }
@@ -1743,6 +1758,23 @@ impl DataArray {
             ..Default::default()
         }
     }
+
+    /// Returns the given `DataArray` with name set to `name`.
+    pub fn with_name(self, name: impl Into<String>) -> Self {
+        DataArray {
+            name: name.into(),
+            ..self
+        }
+    }
+
+    /// Returns the given `DataArray` with the given number of components `num_comp`.
+    pub fn with_num_comp(self, num_comp: u32) -> Self {
+        DataArray {
+            num_comp,
+            ..self
+        }
+    }
+
     /// Convert this data array into a `model::FieldArray` type.
     ///
     /// The given arguments are the number of elements (not bytes) in the expected output
@@ -2219,6 +2251,7 @@ pub enum ValidationError {
     ParseInt(std::num::ParseIntError),
     InvalidCellType(u8),
     TooManyElements(u32),
+    MissingTopologyOffsets,
     MissingReferencedAppendedData,
     MissingCoordinates,
     DataArraySizeMismatch { expected: usize, actual: usize },
@@ -2282,6 +2315,7 @@ impl std::fmt::Display for ValidationError {
             ValidationError::ParseInt(e) => write!(f, "Failed to parse an int: {}", e),
             ValidationError::InvalidCellType(t) => write!(f, "Invalid cell type: {}", t),
             ValidationError::TooManyElements(n) => write!(f, "Too many elements: {}", n),
+            ValidationError::MissingTopologyOffsets => write!(f, "Missing topology offsets"),
             ValidationError::MissingReferencedAppendedData => {
                 write!(f, "Appended data is referenced but missing from the file")
             }
@@ -2398,50 +2432,44 @@ impl TryFrom<VTKFile> for model::Vtk {
                                 + number_of_strips
                                 + number_of_polys
                                 + number_of_verts;
-                            let mut topo = Vec::new();
-                            if let Some(verts) = verts {
-                                topo.push(model::PolyDataTopology::Vertices(
-                                    verts.into_vertex_numbers(
-                                        number_of_verts,
-                                        appended_data,
-                                        byte_order,
-                                    )?,
-                                ));
-                            }
-                            if let Some(lines) = lines {
-                                topo.push(model::PolyDataTopology::Lines(
-                                    lines.into_vertex_numbers(
-                                        number_of_lines,
-                                        appended_data,
-                                        byte_order,
-                                    )?,
-                                ));
-                            }
-                            if let Some(strips) = strips {
-                                topo.push(model::PolyDataTopology::TriangleStrips(
-                                    strips.into_vertex_numbers(
-                                        number_of_strips,
-                                        appended_data,
-                                        byte_order,
-                                    )?,
-                                ));
-                            }
-                            if let Some(polys) = polys {
-                                topo.push(model::PolyDataTopology::Polygons(
-                                    polys.into_vertex_numbers(
-                                        number_of_polys,
-                                        appended_data,
-                                        byte_order,
-                                    )?,
-                                ));
-                            }
+                            let verts = verts.map(|verts| {
+                                verts.into_vertex_numbers(
+                                    number_of_verts,
+                                    appended_data,
+                                    byte_order,
+                                )
+                            }).transpose()?;
+                            let lines = lines.map(|lines| {
+                                lines.into_vertex_numbers(
+                                    number_of_lines,
+                                    appended_data,
+                                    byte_order,
+                                )
+                            }).transpose()?;
+                            let strips = strips.map(|strips| {
+                                strips.into_vertex_numbers(
+                                    number_of_strips,
+                                    appended_data,
+                                    byte_order,
+                                )
+                            }).transpose()?;
+                            let polys = polys.map(|polys| {
+                                polys.into_vertex_numbers(
+                                    number_of_polys,
+                                    appended_data,
+                                    byte_order,
+                                )
+                            }).transpose()?;
                             Ok(model::Piece::Inline(Box::new(model::PolyDataPiece {
                                 points: points.unwrap().data.into_io_buffer(
                                     number_of_points * 3,
                                     appended_data,
                                     byte_order,
                                 )?,
-                                topo,
+                                verts,
+                                lines,
+                                polys,
+                                strips,
                                 data: attributes(
                                     number_of_points,
                                     number_of_cells,
@@ -2867,20 +2895,28 @@ impl TryFrom<model::Vtk> for VTKFile {
                     .into_iter()
                     .map(|piece| {
                         let piece_data = piece.load_piece_data()?;
-                        let model::PolyDataPiece { points, topo, data } = piece_data;
-                        let number_of_lines: usize = topo.iter().map(|x| x.num_lines()).sum();
-                        let number_of_verts: usize = topo.iter().map(|x| x.num_verts()).sum();
-                        let number_of_polys: usize = topo.iter().map(|x| x.num_polys()).sum();
-                        let number_of_strips: usize = topo.iter().map(|x| x.num_strips()).sum();
+                        let number_of_verts = piece_data.num_verts();
+                        let number_of_lines = piece_data.num_lines();
+                        let number_of_polys = piece_data.num_polys();
+                        let number_of_strips = piece_data.num_strips();
+                        let model::PolyDataPiece { points, verts, lines, polys, strips, data } = piece_data;
+
+                        let verts = verts.map(|topo| Topo::from_model_topo(topo, byte_order));
+                        let lines = lines.map(|topo| Topo::from_model_topo(topo, byte_order));
+                        let polys = polys.map(|topo| Topo::from_model_topo(topo, byte_order));
+                        let strips = strips.map(|topo| Topo::from_model_topo(topo, byte_order));
 
                         Ok(Piece {
-                            number_of_points: u32::try_from(points.len()).unwrap(),
+                            number_of_points: u32::try_from(points.len()/3).unwrap(),
                             number_of_lines: u32::try_from(number_of_lines).unwrap(),
                             number_of_verts: u32::try_from(number_of_verts).unwrap(),
                             number_of_polys: u32::try_from(number_of_polys).unwrap(),
                             number_of_strips: u32::try_from(number_of_strips).unwrap(),
                             points: Some(Points::from_io_buffer(points, byte_order)),
-                            polys: None,
+                            verts,
+                            lines,
+                            polys,
+                            strips,
                             point_data: AttributeData::from_model_attributes(
                                 data.point, byte_order,
                             ),

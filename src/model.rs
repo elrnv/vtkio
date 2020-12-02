@@ -1284,73 +1284,6 @@ impl Cells {
     }
 }
 
-/// Topology information for a `PolyData` type data set.
-///
-/// This enum represents all potential types of cells that can be represented by a `PolyData` data
-/// set.
-#[derive(Clone, PartialEq, Debug)]
-pub enum PolyDataTopology {
-    /// Vertex topology. This is called `Verts` in XML.
-    Vertices(VertexNumbers),
-    /// Poly lines topology. This is called `Lines` in XML.
-    Lines(VertexNumbers),
-    /// Polygon topology.  This is called `Polys` in XML.
-    Polygons(VertexNumbers),
-    /// Triangle strip topology. This is called `Strips` in XML.
-    TriangleStrips(VertexNumbers),
-}
-
-impl PolyDataTopology {
-    /// Gives the total number of vertices represented by this topology.
-    ///
-    /// Non-zero only for the `Vertices` variant.
-    pub fn num_verts(&self) -> usize {
-        match self {
-            PolyDataTopology::Vertices(vert_nums) => vert_nums.num_cells(),
-            _ => 0,
-        }
-    }
-    /// Gives the total number of lines represented by this topology.
-    ///
-    /// Non-zero only for the `Lines` variant.
-    pub fn num_lines(&self) -> usize {
-        match self {
-            PolyDataTopology::Lines(vert_nums) => vert_nums.num_cells(),
-            _ => 0,
-        }
-    }
-    /// Gives the total number of polygons represented by this topology.
-    ///
-    /// Non-zero only for the `Polygons` variant.
-    pub fn num_polys(&self) -> usize {
-        match self {
-            PolyDataTopology::Polygons(vert_nums) => vert_nums.num_cells(),
-            _ => 0,
-        }
-    }
-    /// Gives the total number of triangle strips represented by this topology.
-    ///
-    /// Non-zero only for the `TriangleStrips` variant.
-    pub fn num_strips(&self) -> usize {
-        match self {
-            PolyDataTopology::TriangleStrips(vert_nums) => vert_nums.num_cells(),
-            _ => 0,
-        }
-    }
-    /// Gives the total number of cells represented by this topology regardless of type.
-    ///
-    /// Here cell refers to a vertex, line, polygon or a triangle strip depending on the variant
-    /// used.
-    pub fn num_cells(&self) -> usize {
-        match self {
-            PolyDataTopology::Vertices(vert_nums)
-            | PolyDataTopology::Lines(vert_nums)
-            | PolyDataTopology::Polygons(vert_nums)
-            | PolyDataTopology::TriangleStrips(vert_nums) => vert_nums.num_cells(),
-        }
-    }
-}
-
 /// This enum describes the types of Cells representable by VTK files.
 ///
 /// These are explicitly written in `UnstructuredGrid`s and some are referred to in `PolyData`
@@ -1625,12 +1558,54 @@ pub struct StructuredGridPiece {
 /// `num_cells` function of `PolyDataTopology`, which will give the appropriate number
 /// depending on the type of geometry. To get `NumberOfPoints`, simply take the length of
 /// `points`.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Default)]
 pub struct PolyDataPiece {
     /// A contiguous array of coordinates (x,y,z) representing the points in the mesh.
     pub points: IOBuffer,
-    pub topo: Vec<PolyDataTopology>,
+    /// Vertex topology. This is called `Verts` in XML.
+    pub verts: Option<VertexNumbers>,
+    /// Poly lines topology. This is called `Lines` in XML.
+    pub lines: Option<VertexNumbers>,
+    /// Polygon topology.  This is called `Polys` in XML.
+    pub polys: Option<VertexNumbers>,
+    /// Triangle strip topology. This is called `Strips` in XML.
+    pub strips: Option<VertexNumbers>,
+    /// Attribute data for points and cells (one of `verts`,`lines`,`polys` or `strips`).
     pub data: Attributes,
+}
+
+impl PolyDataPiece {
+    /// Gives the total number of vertices in this piece.
+    ///
+    /// Non-zero only for the `Vertices` variant.
+    pub fn num_verts(&self) -> usize {
+        self.verts.as_ref().map(|verts| verts.num_cells()).unwrap_or(0)
+    }
+    /// Gives the total number of lines in this piece.
+    ///
+    /// Non-zero only for the `Lines` variant.
+    pub fn num_lines(&self) -> usize {
+        self.lines.as_ref().map(|lines| lines.num_cells()).unwrap_or(0)
+    }
+    /// Gives the total number of polygons in this piece.
+    ///
+    /// Non-zero only for the `Polygons` variant.
+    pub fn num_polys(&self) -> usize {
+        self.polys.as_ref().map(|polys| polys.num_cells()).unwrap_or(0)
+    }
+    /// Gives the total number of triangle strips in this piece.
+    ///
+    /// Non-zero only for the `TriangleStrips` variant.
+    pub fn num_strips(&self) -> usize {
+        self.strips.as_ref().map(|strips| strips.num_cells()).unwrap_or(0)
+    }
+    /// Gives the total number of cells in this piece regardless of type.
+    ///
+    /// Here cell refers to a vertex, line, polygon or a triangle strip depending on the variant
+    /// used.
+    pub fn num_cells(&self) -> usize {
+        self.num_verts() + self.num_lines() + self.num_polys() + self.num_strips()
+    }
 }
 
 /// UnstructuredGrid piece data.
