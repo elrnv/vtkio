@@ -1828,6 +1828,7 @@ impl DataArray {
                     };
                     if buf.len() != l {
                         return Err(ValidationError::DataArraySizeMismatch {
+                            name,
                             expected: l,
                             actual: buf.len(),
                         });
@@ -1843,6 +1844,7 @@ impl DataArray {
                 let buf = IOBuffer::from_bytes(&bytes[8..], scalar_type.into(), byte_order)?;
                 if buf.len() != l {
                     return Err(ValidationError::DataArraySizeMismatch {
+                        name,
                         expected: l,
                         actual: buf.len(),
                     });
@@ -1875,6 +1877,7 @@ impl DataArray {
                 };
                 if buf.len() != l {
                     return Err(ValidationError::DataArraySizeMismatch {
+                        name,
                         expected: l,
                         actual: buf.len(),
                     });
@@ -2259,7 +2262,11 @@ pub enum ValidationError {
     MissingTopologyOffsets,
     MissingReferencedAppendedData,
     MissingCoordinates,
-    DataArraySizeMismatch { expected: usize, actual: usize },
+    DataArraySizeMismatch {
+        name: String,
+        expected: usize,
+        actual: usize,
+    },
     Base64Decode(base64::DecodeError),
     Deserialize(de::DeError),
     Unsupported,
@@ -2327,10 +2334,14 @@ impl std::fmt::Display for ValidationError {
             ValidationError::MissingCoordinates => {
                 write!(f, "Missing coordinates in rectilinear grid definition")
             }
-            ValidationError::DataArraySizeMismatch { expected, actual } => write!(
+            ValidationError::DataArraySizeMismatch {
+                name,
+                expected,
+                actual,
+            } => write!(
                 f,
-                "Found a data array with {} elements, but expected {}",
-                actual, expected
+                "Data array \"{}\" has {} elements, but should have {}",
+                name, actual, expected
             ),
             ValidationError::Base64Decode(source) => write!(f, "Base64 decode error: {:?}", source),
             ValidationError::Deserialize(source) => {
@@ -2880,13 +2891,14 @@ impl TryFrom<model::Vtk> for VTKFile {
                     .into_iter()
                     .map(|piece| {
                         let piece_data = piece.load_piece_data()?;
+                        let num_points = piece_data.num_points();
                         let model::UnstructuredGridPiece {
                             points,
                             cells,
                             data,
                         } = piece_data;
                         Ok(Piece {
-                            number_of_points: u32::try_from(points.len()).unwrap(),
+                            number_of_points: u32::try_from(num_points).unwrap(),
                             number_of_cells: u32::try_from(cells.num_cells()).unwrap(),
                             points: Some(Points::from_io_buffer(points, byte_order)),
                             cells: Some(Cells::from_model_cells(cells, byte_order)),
@@ -2908,6 +2920,7 @@ impl TryFrom<model::Vtk> for VTKFile {
                     .into_iter()
                     .map(|piece| {
                         let piece_data = piece.load_piece_data()?;
+                        let num_points = piece_data.num_points();
                         let number_of_verts = piece_data.num_verts();
                         let number_of_lines = piece_data.num_lines();
                         let number_of_polys = piece_data.num_polys();
@@ -2927,7 +2940,7 @@ impl TryFrom<model::Vtk> for VTKFile {
                         let strips = strips.map(|topo| Topo::from_model_topo(topo, byte_order));
 
                         Ok(Piece {
-                            number_of_points: u32::try_from(points.len() / 3).unwrap(),
+                            number_of_points: u32::try_from(num_points).unwrap(),
                             number_of_lines: u32::try_from(number_of_lines).unwrap(),
                             number_of_verts: u32::try_from(number_of_verts).unwrap(),
                             number_of_polys: u32::try_from(number_of_polys).unwrap(),

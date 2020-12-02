@@ -1552,6 +1552,16 @@ pub struct StructuredGridPiece {
     pub data: Attributes,
 }
 
+impl StructuredGridPiece {
+    /// Gives the number of points in this pieces.
+    ///
+    /// This is distinct from `points.len()` which gives the number of components, which is three
+    /// times `num_points()`.
+    pub fn num_points(&self) -> usize {
+        self.points.len() / 3
+    }
+}
+
 /// PolyData piece data.
 ///
 /// For XML formats, to get the corresponding `NumberOfVerts`, `NumberOfLines` etc. use the
@@ -1575,6 +1585,14 @@ pub struct PolyDataPiece {
 }
 
 impl PolyDataPiece {
+    /// Gives the number of points in this pieces.
+    ///
+    /// This is distinct from `points.len()` which gives the number of components, which is three
+    /// times `num_points()`.
+    pub fn num_points(&self) -> usize {
+        self.points.len() / 3
+    }
+
     /// Gives the total number of vertices in this piece.
     ///
     /// Non-zero only for the `Vertices` variant.
@@ -1627,6 +1645,16 @@ pub struct UnstructuredGridPiece {
     pub points: IOBuffer,
     pub cells: Cells,
     pub data: Attributes,
+}
+
+impl UnstructuredGridPiece {
+    /// Gives the number of points in this pieces.
+    ///
+    /// This is distinct from `points.len()` which gives the number of components, which is three
+    /// times `num_points()`.
+    pub fn num_points(&self) -> usize {
+        self.points.len() / 3
+    }
 }
 
 macro_rules! impl_piece_data {
