@@ -37,8 +37,8 @@ fn main() {
 
 # Changes
 
-The previous version of the crate (v0.3) supports only Legacy VTK formats. For a list of changes
-introduced in the new version of `vtkio` (v0.4) see the [CHANGELOG](CHANGELOG.md).
+Version 0.3 of the crate supports only Legacy VTK formats. For a list of changes
+introduced in the new versions of `vtkio` (v0.4+) see the [CHANGELOG](CHANGELOG.md).
 
 # License
 
