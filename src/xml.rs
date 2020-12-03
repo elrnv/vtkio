@@ -1802,21 +1802,23 @@ impl DataArray {
             ..
         } = self;
 
+        let num_elements = usize::try_from(num_comp).unwrap() * l;
+
         let data = match format {
             DataArrayFormat::Appended => {
                 if let Some(appended) = appended {
                     let mut start: usize = offset.unwrap_or(0).try_into().unwrap();
+                    let num_bytes = num_elements * scalar_type.size();
                     let buf = match appended.encoding {
                         Encoding::Raw => {
                             // Skip the first 64 bits which gives the size of each component in bytes
                             start += 8;
-                            let bytes = &appended.data.0[start..start + l * scalar_type.size()];
+                            let bytes = &appended.data.0[start..start + num_bytes];
                             IOBuffer::from_bytes(bytes, scalar_type.into(), byte_order)?
                         }
                         Encoding::Base64 => {
-                            let num_target_bytes = l * scalar_type.size();
                             // Add one 64-bit integer that specifies the size of each component in bytes.
-                            let num_target_bits = (num_target_bytes) * 8 + 64;
+                            let num_target_bits = num_bytes * 8 + 64;
                             // Compute how many base64 chars we need to decode l elements.
                             let num_source_bytes =
                                 num_target_bits / 6 + if num_target_bits % 6 == 0 { 0 } else { 1 };
@@ -1826,10 +1828,10 @@ impl DataArray {
                             IOBuffer::from_bytes(&bytes[8..], scalar_type.into(), byte_order)?
                         }
                     };
-                    if buf.len() != l {
+                    if buf.len() != num_elements {
                         return Err(ValidationError::DataArraySizeMismatch {
                             name,
-                            expected: l,
+                            expected: num_elements,
                             actual: buf.len(),
                         });
                     }
@@ -1842,10 +1844,10 @@ impl DataArray {
                 // First byte gives the bytes
                 let bytes = base64::decode(data[0].clone().into_string())?;
                 let buf = IOBuffer::from_bytes(&bytes[8..], scalar_type.into(), byte_order)?;
-                if buf.len() != l {
+                if buf.len() != num_elements {
                     return Err(ValidationError::DataArraySizeMismatch {
                         name,
-                        expected: l,
+                        expected: num_elements,
                         actual: buf.len(),
                     });
                 }
@@ -1875,10 +1877,10 @@ impl DataArray {
                     ScalarType::Float32 => IOBuffer::F32(parse_num_seq(slice)?),
                     ScalarType::Float64 => IOBuffer::F64(parse_num_seq(slice)?),
                 };
-                if buf.len() != l {
+                if buf.len() != num_elements {
                     return Err(ValidationError::DataArraySizeMismatch {
                         name,
-                        expected: l,
+                        expected: num_elements,
                         actual: buf.len(),
                     });
                 }
@@ -1928,12 +1930,12 @@ impl DataArray {
 
     pub fn into_attribute(
         self,
-        num_bytes: usize,
+        num_elements: usize,
         appended: Option<&AppendedData>,
         info: &AttributeInfo,
         bo: model::ByteOrder,
     ) -> std::result::Result<model::Attribute, ValidationError> {
-        let data_array = self.into_model_data_array(num_bytes, appended, info, bo)?;
+        let data_array = self.into_model_data_array(num_elements, appended, info, bo)?;
 
         Ok(model::Attribute::DataArray(data_array))
     }
@@ -2486,7 +2488,7 @@ impl TryFrom<VTKFile> for model::Vtk {
                                 .transpose()?;
                             Ok(model::Piece::Inline(Box::new(model::PolyDataPiece {
                                 points: points.unwrap().data.into_io_buffer(
-                                    number_of_points * 3,
+                                    number_of_points,
                                     appended_data,
                                     byte_order,
                                 )?,
@@ -2570,7 +2572,7 @@ impl TryFrom<VTKFile> for model::Vtk {
                             Ok(model::Piece::Inline(Box::new(model::StructuredGridPiece {
                                 extent,
                                 points: points.unwrap().data.into_io_buffer(
-                                    number_of_points * 3,
+                                    number_of_points,
                                     appended_data,
                                     byte_order,
                                 )?,
@@ -2615,7 +2617,7 @@ impl TryFrom<VTKFile> for model::Vtk {
                                 Ok(model::Piece::Inline(Box::new(
                                     model::UnstructuredGridPiece {
                                         points: points.unwrap().data.into_io_buffer(
-                                            number_of_points * 3,
+                                            number_of_points,
                                             appended_data,
                                             byte_order,
                                         )?,
