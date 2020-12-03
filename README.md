@@ -13,7 +13,16 @@ parallel XML file formats are supported.
 The Legacy format parser is written using [nom](https://crates.io/crates/nom).
 XML VTK files are import and exported with [`quick-xml`](https://crates.io/crates/quick-xml) and [`serde`](https://crates.io/crates/serde) crates.
 
-# Examples
+# Usage
+
+To use this library simply add the crate name to your `Cargo.toml` file:
+
+```rust
+[dependencies]
+vtkio = "0.5"
+```
+
+## Examples
 
 Many sample files can be found in the `assets` directory. For the following example, we
 will load a VTK file named `tet.vtk`, modify it and write it back in Legacy ASCII format.
@@ -48,3 +57,7 @@ This repository is licensed under either of
  * MIT License ([LICENSE-MIT](LICENSE-MIT) or https://opensource.org/licenses/MIT)
 
 at your option.
+
+Unless You explicitly state otherwise, any Contribution intentionally submitted for inclusion in
+the Work by You, as defined in the Apache-2.0 license, shall be dual licensed as above, without
+any additional terms or conditions.

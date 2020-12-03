@@ -8,15 +8,17 @@
 //!
 //! # Examples
 //!
-//! Many sample files can be found in the `assets` directory. For the following example, we
-//! will load a VTK file named `tet.vtk`, modify it and write it back in Legacy ASCII format.
+//! Many sample files can be found in the `assets` directory.
+//!
+//! For the following example, we will load a VTK file named `tet.vtk`, modify it and write it back
+//! in Legacy ASCII format.
 //!
 //! ```no_run
 //! use vtkio::model::*; // import model definition of a VTK file
 //! use vtkio::{import, export_ascii};
 //! fn main() {
 //!     use std::path::PathBuf;
-//!     let file_path = PathBuf::from("assets/tet.vtk");
+//!     let file_path = PathBuf::from("../assets/tet.vtk");
 //!
 //!     let mut vtk_file = import(&file_path)
 //!         .expect(&format!("Failed to load file: {:?}", file_path));
@@ -28,6 +30,25 @@
 //! }
 //! ```
 //!
+//! Files are sometimes provided as strings or byte slices, so it is also useful to be able to
+//! parse VTK files and write them back to a string or byte slice.
+//!
+//! ```no_run
+//! use vtkio::model::*; // import model definition of a VTK file
+//! use vtkio::{parse_legacy_be, write_legacy_ascii};
+//! fn main() {
+//!     let data: &[u8] = include_str!("../assets/tet.vtk").as_bytes(); // Or just include_bytes!
+//!
+//!     let mut vtk_file = parse_legacy_be(data).expect(&format!("Failed to parse file"));
+//!
+//!     vtk_file.version = Version::new((4,2)); // arbitrary change
+//!
+//!     let mut output = String::new();
+//!     write_legacy_ascii(vtk_file, &mut output).expect(&format!("Failed to write file"));
+//!
+//!     println!("{}", output);
+//! }
+//! ```
 #[macro_use]
 extern crate nom;
 
@@ -147,7 +168,7 @@ where
 /// Parse a legacy VTK file from the given reader.
 ///
 /// If the file is in binary format, numeric types will be interpreted in big endian format.
-/// Note that this function and [`parse_vtk_le`](crate::parse_vtk_le) also work equally well for
+/// Note that this function and [`parse_legacy_le`](crate::parse_legacy_le) also work equally well for
 /// parsing VTK files in ASCII format.
 ///
 /// # Examples
@@ -170,7 +191,7 @@ where
 /// 3 0 1 2
 /// ";
 ///
-/// let vtk = vtkio::parse_vtk_be(vtk_ascii).expect("Failed to parse vtk file");
+/// let vtk = vtkio::parse_legacy_be(vtk_ascii).expect("Failed to parse vtk file");
 ///
 /// assert_eq!(vtk, Vtk {
 ///     version: Version::new((2,0)),
@@ -187,14 +208,14 @@ where
 ///     })
 /// });
 /// ```
-pub fn parse_vtk_be(reader: impl Read) -> Result<model::Vtk, Error> {
+pub fn parse_legacy_be(reader: impl Read) -> Result<model::Vtk, Error> {
     parse_vtk(reader, parser::parse_be, &mut Vec::new())
 }
 
 /// Parse a legacy VTK file from the given reader.
 ///
 /// If the file is in binary format, numeric types will be interpreted in little endian format.
-/// Note that this function and [`parse_vtk_lb`](crate::parse_vtk_be) also work equally well for
+/// Note that this function and [`parse_legacy_be`](crate::parse_legacy_be) also work equally well for
 /// parsing VTK files in ASCII format.
 ///
 /// # Examples
@@ -217,7 +238,7 @@ pub fn parse_vtk_be(reader: impl Read) -> Result<model::Vtk, Error> {
 /// 3 0 1 2
 /// ";
 ///
-/// let vtk = vtkio::parse_vtk_le(vtk_ascii).expect("Failed to parse vtk file");
+/// let vtk = vtkio::parse_legacy_le(vtk_ascii).expect("Failed to parse vtk file");
 ///
 /// assert_eq!(vtk, Vtk {
 ///     version: Version::new((2,0)),
@@ -234,23 +255,23 @@ pub fn parse_vtk_be(reader: impl Read) -> Result<model::Vtk, Error> {
 ///     })
 /// });
 /// ```
-pub fn parse_vtk_le(reader: impl Read) -> Result<model::Vtk, Error> {
+pub fn parse_legacy_le(reader: impl Read) -> Result<model::Vtk, Error> {
     parse_vtk(reader, parser::parse_le, &mut Vec::new())
 }
 
 /// Parse a legacy VTK file in big endian format from the given reader and a buffer.
 ///
-/// This is the buffered version of `parse_vtk_be`, which allows one to reuse the same
+/// This is the buffered version of [`parse_legacy_be`], which allows one to reuse the same
 /// heap allocated space when reading many files.
-pub fn parse_vtk_buf_be(reader: impl Read, buf: &mut Vec<u8>) -> Result<model::Vtk, Error> {
+pub fn parse_legacy_buf_be(reader: impl Read, buf: &mut Vec<u8>) -> Result<model::Vtk, Error> {
     parse_vtk(reader, parser::parse_be, buf)
 }
 
 /// Parse a legacy VTK file in little endian format from the given reader and a buffer.
 ///
-/// This is the buffered version of `parse_vtk_le`, which allows one to reuse the same
+/// This is the buffered version of [`parse_legacy_le`], which allows one to reuse the same
 /// heap allocated space when reading many files.
-pub fn parse_vtk_buf_le(reader: impl Read, buf: &mut Vec<u8>) -> Result<model::Vtk, Error> {
+pub fn parse_legacy_buf_le(reader: impl Read, buf: &mut Vec<u8>) -> Result<model::Vtk, Error> {
     parse_vtk(reader, parser::parse_le, buf)
 }
 
@@ -560,7 +581,7 @@ fn export_impl(data: model::Vtk, path: &Path) -> Result<(), Error> {
     }
 }
 
-/// Write the given VTK file in binary legacy format to the specified `Write`r.
+/// Write the given VTK file in binary legacy format to the specified [`Write`](std::io::Write)r.
 ///
 /// # Examples
 ///
@@ -594,7 +615,7 @@ pub fn write_legacy(vtk: model::Vtk, writer: impl std::io::Write) -> Result<(), 
     Ok(())
 }
 
-/// Write the given VTK file in binary legacy format to the specified `Write`r.
+/// Write the given VTK file in binary legacy format to the specified [`Write`](std::fmt::Write)r.
 ///
 /// # Examples
 ///
@@ -643,7 +664,7 @@ pub fn write_legacy_ascii(vtk: model::Vtk, writer: impl std::fmt::Write) -> Resu
     Ok(())
 }
 
-/// Write the given VTK file in modern XML format to the specified `Write`r.
+/// Write the given VTK file in modern XML format to the specified [`Write`](std::io::Write)r.
 ///
 /// # Examples
 ///
@@ -699,10 +720,11 @@ pub fn write_xml(vtk: model::Vtk, writer: impl Write) -> Result<(), Error> {
     Ok(())
 }
 
-/// Export the given `Vtk` file to the specified file in little endian binary format.
+/// Export the given [`Vtk`] file to the specified file in little endian binary format.
 ///
 /// This function is used as [`export`] but overrides endiannes.
 ///
+/// [`Vtk`]: crate::model::Vtk
 /// [`export`]: fn.export.html
 pub fn export_le(data: model::Vtk, file_path: impl AsRef<Path>) -> Result<(), Error> {
     let file = File::create(file_path.as_ref())?;
@@ -710,10 +732,11 @@ pub fn export_le(data: model::Vtk, file_path: impl AsRef<Path>) -> Result<(), Er
     Ok(())
 }
 
-/// Export the given `Vtk` file to the specified file in big endian binary format.
+/// Export the given [`Vtk`] file to the specified file in big endian binary format.
 ///
 /// This function is used as [`export`] but overrides endiannes.
 ///
+/// [`Vtk`]: crate::model::Vtk
 /// [`export`]: fn.export.html
 pub fn export_be(data: model::Vtk, file_path: impl AsRef<Path>) -> Result<(), Error> {
     let file = File::create(file_path.as_ref())?;

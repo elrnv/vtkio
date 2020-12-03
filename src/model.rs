@@ -65,7 +65,9 @@ impl From<crate::Error> for Error {
     }
 }
 
-/// Model of the VTK data structure.
+/// Model of the VTK file.
+///
+/// This type unifies legacy and XML data representations.
 #[derive(Clone, PartialEq, Debug)]
 pub struct Vtk {
     pub version: Version,
@@ -109,7 +111,9 @@ pub enum ByteOrder {
     LittleEndian,
 }
 
-/// Data loaded from either binary or ascii format.
+/// Numeric data buffer.
+///
+/// This represents any loaded data such as attributes, cell indices or point coordinates.
 #[derive(Clone, PartialEq, Debug)]
 pub enum IOBuffer {
     /// Bit array is stored in 8 bit chunks.
@@ -143,7 +147,7 @@ impl Default for IOBuffer {
 }
 
 impl IOBuffer {
-    /// Construct an `IOBuffer` from a given generic `Vec<T>`.
+    /// Constructs an `IOBuffer` from a given generic `Vec<T>`.
     ///
     /// This function will deduce the type `T`, and if `T` is none of the supported types, will
     /// convert it to `f64`.
@@ -249,6 +253,7 @@ macro_rules! impl_bytes_constructor {
 }
 
 impl IOBuffer {
+    /// Returns the scalar type represented by this buffer.
     pub fn scalar_type(&self) -> ScalarType {
         match self {
             IOBuffer::Bit(_) => ScalarType::Bit,
@@ -272,16 +277,19 @@ impl IOBuffer {
         self.scalar_type().size()
     }
 
+    /// Returns the length of the buffer.
     pub fn len(&self) -> usize {
         match_buf!(self, v => v.len())
     }
 
+    /// Checks if the buffer is empty.
     pub fn is_empty(&self) -> bool {
         self.len() == 0
     }
 
-    /// Convert this `IOBuffer` into an array of bytes with a prepended size of the scalar type in
-    /// bytes stored as a 64-bit integer.
+    /// Converts this `IOBuffer` into an array of bytes with a size prefix.
+    ///
+    /// The size of the scalar type in bytes is stored as a 64-bit integer at the very beginning.
     ///
     /// This is how VTK data arrays store data in the XML files.
     pub fn into_bytes_with_size(self, bo: ByteOrder) -> Vec<u8> {
@@ -390,7 +398,7 @@ impl IOBuffer {
         out
     }
 
-    /// Construct an `IOBuffer` from a `Vec` of bytes and a corresponding scalar type.
+    /// Constructs an `IOBuffer` from a slice of bytes and a corresponding scalar type.
     pub fn from_bytes(bytes: &[u8], scalar_type: ScalarType, bo: ByteOrder) -> Result<Self, Error> {
         match scalar_type {
             ScalarType::Bit => Ok(IOBuffer::u8_from_bytes(bytes)),
@@ -407,6 +415,7 @@ impl IOBuffer {
         }
     }
 
+    /// Constructs an `IOBuffer` from a `Vec` of bytes and a corresponding scalar type.
     pub fn from_byte_vec(
         bytes: Vec<u8>,
         scalar_type: ScalarType,
@@ -569,7 +578,13 @@ pub trait Scalar: num_traits::FromPrimitive
 where
     Self: Sized,
 {
+    /// Returns a reference to the underlying `Vec` of the `IOBuffer` if the scalar types coincide.
+    ///
+    /// Otherwise, `None` is returned.
     fn io_buf_vec_ref(io_buf: &IOBuffer) -> Option<&Vec<Self>>;
+    /// Returns an owned `Vec` from the `IOBuffer` if the scalar types coincide.
+    ///
+    /// Otherwise, `None` is returned.
     fn io_buf_into_vec(io_buf: IOBuffer) -> Option<Vec<Self>>;
     /// Interpret a given slice of bytes as a number of this `ScalarType`.
     fn from_bytes(bytes: &[u8], byte_order: ByteOrder) -> Result<Self, Error>;
