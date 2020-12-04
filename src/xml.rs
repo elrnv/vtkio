@@ -986,7 +986,7 @@ mod vtkfile {
         {
             let mut vtk = VTKFile {
                 data_set_type: DataSetType::UnstructuredGrid,
-                version: model::Version::new((4, 1)),
+                version: model::Version::new((1, 0)),
                 byte_order: model::ByteOrder::BigEndian,
                 header_type: None,
                 compressor: Compressor::None,
@@ -1077,7 +1077,7 @@ pub struct VTKFile {
     pub data_set_type: DataSetType,
     pub version: model::Version,
     pub byte_order: model::ByteOrder,
-    pub header_type: Option<ScalarType>,
+    pub header_type: Option<ScalarType>, // Assumed to be UInt32 if missing
     pub compressor: Compressor,
     pub appended_data: Option<AppendedData>,
     pub data_set: DataSet,
@@ -1087,7 +1087,7 @@ impl Default for VTKFile {
     fn default() -> VTKFile {
         VTKFile {
             data_set_type: DataSetType::ImageData,
-            version: model::Version::new((0, 0)),
+            version: model::Version::new((0, 1)),
             byte_order: model::ByteOrder::BigEndian,
             header_type: None,
             compressor: Compressor::None,
@@ -1375,9 +1375,9 @@ pub struct Points {
 }
 
 impl Points {
-    pub fn from_io_buffer(buf: model::IOBuffer, bo: model::ByteOrder) -> Points {
+    pub fn from_io_buffer(buf: model::IOBuffer, ei: EncodingInfo) -> Points {
         Points {
-            data: DataArray::from_io_buffer(buf, bo).with_num_comp(3),
+            data: DataArray::from_io_buffer(buf, ei).with_num_comp(3),
         }
     }
 }
@@ -1393,19 +1393,19 @@ pub struct Cells {
 }
 
 impl Cells {
-    fn from_model_cells(cells: model::Cells, bo: model::ByteOrder) -> Cells {
+    fn from_model_cells(cells: model::Cells, ei: EncodingInfo) -> Cells {
         let model::Cells { cell_verts, types } = cells;
         let (connectivity, offsets) = cell_verts.into_xml();
         Cells {
-            connectivity: DataArray::from_io_buffer(connectivity.into(), bo)
+            connectivity: DataArray::from_io_buffer(connectivity.into(), ei)
                 .with_name("connectivity"),
-            offsets: DataArray::from_io_buffer(offsets.into(), bo).with_name("offsets"),
+            offsets: DataArray::from_io_buffer(offsets.into(), ei).with_name("offsets"),
             types: DataArray::from_io_buffer(
                 types
                     .into_iter()
                     .map(|x| x as u8)
                     .collect::<model::IOBuffer>(),
-                bo,
+                ei,
             )
             .with_name("types"),
         }
@@ -1417,11 +1417,11 @@ impl Cells {
         self,
         l: usize,
         appended: Option<&AppendedData>,
-        bo: model::ByteOrder,
+        ei: EncodingInfo,
     ) -> std::result::Result<model::Cells, ValidationError> {
         use num_traits::FromPrimitive;
 
-        let type_codes: Option<Vec<u8>> = self.types.into_io_buffer(l, appended, bo)?.into();
+        let type_codes: Option<Vec<u8>> = self.types.into_io_buffer(l, appended, ei)?.into();
         let type_codes = type_codes.ok_or_else(|| ValidationError::InvalidDataFormat)?;
         let types: std::result::Result<Vec<model::CellType>, ValidationError> = type_codes
             .into_iter()
@@ -1429,7 +1429,7 @@ impl Cells {
             .collect();
         let types = types?;
 
-        let offsets: Option<Vec<u64>> = self.offsets.into_io_buffer(l, appended, bo)?.cast_into();
+        let offsets: Option<Vec<u64>> = self.offsets.into_io_buffer(l, appended, ei)?.cast_into();
         let offsets = offsets.ok_or_else(|| ValidationError::InvalidDataFormat)?;
 
         // Count the total number of vertices we expect in the connectivity array.
@@ -1437,7 +1437,7 @@ impl Cells {
 
         let connectivity: Option<Vec<u64>> = self
             .connectivity
-            .into_io_buffer(num_vertices, appended, bo)?
+            .into_io_buffer(num_vertices, appended, ei)?
             .cast_into();
         let connectivity = connectivity.ok_or_else(|| ValidationError::InvalidDataFormat)?;
         Ok(model::Cells {
@@ -1460,12 +1460,12 @@ pub struct Topo {
 
 impl Topo {
     /// Convert model topology type into `Topo`.
-    fn from_model_topo(topo: model::VertexNumbers, bo: model::ByteOrder) -> Topo {
+    fn from_model_topo(topo: model::VertexNumbers, ei: EncodingInfo) -> Topo {
         let (connectivity, offsets) = topo.into_xml();
         Topo {
-            connectivity: DataArray::from_io_buffer(connectivity.into(), bo)
+            connectivity: DataArray::from_io_buffer(connectivity.into(), ei)
                 .with_name("connectivity"),
-            offsets: DataArray::from_io_buffer(offsets.into(), bo).with_name("offsets"),
+            offsets: DataArray::from_io_buffer(offsets.into(), ei).with_name("offsets"),
         }
     }
 
@@ -1475,11 +1475,11 @@ impl Topo {
         self,
         num_elements: usize,
         appended: Option<&AppendedData>,
-        bo: model::ByteOrder,
+        ei: EncodingInfo,
     ) -> std::result::Result<model::VertexNumbers, ValidationError> {
         let offsets: Option<Vec<u64>> = self
             .offsets
-            .into_io_buffer(num_elements, appended, bo)?
+            .into_io_buffer(num_elements, appended, ei)?
             .cast_into();
         let offsets = offsets.ok_or_else(|| ValidationError::InvalidDataFormat)?;
 
@@ -1488,7 +1488,7 @@ impl Topo {
             .map_err(|_| ValidationError::MissingTopologyOffsets)?;
         let connectivity: Option<Vec<u64>> = self
             .connectivity
-            .into_io_buffer(num_values, appended, bo)?
+            .into_io_buffer(num_values, appended, ei)?
             .cast_into();
         Ok(model::VertexNumbers::XML {
             connectivity: connectivity.ok_or_else(|| ValidationError::InvalidDataFormat)?,
@@ -1575,10 +1575,7 @@ impl AttributeInfo {
 }
 
 impl AttributeData {
-    pub fn from_model_attributes(
-        attribs: Vec<model::Attribute>,
-        byte_order: model::ByteOrder,
-    ) -> Self {
+    pub fn from_model_attributes(attribs: Vec<model::Attribute>, ei: EncodingInfo) -> Self {
         let mut attribute_data = AttributeData::default();
         for attrib in attribs {
             match attrib {
@@ -1614,7 +1611,7 @@ impl AttributeData {
                     }
                     attribute_data
                         .data_array
-                        .push(DataArray::from_model_data_array(data, byte_order));
+                        .push(DataArray::from_model_data_array(data, ei));
                 }
                 // Field attributes are not supported, they are simply ignored.
                 _ => {}
@@ -1626,7 +1623,7 @@ impl AttributeData {
         self,
         n: usize,
         appended_data: Option<&AppendedData>,
-        bo: model::ByteOrder,
+        ei: EncodingInfo,
     ) -> Vec<model::Attribute> {
         let AttributeData {
             scalars,
@@ -1647,7 +1644,7 @@ impl AttributeData {
 
         data_array
             .into_iter()
-            .filter_map(|x| x.into_attribute(n, appended_data, &info, bo).ok())
+            .filter_map(|x| x.into_attribute(n, appended_data, &info, ei).ok())
             .collect()
     }
 }
@@ -1657,11 +1654,11 @@ pub struct Coordinates([DataArray; 3]);
 
 impl Coordinates {
     /// Construct `Coordinates` from `model::Coordinates`.
-    pub fn from_model_coords(coords: model::Coordinates, bo: model::ByteOrder) -> Self {
+    pub fn from_model_coords(coords: model::Coordinates, ei: EncodingInfo) -> Self {
         Coordinates([
-            DataArray::from_io_buffer(coords.x, bo),
-            DataArray::from_io_buffer(coords.y, bo),
-            DataArray::from_io_buffer(coords.z, bo),
+            DataArray::from_io_buffer(coords.x, ei),
+            DataArray::from_io_buffer(coords.y, ei),
+            DataArray::from_io_buffer(coords.z, ei),
         ])
     }
 
@@ -1671,14 +1668,21 @@ impl Coordinates {
         self,
         [nx, ny, nz]: [usize; 3],
         appended: Option<&AppendedData>,
-        bo: model::ByteOrder,
+        ei: EncodingInfo,
     ) -> std::result::Result<model::Coordinates, ValidationError> {
         let Coordinates([x, y, z]) = self;
-        let x = x.into_io_buffer(nx, appended, bo)?;
-        let y = y.into_io_buffer(ny, appended, bo)?;
-        let z = z.into_io_buffer(nz, appended, bo)?;
+        let x = x.into_io_buffer(nx, appended, ei)?;
+        let y = y.into_io_buffer(ny, appended, ei)?;
+        let z = z.into_io_buffer(nz, appended, ei)?;
         Ok(model::Coordinates { x, y, z })
     }
+}
+
+/// A helper struct indicating how to read and write binary data stored in `DataArray`s.
+#[derive(Copy, Clone, Debug, PartialEq)]
+pub struct EncodingInfo {
+    byte_order: model::ByteOrder,
+    header_type: ScalarType,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -1742,27 +1746,33 @@ impl Default for DataArray {
 
 impl DataArray {
     /// Construct a binary `DataArray` from a given `model::DataArray`.
-    pub fn from_model_data_array(data: model::DataArray, bo: model::ByteOrder) -> Self {
+    pub fn from_model_data_array(data: model::DataArray, ei: EncodingInfo) -> Self {
         let num_comp = u32::try_from(data.num_comp()).unwrap();
         DataArray {
             name: data.name,
             num_comp,
-            ..DataArray::from_io_buffer(data.data, bo)
+            ..DataArray::from_io_buffer(data.data, ei)
         }
     }
     /// Construct a binary `DataArray` from a given `model::FieldArray`.
-    pub fn from_field_array(field: model::FieldArray, bo: model::ByteOrder) -> Self {
+    pub fn from_field_array(field: model::FieldArray, ei: EncodingInfo) -> Self {
         DataArray {
             name: field.name,
             num_comp: field.elem,
-            ..DataArray::from_io_buffer(field.data, bo)
+            ..DataArray::from_io_buffer(field.data, ei)
         }
     }
     /// Construct a binary `DataArray` from a given [`model::IOBuffer`].
-    pub fn from_io_buffer(buf: model::IOBuffer, bo: model::ByteOrder) -> Self {
+    pub fn from_io_buffer(buf: model::IOBuffer, ei: EncodingInfo) -> Self {
         DataArray {
             scalar_type: buf.scalar_type().into(),
-            data: vec![Data::Data(base64::encode(buf.into_bytes_with_size(bo)))],
+            data: vec![Data::Data(base64::encode(
+                if ei.header_type == ScalarType::UInt64 {
+                    buf.into_bytes_with_size(ei.byte_order)
+                } else {
+                    buf.into_bytes_with_size32(ei.byte_order) // Older vtk Versions
+                },
+            ))],
             ..Default::default()
         }
     }
@@ -1788,7 +1798,7 @@ impl DataArray {
         self,
         l: usize,
         appended: Option<&AppendedData>,
-        byte_order: model::ByteOrder,
+        ei: EncodingInfo,
     ) -> std::result::Result<model::FieldArray, ValidationError> {
         use model::IOBuffer;
 
@@ -1802,30 +1812,43 @@ impl DataArray {
             ..
         } = self;
 
+        eprintln!("name = {:?}", &name);
+
         let num_elements = usize::try_from(num_comp).unwrap() * l;
+        let num_bytes = num_elements * scalar_type.size();
+        let header_bytes = if ei.header_type == ScalarType::UInt64 {
+            8
+        } else {
+            4
+        };
 
         let data = match format {
             DataArrayFormat::Appended => {
                 if let Some(appended) = appended {
                     let mut start: usize = offset.unwrap_or(0).try_into().unwrap();
-                    let num_bytes = num_elements * scalar_type.size();
                     let buf = match appended.encoding {
                         Encoding::Raw => {
                             // Skip the first 64 bits which gives the size of each component in bytes
-                            start += 8;
+                            eprintln!("{:?}", &appended.data.0[start..start + header_bytes]);
+                            start += header_bytes;
                             let bytes = &appended.data.0[start..start + num_bytes];
-                            IOBuffer::from_bytes(bytes, scalar_type.into(), byte_order)?
+                            IOBuffer::from_bytes(bytes, scalar_type.into(), ei.byte_order)?
                         }
                         Encoding::Base64 => {
                             // Add one 64-bit integer that specifies the size of each component in bytes.
-                            let num_target_bits = num_bytes * 8 + 64;
+                            let num_target_bits = (num_bytes + header_bytes) * 8;
                             // Compute how many base64 chars we need to decode l elements.
                             let num_source_bytes =
                                 num_target_bits / 6 + if num_target_bits % 6 == 0 { 0 } else { 1 };
                             let bytes = &appended.data.0[start..start + num_source_bytes];
                             let bytes = base64::decode(bytes)?;
+                            eprintln!("{:?}", &bytes[..header_bytes]);
                             // Skip the first 64 bits which gives the size of each component in bytes
-                            IOBuffer::from_bytes(&bytes[8..], scalar_type.into(), byte_order)?
+                            IOBuffer::from_bytes(
+                                &bytes[header_bytes..],
+                                scalar_type.into(),
+                                ei.byte_order,
+                            )?
                         }
                     };
                     if buf.len() != num_elements {
@@ -1843,7 +1866,12 @@ impl DataArray {
             DataArrayFormat::Binary => {
                 // First byte gives the bytes
                 let bytes = base64::decode(data[0].clone().into_string())?;
-                let buf = IOBuffer::from_bytes(&bytes[8..], scalar_type.into(), byte_order)?;
+                eprintln!("{:?}", &bytes[..header_bytes]);
+                let buf = IOBuffer::from_bytes(
+                    &bytes[header_bytes..],
+                    scalar_type.into(),
+                    ei.byte_order,
+                )?;
                 if buf.len() != num_elements {
                     return Err(ValidationError::DataArraySizeMismatch {
                         name,
@@ -1904,10 +1932,10 @@ impl DataArray {
         l: usize,
         appended: Option<&AppendedData>,
         info: &AttributeInfo,
-        bo: model::ByteOrder,
+        ei: EncodingInfo,
     ) -> std::result::Result<model::DataArray, ValidationError> {
         // First convert into a field array.
-        let model::FieldArray { name, data, elem } = self.into_field_array(l, appended, bo)?;
+        let model::FieldArray { name, data, elem } = self.into_field_array(l, appended, ei)?;
 
         // Then determine an appropriate element type.
         let elem = info.element_type(&name, elem);
@@ -1922,9 +1950,9 @@ impl DataArray {
         self,
         num_elements: usize,
         appended: Option<&AppendedData>,
-        bo: model::ByteOrder,
+        ei: EncodingInfo,
     ) -> std::result::Result<model::IOBuffer, ValidationError> {
-        self.into_field_array(num_elements, appended, bo)
+        self.into_field_array(num_elements, appended, ei)
             .map(|model::FieldArray { data, .. }| data)
     }
 
@@ -1933,10 +1961,9 @@ impl DataArray {
         num_elements: usize,
         appended: Option<&AppendedData>,
         info: &AttributeInfo,
-        bo: model::ByteOrder,
+        ei: EncodingInfo,
     ) -> std::result::Result<model::Attribute, ValidationError> {
-        let data_array = self.into_model_data_array(num_elements, appended, info, bo)?;
-
+        let data_array = self.into_model_data_array(num_elements, appended, info, ei)?;
         Ok(model::Attribute::DataArray(data_array))
     }
 }
@@ -2360,11 +2387,17 @@ impl TryFrom<VTKFile> for model::Vtk {
         let VTKFile {
             version,
             byte_order,
+            header_type,
             data_set_type,
             appended_data,
             data_set,
             ..
         } = xml;
+
+        let encoding_info = EncodingInfo {
+            byte_order,
+            header_type: header_type.unwrap_or(ScalarType::UInt64),
+        };
 
         let appended_data = appended_data.as_ref();
 
@@ -2381,8 +2414,8 @@ impl TryFrom<VTKFile> for model::Vtk {
 
         let attributes =
             |npts, ncells, point_data: AttributeData, cell_data: AttributeData| model::Attributes {
-                point: point_data.into_model_attributes(npts, appended_data, byte_order),
-                cell: cell_data.into_model_attributes(ncells, appended_data, byte_order),
+                point: point_data.into_model_attributes(npts, appended_data, encoding_info),
+                cell: cell_data.into_model_attributes(ncells, appended_data, encoding_info),
             };
 
         let data = match data_set {
@@ -2455,7 +2488,7 @@ impl TryFrom<VTKFile> for model::Vtk {
                                     verts.into_vertex_numbers(
                                         number_of_verts,
                                         appended_data,
-                                        byte_order,
+                                        encoding_info,
                                     )
                                 })
                                 .transpose()?;
@@ -2464,7 +2497,7 @@ impl TryFrom<VTKFile> for model::Vtk {
                                     lines.into_vertex_numbers(
                                         number_of_lines,
                                         appended_data,
-                                        byte_order,
+                                        encoding_info,
                                     )
                                 })
                                 .transpose()?;
@@ -2473,7 +2506,7 @@ impl TryFrom<VTKFile> for model::Vtk {
                                     strips.into_vertex_numbers(
                                         number_of_strips,
                                         appended_data,
-                                        byte_order,
+                                        encoding_info,
                                     )
                                 })
                                 .transpose()?;
@@ -2482,7 +2515,7 @@ impl TryFrom<VTKFile> for model::Vtk {
                                     polys.into_vertex_numbers(
                                         number_of_polys,
                                         appended_data,
-                                        byte_order,
+                                        encoding_info,
                                     )
                                 })
                                 .transpose()?;
@@ -2490,7 +2523,7 @@ impl TryFrom<VTKFile> for model::Vtk {
                                 points: points.unwrap().data.into_io_buffer(
                                     number_of_points,
                                     appended_data,
-                                    byte_order,
+                                    encoding_info,
                                 )?,
                                 verts,
                                 lines,
@@ -2532,7 +2565,7 @@ impl TryFrom<VTKFile> for model::Vtk {
                             let coords = coords.into_model_coordinates(
                                 [nx as usize, ny as usize, nz as usize],
                                 appended_data,
-                                byte_order,
+                                encoding_info,
                             )?;
                             Ok(model::Piece::Inline(Box::new(
                                 model::RectilinearGridPiece {
@@ -2574,7 +2607,7 @@ impl TryFrom<VTKFile> for model::Vtk {
                                 points: points.unwrap().data.into_io_buffer(
                                     number_of_points,
                                     appended_data,
-                                    byte_order,
+                                    encoding_info,
                                 )?,
                                 data: attributes(
                                     number_of_points,
@@ -2609,7 +2642,7 @@ impl TryFrom<VTKFile> for model::Vtk {
                                         topo.into_model_cells(
                                             number_of_cells,
                                             appended_data,
-                                            byte_order,
+                                            encoding_info,
                                         )
                                     })
                                     .transpose()?
@@ -2619,7 +2652,7 @@ impl TryFrom<VTKFile> for model::Vtk {
                                         points: points.unwrap().data.into_io_buffer(
                                             number_of_points,
                                             appended_data,
-                                            byte_order,
+                                            encoding_info,
                                         )?,
                                         cells,
                                         data: attributes(
@@ -2798,6 +2831,13 @@ impl TryFrom<model::Vtk> for VTKFile {
             ..
         } = vtk;
 
+        let header_type = ScalarType::UInt64;
+
+        let encoding_info = EncodingInfo {
+            byte_order,
+            header_type,
+        };
+
         let appended_data = Vec::new();
 
         let data_set = match data_set {
@@ -2820,9 +2860,13 @@ impl TryFrom<model::Vtk> for VTKFile {
                         Ok(Piece {
                             extent: Some(extent.into()),
                             point_data: AttributeData::from_model_attributes(
-                                data.point, byte_order,
+                                data.point,
+                                encoding_info,
                             ),
-                            cell_data: AttributeData::from_model_attributes(data.cell, byte_order),
+                            cell_data: AttributeData::from_model_attributes(
+                                data.cell,
+                                encoding_info,
+                            ),
                             ..Default::default()
                         })
                     })
@@ -2846,11 +2890,15 @@ impl TryFrom<model::Vtk> for VTKFile {
                         } = piece_data;
                         Ok(Piece {
                             extent: Some(extent.into()),
-                            points: Some(Points::from_io_buffer(points, byte_order)),
+                            points: Some(Points::from_io_buffer(points, encoding_info)),
                             point_data: AttributeData::from_model_attributes(
-                                data.point, byte_order,
+                                data.point,
+                                encoding_info,
                             ),
-                            cell_data: AttributeData::from_model_attributes(data.cell, byte_order),
+                            cell_data: AttributeData::from_model_attributes(
+                                data.cell,
+                                encoding_info,
+                            ),
                             ..Default::default()
                         })
                     })
@@ -2874,11 +2922,18 @@ impl TryFrom<model::Vtk> for VTKFile {
                         } = piece_data;
                         Ok(Piece {
                             extent: Some(extent.into()),
-                            coordinates: Some(Coordinates::from_model_coords(coords, byte_order)),
+                            coordinates: Some(Coordinates::from_model_coords(
+                                coords,
+                                encoding_info,
+                            )),
                             point_data: AttributeData::from_model_attributes(
-                                data.point, byte_order,
+                                data.point,
+                                encoding_info,
                             ),
-                            cell_data: AttributeData::from_model_attributes(data.cell, byte_order),
+                            cell_data: AttributeData::from_model_attributes(
+                                data.cell,
+                                encoding_info,
+                            ),
                             ..Default::default()
                         })
                     })
@@ -2902,12 +2957,16 @@ impl TryFrom<model::Vtk> for VTKFile {
                         Ok(Piece {
                             number_of_points: u32::try_from(num_points).unwrap(),
                             number_of_cells: u32::try_from(cells.num_cells()).unwrap(),
-                            points: Some(Points::from_io_buffer(points, byte_order)),
-                            cells: Some(Cells::from_model_cells(cells, byte_order)),
+                            points: Some(Points::from_io_buffer(points, encoding_info)),
+                            cells: Some(Cells::from_model_cells(cells, encoding_info)),
                             point_data: AttributeData::from_model_attributes(
-                                data.point, byte_order,
+                                data.point,
+                                encoding_info,
                             ),
-                            cell_data: AttributeData::from_model_attributes(data.cell, byte_order),
+                            cell_data: AttributeData::from_model_attributes(
+                                data.cell,
+                                encoding_info,
+                            ),
                             ..Default::default()
                         })
                     })
@@ -2936,10 +2995,10 @@ impl TryFrom<model::Vtk> for VTKFile {
                             data,
                         } = piece_data;
 
-                        let verts = verts.map(|topo| Topo::from_model_topo(topo, byte_order));
-                        let lines = lines.map(|topo| Topo::from_model_topo(topo, byte_order));
-                        let polys = polys.map(|topo| Topo::from_model_topo(topo, byte_order));
-                        let strips = strips.map(|topo| Topo::from_model_topo(topo, byte_order));
+                        let verts = verts.map(|topo| Topo::from_model_topo(topo, encoding_info));
+                        let lines = lines.map(|topo| Topo::from_model_topo(topo, encoding_info));
+                        let polys = polys.map(|topo| Topo::from_model_topo(topo, encoding_info));
+                        let strips = strips.map(|topo| Topo::from_model_topo(topo, encoding_info));
 
                         Ok(Piece {
                             number_of_points: u32::try_from(num_points).unwrap(),
@@ -2947,15 +3006,19 @@ impl TryFrom<model::Vtk> for VTKFile {
                             number_of_verts: u32::try_from(number_of_verts).unwrap(),
                             number_of_polys: u32::try_from(number_of_polys).unwrap(),
                             number_of_strips: u32::try_from(number_of_strips).unwrap(),
-                            points: Some(Points::from_io_buffer(points, byte_order)),
+                            points: Some(Points::from_io_buffer(points, encoding_info)),
                             verts,
                             lines,
                             polys,
                             strips,
                             point_data: AttributeData::from_model_attributes(
-                                data.point, byte_order,
+                                data.point,
+                                encoding_info,
                             ),
-                            cell_data: AttributeData::from_model_attributes(data.cell, byte_order),
+                            cell_data: AttributeData::from_model_attributes(
+                                data.cell,
+                                encoding_info,
+                            ),
                             ..Default::default()
                         })
                     })
@@ -2976,7 +3039,7 @@ impl TryFrom<model::Vtk> for VTKFile {
                         .map(|data| Piece {
                             extent: Some(Extent([0, data.len() as i32, 0, 0, 0, 0])),
                             cell_data: AttributeData {
-                                data_array: vec![DataArray::from_field_array(data, byte_order)],
+                                data_array: vec![DataArray::from_field_array(data, encoding_info)],
                                 ..Default::default()
                             },
                             ..Default::default()
@@ -3000,7 +3063,7 @@ impl TryFrom<model::Vtk> for VTKFile {
             data_set_type,
             version,
             byte_order,
-            header_type: None,
+            header_type: Some(header_type),
             compressor: Compressor::None,
             appended_data,
             data_set,

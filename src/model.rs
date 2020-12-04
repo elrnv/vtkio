@@ -287,7 +287,7 @@ impl IOBuffer {
         self.len() == 0
     }
 
-    /// Converts this `IOBuffer` into an array of bytes with a size prefix.
+    /// Converts this `IOBuffer` into an array of bytes with a 64-bit size prefix.
     ///
     /// The size of the scalar type in bytes is stored as a 64-bit integer at the very beginning.
     ///
@@ -295,12 +295,39 @@ impl IOBuffer {
     pub fn into_bytes_with_size(self, bo: ByteOrder) -> Vec<u8> {
         use byteorder::WriteBytesExt;
         use byteorder::{BE, LE};
+        let size = self.len() as u64 * self.scalar_size() as u64;
+        self.into_bytes_with_size_impl(bo, |out| match bo {
+            ByteOrder::BigEndian => out.write_u64::<BE>(size).unwrap(),
+            ByteOrder::LittleEndian => out.write_u64::<LE>(size).unwrap(),
+        })
+    }
+
+    /// Converts this `IOBuffer` into an array of bytes with a 32-bit size prefix.
+    ///
+    /// The size of the scalar type in bytes is stored as a 32-bit integer at the very beginning.
+    ///
+    /// This is how VTK data arrays store data in the XML files.
+    pub fn into_bytes_with_size32(self, bo: ByteOrder) -> Vec<u8> {
+        use byteorder::WriteBytesExt;
+        use byteorder::{BE, LE};
+        let size = self.len() as u32 * self.scalar_size() as u32;
+        self.into_bytes_with_size_impl(bo, |out| match bo {
+            ByteOrder::BigEndian => out.write_u32::<BE>(size).unwrap(),
+            ByteOrder::LittleEndian => out.write_u32::<LE>(size).unwrap(),
+        })
+    }
+
+    fn into_bytes_with_size_impl(
+        self,
+        bo: ByteOrder,
+        write_size: impl Fn(&mut Vec<u8>),
+    ) -> Vec<u8> {
+        use byteorder::WriteBytesExt;
+        use byteorder::{BE, LE};
         let mut out: Vec<u8> = Vec::new();
-        let elem_size = self.scalar_size() as u64;
-        match bo {
-            ByteOrder::BigEndian => out.write_u64::<BE>(elem_size).unwrap(),
-            ByteOrder::LittleEndian => out.write_u64::<LE>(elem_size).unwrap(),
-        }
+
+        // Write out the size prefix
+        write_size(&mut out);
 
         match self {
             IOBuffer::Bit(mut v) => out.append(&mut v),
