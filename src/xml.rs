@@ -492,7 +492,7 @@ mod data {
         }
 
         fn visit_bytes<E: serde::de::Error>(self, v: &[u8]) -> Result<Self::Value, E> {
-            eprintln!("Deserializing as bytes");
+            //eprintln!("Deserializing as bytes");
             // Skip the first byte which always corresponds to the preceeding underscore
             if v.is_empty() {
                 return Ok(RawData(Vec::new()));
@@ -1812,7 +1812,7 @@ impl DataArray {
             ..
         } = self;
 
-        eprintln!("name = {:?}", &name);
+        //eprintln!("name = {:?}", &name);
 
         let num_elements = usize::try_from(num_comp).unwrap() * l;
         let num_bytes = num_elements * scalar_type.size();
@@ -1829,7 +1829,7 @@ impl DataArray {
                     let buf = match appended.encoding {
                         Encoding::Raw => {
                             // Skip the first 64 bits which gives the size of each component in bytes
-                            eprintln!("{:?}", &appended.data.0[start..start + header_bytes]);
+                            //eprintln!("{:?}", &appended.data.0[start..start + header_bytes]);
                             start += header_bytes;
                             let bytes = &appended.data.0[start..start + num_bytes];
                             IOBuffer::from_bytes(bytes, scalar_type.into(), ei.byte_order)?
@@ -1842,7 +1842,7 @@ impl DataArray {
                                 num_target_bits / 6 + if num_target_bits % 6 == 0 { 0 } else { 1 };
                             let bytes = &appended.data.0[start..start + num_source_bytes];
                             let bytes = base64::decode(bytes)?;
-                            eprintln!("{:?}", &bytes[..header_bytes]);
+                            //eprintln!("{:?}", &bytes[..header_bytes]);
                             // Skip the first 64 bits which gives the size of each component in bytes
                             IOBuffer::from_bytes(
                                 &bytes[header_bytes..],
@@ -1866,7 +1866,7 @@ impl DataArray {
             DataArrayFormat::Binary => {
                 // First byte gives the bytes
                 let bytes = base64::decode(data[0].clone().into_string())?;
-                eprintln!("{:?}", &bytes[..header_bytes]);
+                //eprintln!("{:?}", &bytes[..header_bytes]);
                 let buf = IOBuffer::from_bytes(
                     &bytes[header_bytes..],
                     scalar_type.into(),
@@ -3125,9 +3125,9 @@ mod tests {
         </VTKFile>"#;
 
         let vtk: VTKFile = de::from_str(image_data).unwrap();
-        eprintln!("{:#?}", &vtk);
+        //eprintln!("{:#?}", &vtk);
         let as_str = se::to_string(&vtk).unwrap();
-        eprintln!("{:?}", &as_str);
+        //eprintln!("{:?}", &as_str);
         let vtk_roundtrip = de::from_str(&as_str).unwrap();
         assert_eq!(vtk, vtk_roundtrip);
     }
@@ -3150,9 +3150,9 @@ mod tests {
         </VTKFile>"#;
 
         let vtk: VTKFile = de::from_str(image_data).unwrap();
-        eprintln!("{:#?}", &vtk);
+        //eprintln!("{:#?}", &vtk);
         let as_str = se::to_string(&vtk).unwrap();
-        eprintln!("{}", &as_str);
+        //eprintln!("{}", &as_str);
         let vtk_roundtrip = de::from_str(&as_str).unwrap();
         assert_eq!(vtk, vtk_roundtrip);
     }
@@ -3169,9 +3169,9 @@ mod tests {
         </Polys>"#;
 
         let vtk: Topo = de::from_str(polys)?;
-        eprintln!("{:#?}", &vtk);
+        //eprintln!("{:#?}", &vtk);
         let as_str = se::to_string(&vtk)?;
-        eprintln!("{}", &as_str);
+        //eprintln!("{}", &as_str);
         let vtk_roundtrip = de::from_str(&as_str)?;
         assert_eq!(vtk, vtk_roundtrip);
         Ok(())
@@ -3228,9 +3228,9 @@ mod tests {
         </Piece>"#;
 
         let vtk: Piece = de::from_str(piece)?;
-        eprintln!("{:#?}", &vtk);
+        //eprintln!("{:#?}", &vtk);
         let as_str = se::to_string(&vtk)?;
-        eprintln!("{}", &as_str);
+        //eprintln!("{}", &as_str);
         let vtk_roundtrip = de::from_str(&as_str)?;
         assert_eq!(vtk, vtk_roundtrip);
         Ok(())
@@ -3261,9 +3261,9 @@ mod tests {
     #[test]
     fn rectilinear_grid_appended_base64() -> Result<()> {
         let vtk = import("assets/RectilinearGridAppendedBase64.vtr")?;
-        eprintln!("{:#?}", &vtk);
+        //eprintln!("{:#?}", &vtk);
         let as_bytes = se::to_bytes(&vtk)?;
-        eprintln!("{:?}", &as_bytes);
+        //eprintln!("{:?}", &as_bytes);
         let vtk_roundtrip = de::from_reader(as_bytes.as_slice()).unwrap();
         assert_eq!(vtk, vtk_roundtrip);
         Ok(())
@@ -3274,7 +3274,7 @@ mod tests {
         let vtk = import("assets/RectilinearGridRawBinary.vtr")?;
         //eprintln!("{:#?}", &vtk);
         let as_bytes = se::to_bytes(&vtk)?;
-        eprintln!("{:?}", &as_bytes);
+        //eprintln!("{:?}", &as_bytes);
         let vtk_roundtrip = de::from_reader(as_bytes.as_slice()).unwrap();
         assert_eq!(vtk, vtk_roundtrip);
         Ok(())
@@ -3285,7 +3285,7 @@ mod tests {
         let vtk = import("assets/RectilinearGridInlineBinary.vtr")?;
         //eprintln!("{:#?}", &vtk);
         let as_bytes = se::to_bytes(&vtk)?;
-        eprintln!("{:?}", &as_bytes);
+        //eprintln!("{:?}", &as_bytes);
         let vtk_roundtrip = de::from_reader(as_bytes.as_slice()).unwrap();
         assert_eq!(vtk, vtk_roundtrip);
         Ok(())
@@ -3318,9 +3318,9 @@ mod tests {
     #[test]
     fn parallel_rectilinear_grid() -> Result<()> {
         let vtk = import("assets/RectilinearGrid.pvtr")?;
-        eprintln!("{:#?}", &vtk);
+        //eprintln!("{:#?}", &vtk);
         let as_str = se::to_string(&vtk).unwrap();
-        eprintln!("{}", &as_str);
+        //eprintln!("{}", &as_str);
         let vtk_roundtrip = de::from_str(&as_str).unwrap();
         assert_eq!(vtk, vtk_roundtrip);
         Ok(())
@@ -3351,9 +3351,9 @@ mod tests {
     #[test]
     fn unstructured_cube() -> Result<()> {
         let vtk = import("assets/cube.vtu")?;
-        eprintln!("{:#?}", &vtk);
+        //eprintln!("{:#?}", &vtk);
         let as_str = se::to_string(&vtk).unwrap();
-        eprintln!("{}", &as_str);
+        //eprintln!("{}", &as_str);
         let vtk_roundtrip = de::from_str(&as_str).unwrap();
         assert_eq!(vtk, vtk_roundtrip);
         Ok(())
@@ -3362,9 +3362,9 @@ mod tests {
     #[test]
     fn unstructured_cube_ascii() -> Result<()> {
         let vtk = import("assets/cube_ascii.vtu")?;
-        eprintln!("{:#?}", &vtk);
+        //eprintln!("{:#?}", &vtk);
         let as_str = se::to_string(&vtk).unwrap();
-        eprintln!("{}", &as_str);
+        //eprintln!("{}", &as_str);
         let vtk_roundtrip = de::from_str(&as_str).unwrap();
         assert_eq!(vtk, vtk_roundtrip);
         Ok(())
@@ -3373,13 +3373,13 @@ mod tests {
     #[test]
     fn unstructured_cube_inline_binary() -> Result<()> {
         let vtk = import("assets/cube_inline_binary.vtu")?;
-        eprintln!("{:#?}", &vtk);
+        //eprintln!("{:#?}", &vtk);
         let as_str = se::to_string(&vtk).unwrap();
-        eprintln!("{}", &as_str);
+        //eprintln!("{}", &as_str);
         let vtk_roundtrip = de::from_str(&as_str).unwrap();
         assert_eq!(vtk, vtk_roundtrip);
         let vtk_ascii = import("assets/cube_ascii.vtu")?;
-        eprintln!("{:#?}", &vtk_ascii);
+        //eprintln!("{:#?}", &vtk_ascii);
         // Verify that the ascii cube is the same as the inline binary cube.
         let vtk_ascii = model::Vtk::try_from(vtk_ascii.clone())?;
         let vtk_binary = model::Vtk::try_from(vtk.clone())?;
@@ -3390,9 +3390,9 @@ mod tests {
     #[test]
     fn parallel_compressed_cube() -> Result<()> {
         let vtk = import("assets/cube_compressed.pvtu")?;
-        eprintln!("{:#?}", &vtk);
+        //eprintln!("{:#?}", &vtk);
         let as_str = se::to_string(&vtk).unwrap();
-        eprintln!("{}", &as_str);
+        //eprintln!("{}", &as_str);
         let vtk_roundtrip = de::from_str(&as_str).unwrap();
         assert_eq!(vtk, vtk_roundtrip);
         Ok(())

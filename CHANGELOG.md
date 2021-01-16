@@ -1,15 +1,28 @@
+# Release 0.6
+
+Another small update to make API function names more consistent throughout the library (more
+specifically between parse and write functions).
+
+- `parse_vtk_{be|le}` is renamed to `parse_legacy_{be|le}`.
+- `parse_vtk_buf_{be|le}` is renamed to `parse_legacy_buf_{be|le}`.
+
+There are also additional fixes and docs clarifications.
+
+- Fixed how leading bytes are used to specify attribute data arrays.
+- Updated XML API to accept an encoding info (which includes byte order and header type) when
+  encoding/decoding data.
 
 # Release 0.5
 
-This is a small update to v0.4 that simplifies the Polygon data topology fields. This realease also
-fixes bugs in parsing and writing files in XML format, espcially involving Polygon data.
+This is a small update to v0.4 that simplifies the Polygon data topology fields. This release also
+fixes bugs in parsing and writing files in XML format, especially involving Polygon data.
 
 In particular the following API was changed:
 
 - Polygon data topology (`PolyDataTopology`) was previously stored as a `Vec` of enums identifying
   the topology type (one of Vertices, Lines, Polygons, or Triangle Strips).  This is removed in
-  favor of storing the specific types of topolgies in a dedicated field of the new `PolyDataPiece`
-  struct. This makes it unabiguous that there is at most one of each topology sections in each
+  favour of storing the specific types of topologies in a dedicated field of the new `PolyDataPiece`
+  struct. This makes it unambiguous that there is at most one of each topology sections in each
   piece.
 
 - A new parse and write API is introduced for easily reading and writing legacy and xml files from
