@@ -3349,8 +3349,19 @@ mod tests {
     }
 
     #[test]
-    fn unstructured_cube() -> Result<()> {
-        let vtk = import("assets/cube.vtu")?;
+    fn hexahedron_appended() -> Result<()> {
+        let vtk = import("assets/hexahedron.vtu")?;
+        eprintln!("{:#?}", &vtk);
+        let as_str = se::to_string(&vtk).unwrap();
+        eprintln!("{}", &as_str);
+        let vtk_roundtrip = de::from_str(&as_str).unwrap();
+        assert_eq!(vtk, vtk_roundtrip);
+        Ok(())
+    }
+
+    #[test]
+    fn hexahedron_ascii() -> Result<()> {
+        let vtk = import("assets/hexahedron_ascii.vtu")?;
         //eprintln!("{:#?}", &vtk);
         let as_str = se::to_string(&vtk).unwrap();
         //eprintln!("{}", &as_str);
@@ -3360,25 +3371,14 @@ mod tests {
     }
 
     #[test]
-    fn unstructured_cube_ascii() -> Result<()> {
-        let vtk = import("assets/cube_ascii.vtu")?;
+    fn hexahedron_inline_binary() -> Result<()> {
+        let vtk = import("assets/hexahedron_inline_binary.vtu")?;
         //eprintln!("{:#?}", &vtk);
         let as_str = se::to_string(&vtk).unwrap();
         //eprintln!("{}", &as_str);
         let vtk_roundtrip = de::from_str(&as_str).unwrap();
         assert_eq!(vtk, vtk_roundtrip);
-        Ok(())
-    }
-
-    #[test]
-    fn unstructured_cube_inline_binary() -> Result<()> {
-        let vtk = import("assets/cube_inline_binary.vtu")?;
-        //eprintln!("{:#?}", &vtk);
-        let as_str = se::to_string(&vtk).unwrap();
-        //eprintln!("{}", &as_str);
-        let vtk_roundtrip = de::from_str(&as_str).unwrap();
-        assert_eq!(vtk, vtk_roundtrip);
-        let vtk_ascii = import("assets/cube_ascii.vtu")?;
+        let vtk_ascii = import("assets/hexahedron_ascii.vtu")?;
         //eprintln!("{:#?}", &vtk_ascii);
         // Verify that the ascii cube is the same as the inline binary cube.
         let vtk_ascii = model::Vtk::try_from(vtk_ascii.clone())?;

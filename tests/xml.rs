@@ -173,3 +173,42 @@ fn box_para_parse_xml() -> Result {
     assert_eq!(vtk, make_box_para_vtu());
     Ok(())
 }
+
+fn make_hexahedron_vtu() -> Vtk {
+    Vtk {
+        version: Version { major: 1, minor: 0 },
+        title: String::new(),
+        byte_order: ByteOrder::LittleEndian,
+        data: DataSet::inline(UnstructuredGridPiece {
+            #[rustfmt::skip]
+            points: IOBuffer::F32(vec![
+                0.0, 0.0, 0.0,
+                0.0, 0.0, -1.0,
+                0.0, 1.0, 0.0,
+                0.0, 1.0, -1.0,
+                1.0, 0.0, 0.0,
+                1.0, 0.0, -1.0,
+                1.0, 1.0, 0.0,
+                1.0, 1.0, -1.0
+            ]),
+            cells: Cells {
+                cell_verts: VertexNumbers::XML {
+                    connectivity: vec![0, 4, 5, 1, 2, 6, 7, 3],
+                    offsets: vec![8],
+                },
+                types: vec![CellType::Hexahedron; 1],
+            },
+            data: Attributes {
+                point: vec![],
+                cell: vec![],
+            },
+        }),
+    }
+}
+
+#[test]
+fn hexahedron_appended() -> Result {
+    let vtu = import("./assets/hexahedron.vtu")?;
+    assert_eq!(vtu, make_hexahedron_vtu());
+    Ok(())
+}
