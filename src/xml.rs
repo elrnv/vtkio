@@ -2302,6 +2302,8 @@ impl AppendedData {
             })
         }
 
+        // Allow this warning which are fired when compression is disabled.
+        #[allow(unused_variables)]
         fn get_data_slice<'a, D, B>(
             buf: &'a mut Vec<u8>,
             mut decode: D,
@@ -2318,7 +2320,6 @@ impl AppendedData {
             B: FnMut(usize) -> usize,
         {
             use std::io::Cursor;
-            use std::io::Read;
 
             // First we need to determine the number of blocks stored.
             let num_blocks = {
@@ -2346,7 +2347,6 @@ impl AppendedData {
             let decoded_data = decode(encoded_data, buf)?;
 
             // Now that the data is decoded, what is left is to decompress it.
-            let mut out = Vec::new();
             match ei.compressor {
                 Compressor::ZLib => {
                     #[cfg(not(feature = "flate2"))]
@@ -2355,8 +2355,11 @@ impl AppendedData {
                     }
                     #[cfg(feature = "flate2")]
                     {
+                        use std::io::Read;
+                        let mut out = Vec::new();
                         let mut decoder = flate2::read::ZlibDecoder::new(decoded_data);
                         decoder.read_to_end(&mut out)?;
+                        Ok(out)
                     }
                 }
                 Compressor::LZ4 => {
@@ -2366,7 +2369,8 @@ impl AppendedData {
                     }
                     #[cfg(feature = "lz4")]
                     {
-                        out = lz4::decompress(decoded_data, num_data_bytes)?;
+                        use std::io::Read;
+                        Ok(lz4::decompress(decoded_data, num_data_bytes)?)
                     }
                 }
                 Compressor::LZMA => {
@@ -2376,13 +2380,17 @@ impl AppendedData {
                     }
                     #[cfg(feature = "xz2")]
                     {
+                        use std::io::Read;
+                        let mut out = Vec::new();
                         let mut decoder = xz2::read::XzDecoder::new(decoded_data);
                         decoder.read_to_end(&mut out)?;
+                        Ok(out)
                     }
                 }
-                _ => {}
-            };
-            Ok(out)
+                _ => {
+                    unreachable!()
+                }
+            }
         }
 
         let out = match self.encoding {

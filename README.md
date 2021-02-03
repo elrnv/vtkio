@@ -5,7 +5,7 @@ formats](https://lorensen.github.io/VTKExamples/site/VTKFileFormats/).
 
 [![On crates.io](https://img.shields.io/crates/v/vtkio.svg)](https://crates.io/crates/vtkio)
 [![On docs.rs](https://docs.rs/vtkio/badge.svg)](https://docs.rs/vtkio/)
-[![Build status](https://travis-ci.org/elrnv/vtkio.svg?branch=master)](https://travis-ci.org/elrnv/vtkio)
+[![Build Status](https://github.com/elrnv/vtkio/workflows/CI/badge.svg)](https://github.com/elrnv/vtkio/actions)
 
 This is meant to be a feature complete parser of Legacy and XML VTK file formats. Both serial and
 parallel XML file formats are supported.
