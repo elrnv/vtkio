@@ -4,14 +4,18 @@ This document outlines changes and updates in major releases of `vtkio`.
 
 # Release 0.6
 
-Make API function names more consistent throughout the library (more
+This release moves all IO API into the `Vtk` struct, which should make the documentation easier to
+browse and adds some consistency to the API (functions taking self export and static functions
+construct a Vtk file via import).
+
+Additionally, API function names are now more consistent throughout the library (more
 specifically between parse and write functions).
 
 - `parse_vtk_{be|le}` is renamed to `parse_legacy_{be|le}`.
 - `parse_vtk_buf_{be|le}` is renamed to `parse_legacy_buf_{be|le}`.
 
-Add support for compression and decompression (feature gated by the "compression" feature which is
-enabled by default).
+Support for compression and decompression (feature gated by the "compression" feature which is
+enabled by default) are also added.
 
 - LZMA, LZ4 and Zlib compression are now all supported for base64 encoded appended data blobs.
 - Compression level is currently ignored on LZ4 until either the `lz4_flex` crate implements
@@ -20,7 +24,7 @@ enabled by default).
   [#253](https://github.com/tafia/quick-xml/pull/253) is merged into the `quick-xml` crate.
 - Note that solutions to either of the above problems should only cause a minor version bumb.
 
-A few API changes have also been made:
+A few new API changes have been made:
 
 - The VTK file was changed to include an optional `file_path`, which encodes the original path to the
   VTK file. This allows relative paths when reading in "parallel" XML files. This is how
@@ -36,12 +40,9 @@ A few API changes have also been made:
   [#6](https://github.com/elrnv/vtkio/issues/6).
 - Added `try_into_xml_format` function to `model::Vtk`, which accepts an additional arguments
   indicating the compression level. The `TryFrom` trait defaults to no compression as before.
-
-There are also additional fixes and docs clarifications.
-
-- Fixed how leading bytes are used to specify attribute data arrays.
-- The internal XML API is updated to accept an encoding info (which includes byte order and header
+- The XML API is updated to accept an encoding info (which includes byte order and header
   type) when encoding/decoding data.
+
 
 # Release 0.5
 
@@ -60,6 +61,7 @@ In particular the following API was changed:
   standard byte buffers (and string slices for ASCII files).
   Specifically the functions `parse_vtk_{be|le}`, `parse_vtk_buf_{be|le}`, `parse_xml`,
   `write_legacy`, `write_legacy_ascii`, and `write_xml` are added.
+
 
 # Release 0.4
 
