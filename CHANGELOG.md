@@ -20,16 +20,28 @@ enabled by default).
   [#253](https://github.com/tafia/quick-xml/pull/253) is merged into the `quick-xml` crate.
 - Note that solutions to either of the above problems should only cause a minor version bumb.
 
-The VTK file API was changed to include an optional `file_path`, which encodes the original path to the
-VTK file. This allows relative paths when reading in "parallel" XML files. This is how
-ParaView deals with "parallel" XML files for instance. Note that the "parallel" files refers to how
-they are defined in the VTK documentation; async file loading is not yet supprted, but it is planned.
+A few API changes have also been made:
+
+- The VTK file was changed to include an optional `file_path`, which encodes the original path to the
+  VTK file. This allows relative paths when reading in "parallel" XML files. This is how
+  ParaView deals with "parallel" XML files for instance. Note that the "parallel" files refers to how
+  they are defined in the VTK documentation; async file loading is not yet supprted, but it is planned.
+- `load_piece_data` was renamed to `into_loaded_piece_data` to indicate that this function takes a
+  piece by value and converts it into concrete piece data.
+- In contrast `load_piece_in_place` takes a Piece by mutable reference and replaces source pieces by
+  their loaded counterparts.
+- `load_all_pieces` is added as a convenience function to load "parallel" XML files recursively
+  in-place. For non-parallel files this function is a no-op.
+- The error and display traits are finally implemented on writer errors, which fixes
+  [#6](https://github.com/elrnv/vtkio/issues/6).
+- Added `try_into_xml_format` function to `model::Vtk`, which accepts an additional arguments
+  indicating the compression level. The `TryFrom` trait defaults to no compression as before.
 
 There are also additional fixes and docs clarifications.
 
 - Fixed how leading bytes are used to specify attribute data arrays.
-- Updated XML API to accept an encoding info (which includes byte order and header type) when
-  encoding/decoding data.
+- The internal XML API is updated to accept an encoding info (which includes byte order and header
+  type) when encoding/decoding data.
 
 # Release 0.5
 

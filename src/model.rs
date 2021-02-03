@@ -426,6 +426,9 @@ impl IOBuffer {
         })
     }
 
+    // Rustfmt removes the extra layer of curly braces, which breaks the feature attribute
+    // specifications.
+    #[rustfmt::skip]
     #[cfg(feature = "xml")]
     fn into_bytes_with_size_impl(
         self,
@@ -464,53 +467,60 @@ impl IOBuffer {
             }
         }
 
-        match compressor {
-            Compressor::ZLib =>
-            #[cfg(feature = "flate2")]
-            {
-                use flate2::{write::ZlibEncoder, Compression};
-                let mut e = ZlibEncoder::new(out, Compression::new(compression_level));
-                self.write_bytes(&mut e, bo);
-                let mut out = e.finish().unwrap();
-                let num_compressed_bytes = out.len() - prefix_size;
-                write_size(out.as_mut_slice(), num_compressed_bytes);
-                return out;
-            }
-            Compressor::LZMA =>
-            #[cfg(feature = "xz2")]
-            {
-                let mut e = xz2::write::XzEncoder::new(out, compression_level);
-                self.write_bytes(&mut e, bo);
-                let mut out = e.finish().unwrap();
-                let num_compressed_bytes = out.len() - prefix_size;
-                write_size(out.as_mut_slice(), num_compressed_bytes);
-                return out;
-            }
-            Compressor::LZ4 => {
-                #[cfg(feature = "lz4")]
-                {
-                    //let mut e = lz4::EncoderBuilder::new()
-                    //    .level(compression_level)
-                    //    .checksum(lz4::ContentChecksum::NoChecksum)
-                    //    .build(out)
-                    //    .unwrap();
-                    //self.write_bytes(&mut e, bo);
-                    //let mut out = e.finish().0;
-
-                    // Initially write raw bytes to out.
-                    self.write_bytes(&mut out, bo);
-
-                    // Then compress them.
-                    // This should be done using a writer, but lz4_flex does not implement this at
-                    // this time, and it seems like the lz4 crate doesn't support lz4's block format.
-                    let mut out = lz4::compress(&out);
-
-                    let num_compressed_bytes = out.len() - prefix_size;
-                    write_size(out.as_mut_slice(), num_compressed_bytes);
-                    return out;
+        {
+            match compressor {
+                Compressor::ZLib => {
+                    #[cfg(feature = "flate2")]
+                    {
+                        use flate2::{write::ZlibEncoder, Compression};
+                        let mut e = ZlibEncoder::new(out, Compression::new(compression_level));
+                        self.write_bytes(&mut e, bo);
+                        let mut out = e.finish().unwrap();
+                        let num_compressed_bytes = out.len() - prefix_size;
+                        write_size(out.as_mut_slice(), num_compressed_bytes);
+                        return out;
+                    }
                 }
+                Compressor::LZMA => {
+                    #[cfg(feature = "xz2")]
+                    {
+                        let mut e = xz2::write::XzEncoder::new(out, compression_level);
+                        self.write_bytes(&mut e, bo);
+                        let mut out = e.finish().unwrap();
+                        let num_compressed_bytes = out.len() - prefix_size;
+                        write_size(out.as_mut_slice(), num_compressed_bytes);
+                        return out;
+                    }
+                }
+                Compressor::LZ4 => {
+                    #[cfg(feature = "lz4")]
+                    {
+                        // The following commented out code is a snippet for how to do this encoding
+                        // using the lz4 crate, although at the time of this writing it does not
+                        // support lz4 block format.
+                        //let mut e = lz4::EncoderBuilder::new()
+                        //    .level(compression_level)
+                        //    .checksum(lz4::ContentChecksum::NoChecksum)
+                        //    .build(out)
+                        //    .unwrap();
+                        //self.write_bytes(&mut e, bo);
+                        //let mut out = e.finish().0;
+
+                        // Initially write raw bytes to out.
+                        self.write_bytes(&mut out, bo);
+
+                        // Then compress them.
+                        // This should be done using a writer, but lz4_flex does not implement this at
+                        // this time, and it seems like the lz4 crate doesn't support lz4's block format.
+                        let mut out = lz4::compress(&out);
+
+                        let num_compressed_bytes = out.len() - prefix_size;
+                        write_size(out.as_mut_slice(), num_compressed_bytes);
+                        return out;
+                    }
+                }
+                Compressor::None => {}
             }
-            Compressor::None => {}
         }
 
         self.write_bytes(&mut out, bo);

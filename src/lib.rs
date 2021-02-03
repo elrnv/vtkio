@@ -575,7 +575,7 @@ pub fn export(data: model::Vtk, file_path: impl AsRef<Path>) -> Result<(), Error
     export_impl(data, file_path.as_ref())
 }
 
-/// A non-generic helper for the expor function.
+/// A non-generic helper for the export function.
 fn export_impl(data: model::Vtk, path: &Path) -> Result<(), Error> {
     let ext = path
         .extension()
