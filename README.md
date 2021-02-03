@@ -44,6 +44,18 @@ fn main() {
 }
 ```
 
+## Features
+
+There are two main features available:
+
+- XML File support via the `xml` feature flag (enabled by default).
+  This allows importing and exporting VTK files in the modern XML format. If disabled, only the legacy
+  file format is supported, however the build is faster since it does not include additional
+  dependencies (`serde` and `quick-xml`) and code needed to parse and write XML files.
+- Compression via the `compression` feature flag (enabled by default).
+  This flag exposes additional APIs to export and import compressed VTK files (only for XML format).
+  This feature has no benefit when the `xml` feature is disabled.
+
 # Changes
 
 Version 0.3 of the crate supports only Legacy VTK formats. For a list of changes
