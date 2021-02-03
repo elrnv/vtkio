@@ -2369,7 +2369,6 @@ impl AppendedData {
                     }
                     #[cfg(feature = "lz4")]
                     {
-                        use std::io::Read;
                         Ok(lz4::decompress(decoded_data, num_data_bytes)?)
                     }
                 }
