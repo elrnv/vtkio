@@ -19,7 +19,7 @@ To use this library simply add the crate name to your `Cargo.toml` file:
 
 ```rust
 [dependencies]
-vtkio = "0.5"
+vtkio = "0.6"
 ```
 
 ## Examples
