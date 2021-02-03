@@ -1,6 +1,6 @@
 #![cfg(feature = "xml")]
 use std::io::BufReader;
-use vtkio::{import, model::*, parse_xml, Error};
+use vtkio::{model::*, Error};
 
 type Result = std::result::Result<(), Error>;
 
@@ -86,14 +86,14 @@ fn make_box_vtu() -> Vtk {
 #[test]
 fn box_parse_xml() -> Result {
     let input: &[u8] = include_bytes!("../assets/box.vtu");
-    let vtk = parse_xml(BufReader::new(input))?;
+    let vtk = Vtk::parse_xml(BufReader::new(input))?;
     assert_eq!(vtk, make_box_vtu());
     Ok(())
 }
 
 #[test]
 fn box_import() -> Result {
-    let mut vtk = import("./assets/box.vtu")?;
+    let mut vtk = Vtk::import("./assets/box.vtu")?;
     vtk.file_path = None; // erase file path before comparison.
     assert_eq!(vtk, make_box_vtu());
     Ok(())
@@ -173,7 +173,7 @@ fn make_box_para_vtu() -> Vtk {
 #[test]
 fn box_para_parse_xml() -> Result {
     let input: &[u8] = include_bytes!("../assets/box_para.vtu");
-    let vtk = parse_xml(BufReader::new(input))?;
+    let vtk = Vtk::parse_xml(BufReader::new(input))?;
     assert_eq!(vtk, make_box_para_vtu());
     Ok(())
 }
@@ -213,7 +213,7 @@ fn make_hexahedron_vtu() -> Vtk {
 
 #[test]
 fn hexahedron_appended() -> Result {
-    let mut vtu = import("./assets/hexahedron.vtu")?;
+    let mut vtu = Vtk::import("./assets/hexahedron.vtu")?;
     vtu.file_path = None;
     assert_eq!(vtu, make_hexahedron_vtu());
     Ok(())
@@ -221,7 +221,7 @@ fn hexahedron_appended() -> Result {
 
 #[test]
 fn hexahedron_pvtu() -> Result {
-    let mut vtu = import("./assets/hexahedron_parallel.pvtu")?;
+    let mut vtu = Vtk::import("./assets/hexahedron_parallel.pvtu")?;
     vtu.load_all_pieces().unwrap();
     vtu.file_path = None;
     assert_eq!(vtu, make_hexahedron_vtu());
@@ -230,7 +230,7 @@ fn hexahedron_pvtu() -> Result {
 
 #[test]
 fn hexahedron_lzma_pvtu() -> Result {
-    let mut vtu = import("./assets/hexahedron_parallel_lzma.pvtu")?;
+    let mut vtu = Vtk::import("./assets/hexahedron_parallel_lzma.pvtu")?;
     vtu.load_all_pieces().unwrap();
     vtu.file_path = None;
     assert_eq!(vtu, make_hexahedron_vtu());
@@ -239,7 +239,7 @@ fn hexahedron_lzma_pvtu() -> Result {
 
 #[test]
 fn hexahedron_zlib() -> Result {
-    let mut vtu = import("./assets/hexahedron_zlib.vtu")?;
+    let mut vtu = Vtk::import("./assets/hexahedron_zlib.vtu")?;
     vtu.load_all_pieces().unwrap();
     vtu.file_path = None;
     assert_eq!(vtu, make_hexahedron_vtu());
@@ -258,7 +258,7 @@ fn hexahedron_zlib() -> Result {
 
 #[test]
 fn hexahedron_lz4() -> Result {
-    let mut vtu = import("./assets/hexahedron_lz4.vtu")?;
+    let mut vtu = Vtk::import("./assets/hexahedron_lz4.vtu")?;
     vtu.load_all_pieces().unwrap();
     vtu.file_path = None;
     assert_eq!(vtu, make_hexahedron_vtu());
@@ -267,7 +267,7 @@ fn hexahedron_lz4() -> Result {
 
 #[test]
 fn hexahedron_binary() -> Result {
-    let mut vtu = import("./assets/hexahedron_binary.vtu")?;
+    let mut vtu = Vtk::import("./assets/hexahedron_binary.vtu")?;
     vtu.load_all_pieces().unwrap();
     vtu.file_path = None;
     assert_eq!(vtu, make_hexahedron_vtu());

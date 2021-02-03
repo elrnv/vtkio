@@ -1729,7 +1729,7 @@ impl<P: PieceData> Piece<P> {
         match self {
             Piece::Source(path, _) => {
                 let piece_path = build_piece_path(path, source_path);
-                let mut piece_vtk = crate::import(&piece_path)?;
+                let mut piece_vtk = Vtk::import(&piece_path)?;
                 piece_vtk.load_all_pieces()?;
                 let piece = Box::new(piece_vtk.data);
                 *self = Piece::Loaded(piece);
@@ -1747,7 +1747,7 @@ impl<P: PieceData> Piece<P> {
         match self {
             Piece::Source(path, _) => {
                 let piece_path = build_piece_path(path, source_path);
-                let piece_vtk = crate::import(&piece_path)?;
+                let piece_vtk = Vtk::import(&piece_path)?;
                 P::from_data_set(piece_vtk.data, Some(piece_path.as_ref()))
             }
             Piece::Loaded(data_set) => P::from_data_set(*data_set, source_path),
