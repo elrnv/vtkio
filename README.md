@@ -56,6 +56,22 @@ There are two main features available:
   This flag exposes additional APIs to export and import compressed VTK files (only for XML format).
   This feature has no benefit when the `xml` feature is disabled.
 
+To disable the features above simply set `default-features` to `false`. To enable a specific feature
+add it to the list under `features`. For instance to disable only the `compression` feature, add the
+`vtkio` dependency as
+
+```rust
+[dependencies]
+vtkio = { version = "0.6", default-features = false, features = ["xml"] }
+```
+
+To disable all additional features use
+
+```rust
+[dependencies]
+vtkio = { version = "0.6", default-features = false }
+```
+
 # Changes
 
 Version 0.3 of the crate supports only Legacy VTK formats. For a list of changes
