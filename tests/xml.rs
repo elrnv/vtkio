@@ -248,16 +248,15 @@ fn hexahedron_zlib() -> Result {
     Ok(())
 }
 
-// TODO: Will not work until https://github.com/tafia/quick-xml/pull/253 is merged.
-//#[cfg(feature = "compression")]
-//#[test]
-//fn hexahedron_zlib_binary() -> Result {
-//    let mut vtu = import("./assets/hexahedron_zlib_binary.vtu")?;
-//    vtu.load_all_pieces().unwrap();
-//    vtu.file_path = None;
-//    assert_eq!(vtu, make_hexahedron_vtu());
-//    Ok(())
-//}
+#[cfg(feature = "compression")]
+#[test]
+fn hexahedron_zlib_binary() -> Result {
+    let mut vtu = Vtk::import("./assets/hexahedron_zlib_binary.vtu")?;
+    vtu.load_all_pieces().unwrap();
+    vtu.file_path = None;
+    assert_eq!(vtu, make_hexahedron_vtu());
+    Ok(())
+}
 
 #[cfg(feature = "compression")]
 #[test]

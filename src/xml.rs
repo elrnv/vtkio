@@ -3474,9 +3474,8 @@ fn de_from_reader(reader: impl BufRead) -> Result<VTKFile> {
     reader
         .expand_empty_elements(true)
         .check_end_names(true)
-        .trim_text(true);
-    //TODO: Uncomment when https://github.com/tafia/quick-xml/pull/253 is merged
-    //.trim_text_end(false);
+        .trim_text(true)
+        .trim_text_end(false);
     let mut de = de::Deserializer::new(reader);
     Ok(VTKFile::deserialize(&mut de)?)
 }

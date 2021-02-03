@@ -110,7 +110,7 @@ impl std::error::Error for Error {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
             Error::IO(source) => Some(source),
-            Error::Write(_) => None, // TODO: implement std::error for writer::Error
+            Error::Write(source) => Some(source),
             Error::Parse(_) => None,
             #[cfg(feature = "xml")]
             Error::XML(source) => Some(source),

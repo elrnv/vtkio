@@ -17,19 +17,17 @@ specifically between parse and write functions).
 Support for compression and decompression (feature gated by the "compression" feature which is
 enabled by default) are also added.
 
-- LZMA, LZ4 and Zlib compression are now all supported for base64 encoded appended data blobs.
+- LZMA, LZ4 and Zlib compression are now all supported for appended data blobs.
 - Compression level is currently ignored on LZ4 until either the `lz4_flex` crate implements
   support, or the `lz4` crate supports LZ4 block format.
-- Binary appended data blobs are currently not supported until
-  [#253](https://github.com/tafia/quick-xml/pull/253) is merged into the `quick-xml` crate.
-- Note that solutions to either of the above problems should only cause a minor version bumb.
+- Note that solutions to the above problem should only cause a minor version bump.
 
 A few new API changes have been made:
 
 - The VTK file was changed to include an optional `file_path`, which encodes the original path to the
   VTK file. This allows relative paths when reading in "parallel" XML files. This is how
   ParaView deals with "parallel" XML files for instance. Note that the "parallel" files refers to how
-  they are defined in the VTK documentation; async file loading is not yet supprted, but it is planned.
+  they are defined in the VTK documentation; async file loading is not yet supported, but it is planned.
 - `load_piece_data` was renamed to `into_loaded_piece_data` to indicate that this function takes a
   piece by value and converts it into concrete piece data.
 - In contrast `load_piece_in_place` takes a Piece by mutable reference and replaces source pieces by

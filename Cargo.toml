@@ -1,6 +1,6 @@
 [package]
 name = "vtkio"
-version = "0.6.0"
+version = "0.6.1"
 authors = ["Egor Larionov <egor.larionov@gmail.com>"]
 license = "MIT OR Apache-2.0"
 description = "Parser and writer for the legacy VTK file format"
@@ -29,7 +29,7 @@ bytemuck = { version = "1.5", features = ["extern_crate_alloc"] }
 lz4 = { package = "lz4_flex", version = "0.7", optional = true }
 flate2 = { version = "1.0.19", optional = true }
 xz2 = { version = "0.1.6", optional = true }
-quick-xml = { version = "0.20", features = ["serialize"], optional = true }
+quick-xml = { version = "0.21", features = ["serialize"], optional = true }
 serde = { version = "1.0", features = ["derive"], optional = true }
 tokio = { version = "0.3", features = ["fs", "io-util"], optional = true }
 
