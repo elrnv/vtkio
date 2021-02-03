@@ -776,7 +776,8 @@ impl<BO: ByteOrder> VtkParser<BO> {
                         // This is ignored in Legacy formats
                         byte_order: ByteOrderTag::BigEndian,
                         title: h.1,
-                        data: d
+                        data: d,
+                        file_path: None,
                     })
             ))
         )

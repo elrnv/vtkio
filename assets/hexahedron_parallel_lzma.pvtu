@@ -1,9 +1,9 @@
 <?xml version="1.0"?>
-<VTKFile type="PUnstructuredGrid" version="1.0" byte_order="LittleEndian" header_type="UInt64" compressor="vtkZLibDataCompressor">
+<VTKFile type="PUnstructuredGrid" version="1.0" byte_order="LittleEndian" header_type="UInt32" compressor="vtkLZMADataCompressor">
   <PUnstructuredGrid GhostLevel="1">
     <PPoints>
       <PDataArray type="Float32" Name="Points" NumberOfComponents="3"/>
     </PPoints>
-    <Piece Source="cube_compressed/cube_compressed_0.vtu"/>
+    <Piece Source="hexahedron_parallel_lzma_0.vtu"/>
   </PUnstructuredGrid>
 </VTKFile>

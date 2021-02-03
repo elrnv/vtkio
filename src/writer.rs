@@ -31,6 +31,19 @@ mod write_vtk_impl {
             LookupTable,
         }
 
+        impl std::fmt::Display for EntryPart {
+            fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+                use EntryPart::*;
+                match self {
+                    Tags => write!(f, "Tags"),
+                    Sizes => write!(f, "Sizes"),
+                    Header => write!(f, "Header"),
+                    Data(kind) => write!(f, "Data: {:?}", kind),
+                    LookupTable => write!(f, "Lookup table"),
+                }
+            }
+        }
+
         #[derive(Copy, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
         pub enum AttributeError {
             Scalars(EntryPart),
@@ -45,12 +58,40 @@ mod write_vtk_impl {
             UnrecognizedAttributeType,
         }
 
+        impl std::fmt::Display for AttributeError {
+            fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+                use AttributeError::*;
+                match self {
+                    Scalars(part) => write!(f, "Scalars: {}", part),
+                    ColorScalars(part) => write!(f, "Color scalars: {}", part),
+                    LookupTable(part) => write!(f, "Lookup table: {}", part),
+                    Vectors(part) => write!(f, "Vectors: {}", part),
+                    Normals(part) => write!(f, "Normals: {}", part),
+                    TextureCoordinates(part) => write!(f, "Texture coordinates: {}", part),
+                    Tensors(part) => write!(f, "Tensors: {}", part),
+                    Field(part) => write!(f, "Field: {}", part),
+                    FieldArray(part) => write!(f, "Field array: {}", part),
+                    UnrecognizedAttributeType => write!(f, "Unrecognized attribute type"),
+                }
+            }
+        }
+
         #[derive(Copy, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
         pub enum Header {
             Version,
             Title,
             /// Binary or ASCII.
             FileType,
+        }
+
+        impl std::fmt::Display for Header {
+            fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+                match self {
+                    Header::Version => write!(f, "Version"),
+                    Header::Title => write!(f, "Title"),
+                    Header::FileType => write!(f, "File type (BINARY or ASCII)"),
+                }
+            }
         }
 
         #[derive(Copy, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
@@ -66,6 +107,24 @@ mod write_vtk_impl {
             XCoordinates(EntryPart),
             YCoordinates(EntryPart),
             ZCoordinates(EntryPart),
+        }
+
+        impl std::fmt::Display for DataSetPart {
+            fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+                use DataSetPart::*;
+                match self {
+                    Tags => write!(f, "Tags"),
+                    Points(part) => write!(f, "Points: {}", part),
+                    Cells(part) => write!(f, "Cells: {}", part),
+                    CellTypes(part) => write!(f, "Cell types: {}", part),
+                    Dimensions => write!(f, "Dimensions"),
+                    Origin => write!(f, "Origin"),
+                    Spacing(part) => write!(f, "Spacing: {}", part),
+                    XCoordinates(part) => write!(f, "X coords: {}", part),
+                    YCoordinates(part) => write!(f, "Y coords: {}", part),
+                    ZCoordinates(part) => write!(f, "Z coords: {}", part),
+                }
+            }
         }
 
         #[derive(Copy, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
@@ -85,6 +144,25 @@ mod write_vtk_impl {
             MissingPieceData,
         }
 
+        impl std::fmt::Display for DataSetError {
+            fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+                use DataSetError::*;
+                match self {
+                    FieldDataHeader => write!(f, "Field data header"),
+                    FieldArray(entry) => write!(f, "Field array: {}", entry),
+
+                    PolyData(part) => write!(f, "Poly data: {}", part),
+                    UnstructuredGrid(part) => write!(f, "Unstructured grid: {}", part),
+                    StructuredGrid(part) => write!(f, "Structured grid: {}", part),
+                    StructuredPoints(part) => write!(f, "Structured points: {}", part),
+                    RectilinearGrid(part) => write!(f, "Rectilinear grid: {}", part),
+
+                    PieceDataMismatch => write!(f, "Piece data mismatch"),
+                    MissingPieceData => write!(f, "Missing piece data"),
+                }
+            }
+        }
+
         #[derive(Copy, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
         pub enum Error {
             PointDataHeader,
@@ -95,14 +173,28 @@ mod write_vtk_impl {
             DataSet(DataSetError),
             NewLine,
 
-            /// Unexpected type stored in referenced data buffer. This is most likely caused by
-            /// data corruption.
-            DataMismatchError,
             /// Generic formatting error originating from [`std::fmt::Error`].
             FormatError,
             /// Generic IO error originating from [`std::io::Error`].
             IOError(std::io::ErrorKind),
         }
+
+        impl std::fmt::Display for Error {
+            fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+                match self {
+                    Error::PointDataHeader => write!(f, "POINT_DATA header"),
+                    Error::CellDataHeader => write!(f, "CELL_DATA header"),
+                    Error::Attribute(attrib_err) => write!(f, "Attribute: {}", attrib_err),
+                    Error::Header(header_err) => write!(f, "Header: {}", header_err),
+                    Error::DataSet(data_set_err) => write!(f, "Data set: {}", data_set_err),
+                    Error::NewLine => write!(f, "New line"),
+                    Error::FormatError => write!(f, "Format error"),
+                    Error::IOError(kind) => write!(f, "IO Error: {:?}", kind),
+                }
+            }
+        }
+
+        impl std::error::Error for Error {}
 
         /// Extract a raw IO Error from our error if any. This helps annotate the IO error with
         /// where it originated from when reported from lower level functions.
@@ -343,6 +435,7 @@ mod write_vtk_impl {
             &mut self,
             vtk: Vtk,
         ) -> std::result::Result<&mut Self, Error> {
+            let source_path = vtk.file_path.as_ref().map(|p| p.as_ref());
             writeln!(self, "# vtk DataFile Version {}", vtk.version)
                 .map_err(|_| Error::Header(Header::Version))?;
             writeln!(self, "{}", vtk.title).map_err(|_| Error::Header(Header::Version))?;
@@ -384,7 +477,7 @@ mod write_vtk_impl {
                         polys,
                         strips,
                         data,
-                    }) = piece.load_piece_data()
+                    }) = piece.into_loaded_piece_data(source_path)
                     {
                         writeln!(self, "DATASET POLYDATA").map_err(|_| {
                             Error::DataSet(DataSetError::PolyData(DataSetPart::Tags))
@@ -463,7 +556,7 @@ mod write_vtk_impl {
                         points,
                         cells,
                         data,
-                    }) = piece.load_piece_data()
+                    }) = piece.into_loaded_piece_data(source_path)
                     {
                         writeln!(self, "DATASET UNSTRUCTURED_GRID").map_err(|_| {
                             Error::DataSet(DataSetError::UnstructuredGrid(DataSetPart::Tags))
@@ -524,7 +617,9 @@ mod write_vtk_impl {
                         .into_iter()
                         .next()
                         .ok_or(DataSetError::MissingPieceData)?;
-                    if let Ok(ImageDataPiece { data, .. }) = piece.load_piece_data() {
+                    if let Ok(ImageDataPiece { data, .. }) =
+                        piece.into_loaded_piece_data(source_path)
+                    {
                         writeln!(self, "DATASET STRUCTURED_POINTS").map_err(|_| {
                             Error::DataSet(DataSetError::StructuredPoints(DataSetPart::Tags))
                         })?;
@@ -572,7 +667,9 @@ mod write_vtk_impl {
                         .into_iter()
                         .next()
                         .ok_or(DataSetError::MissingPieceData)?;
-                    if let Ok(StructuredGridPiece { points, data, .. }) = piece.load_piece_data() {
+                    if let Ok(StructuredGridPiece { points, data, .. }) =
+                        piece.into_loaded_piece_data(source_path)
+                    {
                         writeln!(self, "DATASET STRUCTURED_GRID").map_err(|_| {
                             Error::DataSet(DataSetError::StructuredGrid(DataSetPart::Tags))
                         })?;
@@ -610,7 +707,9 @@ mod write_vtk_impl {
                         .into_iter()
                         .next()
                         .ok_or(DataSetError::MissingPieceData)?;
-                    if let Ok(RectilinearGridPiece { coords, data, .. }) = piece.load_piece_data() {
+                    if let Ok(RectilinearGridPiece { coords, data, .. }) =
+                        piece.into_loaded_piece_data(source_path)
+                    {
                         writeln!(self, "DATASET RECTILINEAR_GRID").map_err(|_| {
                             Error::DataSet(DataSetError::RectilinearGrid(DataSetPart::Tags))
                         })?;
@@ -727,6 +826,7 @@ mod write_vtk_impl {
             }
 
             match buf {
+                IOBuffer::Bit(v) => write_buf_impl(v, &mut self.0, W::write_u8)?,
                 IOBuffer::U8(v) => write_buf_impl(v, &mut self.0, W::write_u8)?,
                 IOBuffer::I8(v) => write_buf_impl(v, &mut self.0, W::write_i8)?,
                 IOBuffer::U16(v) => {
@@ -753,7 +853,6 @@ mod write_vtk_impl {
                 IOBuffer::F64(v) => {
                     write_buf_impl(v, &mut self.0, W::write_f64::<BO>)?;
                 }
-                _ => return Err(Error::DataMismatchError),
             }
 
             writeln!(&mut self.0)?;

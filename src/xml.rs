@@ -435,6 +435,7 @@ mod coordinates {
             A: MapAccess<'de>,
         {
             let invalid_len_err = |n| <A::Error as serde::de::Error>::invalid_length(n, &self);
+            // TODO: These should not be positional. (See VTKFile deserialization for reference)
             let (_, x) = map
                 .next_entry::<Field, DataArray>()?
                 .ok_or_else(|| invalid_len_err(0))?;
@@ -473,10 +474,128 @@ mod coordinates {
 }
 
 mod data {
-    use super::RawData;
-    use serde::de::{Deserialize, Deserializer, Visitor};
-    use serde::ser::{Serialize, Serializer};
+    use super::{AppendedData, Data, Encoding, RawData};
+    use serde::{
+        de::{self, Deserialize, Deserializer, MapAccess, Visitor},
+        Serialize, Serializer,
+    };
     use std::fmt;
+    // A helper function to detect whitespace bytes.
+    fn is_whitespace(b: u8) -> bool {
+        match b {
+            b' ' | b'\r' | b'\n' | b'\t' => true,
+            _ => false,
+        }
+    }
+
+    #[derive(Debug, serde::Deserialize)]
+    #[serde(field_identifier)]
+    enum Field {
+        #[serde(rename = "encoding")]
+        Encoding,
+        #[serde(rename = "$value")]
+        Value,
+    }
+
+    /*
+     * Data in a DataArray element
+     */
+
+    struct DataVisitor;
+
+    impl<'de> Visitor<'de> for DataVisitor {
+        type Value = Data;
+
+        fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+            formatter.write_str("Data string in base64 or ASCII format")
+        }
+
+        fn visit_map<A>(self, _map: A) -> Result<Self::Value, A::Error>
+        where
+            A: MapAccess<'de>,
+        {
+            // Ignore InformationKey fields.
+            Ok(Data::Meta {
+                information_key: (),
+            })
+        }
+        fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
+        where
+            E: de::Error,
+        {
+            Ok(Data::Data(v.trim_end().to_string()))
+        }
+    }
+
+    /* Serialization of Data is derived. */
+
+    impl<'de> Deserialize<'de> for Data {
+        fn deserialize<D>(d: D) -> Result<Self, D::Error>
+        where
+            D: Deserializer<'de>,
+        {
+            Ok(d.deserialize_any(DataVisitor)?)
+        }
+    }
+
+    /*
+     * AppendedData Element
+     */
+    struct AppendedDataVisitor;
+
+    impl<'de> Visitor<'de> for AppendedDataVisitor {
+        type Value = AppendedData;
+
+        fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+            formatter.write_str("Appended bytes or base64 data")
+        }
+
+        fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error>
+        where
+            A: MapAccess<'de>,
+        {
+            let make_err = || {
+                <A::Error as serde::de::Error>::custom(
+                    "AppendedData element must contain only a single \"encoding\" attribute",
+                )
+            };
+            let mut encoding = None;
+            let mut data = RawData::default();
+            if let Some((key, value)) = map.next_entry::<Field, Encoding>()? {
+                match key {
+                    Field::Encoding => encoding = Some(value),
+                    _ => return Err(make_err()),
+                }
+            }
+            if let Some((key, value)) = map.next_entry::<Field, RawData>()? {
+                match key {
+                    Field::Value => data = value,
+                    _ => return Err(make_err()),
+                }
+            }
+            if let Some(Encoding::Base64) = encoding {
+                // In base64 encoding we can trim whitespace from the end.
+                if let Some(end) = data.0.iter().rposition(|&b| !is_whitespace(b)) {
+                    data = RawData(data.0[..=end].to_vec());
+                }
+            }
+            Ok(AppendedData {
+                encoding: encoding.unwrap_or(Encoding::Raw),
+                data,
+            })
+        }
+    }
+
+    /* Serialization of AppendedData is derived. */
+
+    impl<'de> Deserialize<'de> for AppendedData {
+        fn deserialize<D>(d: D) -> Result<Self, D::Error>
+        where
+            D: Deserializer<'de>,
+        {
+            Ok(d.deserialize_struct("AppendedData", &["encoding", "$value"], AppendedDataVisitor)?)
+        }
+    }
 
     /*
      * Data in an AppendedData element
@@ -492,7 +611,6 @@ mod data {
         }
 
         fn visit_bytes<E: serde::de::Error>(self, v: &[u8]) -> Result<Self::Value, E> {
-            //eprintln!("Deserializing as bytes");
             // Skip the first byte which always corresponds to the preceeding underscore
             if v.is_empty() {
                 return Ok(RawData(Vec::new()));
@@ -1097,7 +1215,7 @@ impl Default for VTKFile {
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Copy, Clone, Debug, PartialEq)]
 pub enum Compressor {
     LZ4,
     ZLib,
@@ -1683,6 +1801,9 @@ impl Coordinates {
 pub struct EncodingInfo {
     byte_order: model::ByteOrder,
     header_type: ScalarType,
+    compressor: Compressor,
+    // Note that compression level is meaningless during decoding.
+    compression_level: u32,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -1768,9 +1889,10 @@ impl DataArray {
             scalar_type: buf.scalar_type().into(),
             data: vec![Data::Data(base64::encode(
                 if ei.header_type == ScalarType::UInt64 {
-                    buf.into_bytes_with_size(ei.byte_order)
+                    buf.into_bytes_with_size(ei.byte_order, ei.compressor, ei.compression_level)
                 } else {
-                    buf.into_bytes_with_size32(ei.byte_order) // Older vtk Versions
+                    buf.into_bytes_with_size32(ei.byte_order, ei.compressor, ei.compression_level)
+                    // Older vtk Versions
                 },
             ))],
             ..Default::default()
@@ -1815,42 +1937,13 @@ impl DataArray {
         //eprintln!("name = {:?}", &name);
 
         let num_elements = usize::try_from(num_comp).unwrap() * l;
-        let num_bytes = num_elements * scalar_type.size();
-        let header_bytes = if ei.header_type == ScalarType::UInt64 {
-            8
-        } else {
-            4
-        };
+        let header_bytes = ei.header_type.size();
 
         let data = match format {
             DataArrayFormat::Appended => {
                 if let Some(appended) = appended {
-                    let mut start: usize = offset.unwrap_or(0).try_into().unwrap();
-                    let buf = match appended.encoding {
-                        Encoding::Raw => {
-                            // Skip the first 64 bits which gives the size of each component in bytes
-                            //eprintln!("{:?}", &appended.data.0[start..start + header_bytes]);
-                            start += header_bytes;
-                            let bytes = &appended.data.0[start..start + num_bytes];
-                            IOBuffer::from_bytes(bytes, scalar_type.into(), ei.byte_order)?
-                        }
-                        Encoding::Base64 => {
-                            // Add one 64-bit integer that specifies the size of each component in bytes.
-                            let num_target_bits = (num_bytes + header_bytes) * 8;
-                            // Compute how many base64 chars we need to decode l elements.
-                            let num_source_bytes =
-                                num_target_bits / 6 + if num_target_bits % 6 == 0 { 0 } else { 1 };
-                            let bytes = &appended.data.0[start..start + num_source_bytes];
-                            let bytes = base64::decode(bytes)?;
-                            //eprintln!("{:?}", &bytes[..header_bytes]);
-                            // Skip the first 64 bits which gives the size of each component in bytes
-                            IOBuffer::from_bytes(
-                                &bytes[header_bytes..],
-                                scalar_type.into(),
-                                ei.byte_order,
-                            )?
-                        }
-                    };
+                    let start: usize = offset.unwrap_or(0).try_into().unwrap();
+                    let buf = appended.extract_data(start, num_elements, scalar_type, ei)?;
                     if buf.len() != num_elements {
                         return Err(ValidationError::DataArraySizeMismatch {
                             name,
@@ -1977,12 +2070,12 @@ fn default_num_comp() -> u32 {
 /// Some VTK tools like ParaView may produce undocumented tags inside this
 /// element. We capture and ignore those via the `Meta` variant. Otherwise this
 /// is treated as a data string.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize)]
 #[serde(untagged)]
 pub enum Data {
     Meta {
-        #[serde(rename = "InformationKey", default)]
-        info_key: (),
+        #[serde(rename = "InformationKey")]
+        information_key: (),
     },
     Data(String),
 }
@@ -2078,7 +2171,7 @@ pub enum DataArrayFormat {
     Ascii,
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize)]
 pub struct AppendedData {
     /// Encoding used in the `data` field.
     pub encoding: Encoding,
@@ -2105,6 +2198,230 @@ impl Default for RawData {
 pub enum Encoding {
     Base64,
     Raw,
+}
+
+impl AppendedData {
+    /// Extract the decompressed and unencoded raw bytes from appended data.
+    ///
+    /// The data is expected to begin at `offset` from the beginning of the stored data array.
+    ///
+    /// The expected number of elements is given by `num_elements`.
+    /// The given encoding info specifies the format of the data header and how the data is compressed.
+    pub fn extract_data(
+        &self,
+        offset: usize,
+        num_elements: usize,
+        scalar_type: ScalarType,
+        ei: EncodingInfo,
+    ) -> std::result::Result<model::IOBuffer, ValidationError> {
+        // Convert number of target bytes to number of chars in base64 encoding.
+        fn to_b64(bytes: usize) -> usize {
+            4 * (bytes as f64 / 3.0).ceil() as usize
+            //(bytes * 4 + 1) / 3 + match bytes % 3 {
+            //    1 => 2, 2 => 1, _ => 0
+            //}
+        }
+
+        let header_bytes = ei.header_type.size();
+        let expected_num_bytes = num_elements * scalar_type.size();
+        let mut start = offset;
+
+        if ei.compressor == Compressor::None {
+            return match self.encoding {
+                Encoding::Raw => {
+                    // The first 64/32 bits gives the size of each component in bytes
+                    // Since data here is uncompressed we can predict exactly how many bytes to expect
+                    // We check this below.
+                    let given_num_bytes = read_header_num(
+                        &mut std::io::Cursor::new(&self.data.0[start..start + header_bytes]),
+                        ei,
+                    )?;
+                    if given_num_bytes != expected_num_bytes {
+                        return Err(ValidationError::UnexpectedBytesInAppendedData(
+                            expected_num_bytes as u64,
+                            given_num_bytes as u64,
+                        ));
+                    }
+                    start += header_bytes;
+                    let bytes = &self.data.0[start..start + expected_num_bytes];
+                    Ok(model::IOBuffer::from_bytes(
+                        bytes,
+                        scalar_type.into(),
+                        ei.byte_order,
+                    )?)
+                }
+                Encoding::Base64 => {
+                    // Add one integer that specifies the size of each component in bytes.
+                    let num_target_bytes = expected_num_bytes + header_bytes;
+                    // Compute how many base64 chars we need to decode l elements.
+                    let num_source_bytes = to_b64(num_target_bytes);
+                    let bytes = &self.data.0[start..start + num_source_bytes];
+                    let bytes = base64::decode(bytes)?;
+                    Ok(model::IOBuffer::from_bytes(
+                        &bytes[header_bytes..],
+                        scalar_type.into(),
+                        ei.byte_order,
+                    )?)
+                }
+            };
+        }
+
+        // Compressed data has a more complex header.
+        // The data is organized as [nb][nu][np][nc_1]...[nc_nb][Data]
+        // Where
+        //   [nb] = Number of blocks in the data array
+        //   [nu] = Block size before compression
+        //   [np] = Size of the last partial block before compression (zero if it is not needed)
+        //   [nc_i] = Size in bytes of block i after compression
+        // See https://vtk.org/Wiki/VTK_XML_Formats for details.
+        // In this case we dont know how many bytes are in the data array so we must first read
+        // this information from a header.
+
+        // Helper function to read a single header number, which depends on the encoding parameters.
+        fn read_header_num<R: AsRef<[u8]>>(
+            header_buf: &mut std::io::Cursor<R>,
+            ei: EncodingInfo,
+        ) -> std::result::Result<usize, ValidationError> {
+            use byteorder::ReadBytesExt;
+            use byteorder::{BE, LE};
+            Ok(match ei.byte_order {
+                model::ByteOrder::LittleEndian => {
+                    if ei.header_type == ScalarType::UInt64 {
+                        header_buf.read_u64::<LE>()? as usize
+                    } else {
+                        header_buf.read_u32::<LE>()? as usize
+                    }
+                }
+                model::ByteOrder::BigEndian => {
+                    if ei.header_type == ScalarType::UInt64 {
+                        header_buf.read_u64::<BE>()? as usize
+                    } else {
+                        header_buf.read_u32::<BE>()? as usize
+                    }
+                }
+            })
+        }
+
+        fn get_data_slice<'a, D, B>(
+            buf: &'a mut Vec<u8>,
+            mut decode: D,
+            mut to_b64: B,
+            data: &'a [u8],
+            header_bytes: usize,
+            ei: EncodingInfo,
+        ) -> std::result::Result<Vec<u8>, ValidationError>
+        where
+            D: for<'b> FnMut(
+                &'b [u8],
+                &'b mut Vec<u8>,
+            ) -> std::result::Result<&'b [u8], ValidationError>,
+            B: FnMut(usize) -> usize,
+        {
+            use std::io::Cursor;
+            use std::io::Read;
+
+            // First we need to determine the number of blocks stored.
+            let num_blocks = {
+                let encoded_header = &data[0..to_b64(header_bytes)];
+                let decoded_header = decode(encoded_header, buf)?;
+                read_header_num(&mut Cursor::new(decoded_header), ei)?
+            };
+
+            let full_header_bytes = header_bytes * (3 + num_blocks); // nb + nu + np + sum_i nc_i
+            buf.clear();
+
+            let encoded_header = &data[0..to_b64(full_header_bytes)];
+            let decoded_header = decode(encoded_header, buf)?;
+            let mut header_cursor = Cursor::new(decoded_header);
+            let _nb = read_header_num(&mut header_cursor, ei); // We already know the number of blocks
+            let _nu = read_header_num(&mut header_cursor, ei);
+            let _np = read_header_num(&mut header_cursor, ei);
+            let nc_total = (0..num_blocks).fold(0, |acc, _| {
+                acc + read_header_num(&mut header_cursor, ei).unwrap_or(0)
+            });
+            let num_data_bytes = to_b64(nc_total);
+            let start = to_b64(full_header_bytes);
+            buf.clear();
+            let encoded_data = &data[start..start + num_data_bytes];
+            let decoded_data = decode(encoded_data, buf)?;
+
+            // Now that the data is decoded, what is left is to decompress it.
+            let mut out = Vec::new();
+            match ei.compressor {
+                Compressor::ZLib => {
+                    #[cfg(not(feature = "flate2"))]
+                    {
+                        return Err(ValidationError::MissingCompressionLibrary(ei.compressor));
+                    }
+                    #[cfg(feature = "flate2")]
+                    {
+                        let mut decoder = flate2::read::ZlibDecoder::new(decoded_data);
+                        decoder.read_to_end(&mut out)?;
+                    }
+                }
+                Compressor::LZ4 => {
+                    #[cfg(not(feature = "lz4"))]
+                    {
+                        return Err(ValidationError::MissingCompressionLibrary(ei.compressor));
+                    }
+                    #[cfg(feature = "lz4")]
+                    {
+                        out = lz4::decompress(decoded_data, num_data_bytes)?;
+                    }
+                }
+                Compressor::LZMA => {
+                    #[cfg(not(feature = "xz2"))]
+                    {
+                        return Err(ValidationError::MissingCompressionLibrary(ei.compressor));
+                    }
+                    #[cfg(feature = "xz2")]
+                    {
+                        let mut decoder = xz2::read::XzDecoder::new(decoded_data);
+                        decoder.read_to_end(&mut out)?;
+                    }
+                }
+                _ => {}
+            };
+            Ok(out)
+        }
+
+        let out = match self.encoding {
+            Encoding::Raw => {
+                let mut buf = Vec::new();
+                get_data_slice(
+                    &mut buf,
+                    |header, _| Ok(header),
+                    |x| x,
+                    &self.data.0[offset..],
+                    header_bytes,
+                    ei,
+                )?
+            }
+            Encoding::Base64 => {
+                let mut buf = Vec::new();
+                get_data_slice(
+                    &mut buf,
+                    |header, buf| {
+                        base64::decode_config_buf(
+                            header,
+                            base64::STANDARD.decode_allow_trailing_bits(true),
+                            buf,
+                        )?;
+                        Ok(buf.as_slice())
+                    },
+                    to_b64,
+                    &self.data.0[offset..],
+                    header_bytes,
+                    ei,
+                )?
+            }
+        };
+        Ok(model::IOBuffer::from_byte_vec(
+            out,
+            scalar_type.into(),
+            ei.byte_order,
+        )?)
+    }
 }
 
 /// A file type descriptor of a XML VTK data file.
@@ -2283,14 +2600,17 @@ pub enum ValidationError {
     MissingDataSet,
     DataSetMismatch,
     InvalidDataFormat,
+    IO(std::io::Error),
     Model(model::Error),
     ParseFloat(std::num::ParseFloatError),
     ParseInt(std::num::ParseIntError),
     InvalidCellType(u8),
     TooManyElements(u32),
+    UnexpectedBytesInAppendedData(u64, u64),
     MissingTopologyOffsets,
     MissingReferencedAppendedData,
     MissingCoordinates,
+    MissingCompressionLibrary(Compressor),
     DataArraySizeMismatch {
         name: String,
         expected: usize,
@@ -2298,7 +2618,22 @@ pub enum ValidationError {
     },
     Base64Decode(base64::DecodeError),
     Deserialize(de::DeError),
+    #[cfg(feature = "lz4")]
+    LZ4DecompressError(lz4::block::DecompressError),
     Unsupported,
+}
+
+#[cfg(feature = "lz4")]
+impl From<lz4::block::DecompressError> for ValidationError {
+    fn from(e: lz4::block::DecompressError) -> ValidationError {
+        ValidationError::LZ4DecompressError(e)
+    }
+}
+
+impl From<std::io::Error> for ValidationError {
+    fn from(e: std::io::Error) -> ValidationError {
+        ValidationError::IO(e)
+    }
 }
 
 impl From<model::Error> for ValidationError {
@@ -2334,11 +2669,14 @@ impl From<de::DeError> for ValidationError {
 impl std::error::Error for ValidationError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
+            ValidationError::IO(source) => Some(source),
             ValidationError::Model(source) => Some(source),
             ValidationError::Base64Decode(source) => Some(source),
             ValidationError::Deserialize(source) => Some(source),
             ValidationError::ParseFloat(source) => Some(source),
             ValidationError::ParseInt(source) => Some(source),
+            #[cfg(feature = "lz4")]
+            ValidationError::LZ4DecompressError(source) => Some(source),
             _ => None,
         }
     }
@@ -2351,17 +2689,30 @@ impl std::fmt::Display for ValidationError {
                 write!(f, "VTKFile type doesn't match internal data set definition")
             }
             ValidationError::InvalidDataFormat => write!(f, "Invalid data format"),
+            ValidationError::IO(e) => write!(f, "IO Error: {}", e),
             ValidationError::Model(e) => write!(f, "Failed to convert model to xml: {}", e),
             ValidationError::ParseFloat(e) => write!(f, "Failed to parse a float: {}", e),
             ValidationError::ParseInt(e) => write!(f, "Failed to parse an int: {}", e),
             ValidationError::InvalidCellType(t) => write!(f, "Invalid cell type: {}", t),
             ValidationError::TooManyElements(n) => write!(f, "Too many elements: {}", n),
+            ValidationError::UnexpectedBytesInAppendedData(expected, actual) => write!(
+                f,
+                "Expected {} bytes in appended data array but found {} in header",
+                expected, actual
+            ),
             ValidationError::MissingTopologyOffsets => write!(f, "Missing topology offsets"),
             ValidationError::MissingReferencedAppendedData => {
                 write!(f, "Appended data is referenced but missing from the file")
             }
             ValidationError::MissingCoordinates => {
                 write!(f, "Missing coordinates in rectilinear grid definition")
+            }
+            ValidationError::MissingCompressionLibrary(c) => {
+                write!(
+                    f,
+                    "Cannot compress/decompress data: {:?} compression is unsupported",
+                    c
+                )
             }
             ValidationError::DataArraySizeMismatch {
                 name,
@@ -2372,9 +2723,13 @@ impl std::fmt::Display for ValidationError {
                 "Data array \"{}\" has {} elements, but should have {}",
                 name, actual, expected
             ),
-            ValidationError::Base64Decode(source) => write!(f, "Base64 decode error: {:?}", source),
+            ValidationError::Base64Decode(source) => write!(f, "Base64 decode error: {}", source),
             ValidationError::Deserialize(source) => {
                 write!(f, "Failed to deserialize data: {:?}", source)
+            }
+            #[cfg(feature = "lz4")]
+            ValidationError::LZ4DecompressError(source) => {
+                write!(f, "LZ4 deompression error: {}", source)
             }
             ValidationError::Unsupported => write!(f, "Unsupported data set format"),
         }
@@ -2387,6 +2742,7 @@ impl TryFrom<VTKFile> for model::Vtk {
         let VTKFile {
             version,
             byte_order,
+            compressor,
             header_type,
             data_set_type,
             appended_data,
@@ -2397,6 +2753,8 @@ impl TryFrom<VTKFile> for model::Vtk {
         let encoding_info = EncodingInfo {
             byte_order,
             header_type: header_type.unwrap_or(ScalarType::UInt64),
+            compressor,
+            compression_level: 0, // This is meaningless when decoding
         };
 
         let appended_data = appended_data.as_ref();
@@ -2817,25 +3175,45 @@ impl TryFrom<VTKFile> for model::Vtk {
             byte_order,
             title: String::new(),
             data,
+            file_path: None,
         })
     }
 }
 
-impl TryFrom<model::Vtk> for VTKFile {
-    type Error = Error;
-    fn try_from(vtk: model::Vtk) -> Result<VTKFile> {
+impl model::Vtk {
+    /// Converts the given Vtk model into an XML format represented by `VTKFile`.
+    ///
+    /// This function allows one to specify the compression level (0-9):
+    /// ```verbatim
+    /// 0 -> No compression
+    /// 1 -> Fastest write
+    /// ...
+    /// 5 -> Balanced performance
+    /// ...
+    /// 9 -> Slowest but smallest file size.
+    /// ```
+    pub fn try_into_xml_format(
+        self,
+        compressor: Compressor,
+        compression_level: u32,
+    ) -> Result<VTKFile> {
         let model::Vtk {
             version,
             byte_order,
             data: data_set,
+            file_path,
             ..
-        } = vtk;
+        } = self;
+
+        let source_path = file_path.as_ref().map(|p| p.as_ref());
 
         let header_type = ScalarType::UInt64;
 
         let encoding_info = EncodingInfo {
             byte_order,
             header_type,
+            compressor,
+            compression_level,
         };
 
         let appended_data = Vec::new();
@@ -2855,7 +3233,7 @@ impl TryFrom<model::Vtk> for VTKFile {
                 pieces: pieces
                     .into_iter()
                     .map(|piece| {
-                        let piece_data = piece.load_piece_data()?;
+                        let piece_data = piece.into_loaded_piece_data(source_path)?;
                         let model::ImageDataPiece { extent, data } = piece_data;
                         Ok(Piece {
                             extent: Some(extent.into()),
@@ -2882,7 +3260,7 @@ impl TryFrom<model::Vtk> for VTKFile {
                 pieces: pieces
                     .into_iter()
                     .map(|piece| {
-                        let piece_data = piece.load_piece_data()?;
+                        let piece_data = piece.into_loaded_piece_data(source_path)?;
                         let model::StructuredGridPiece {
                             extent,
                             points,
@@ -2914,7 +3292,7 @@ impl TryFrom<model::Vtk> for VTKFile {
                 pieces: pieces
                     .into_iter()
                     .map(|piece| {
-                        let piece_data = piece.load_piece_data()?;
+                        let piece_data = piece.into_loaded_piece_data(source_path)?;
                         let model::RectilinearGridPiece {
                             extent,
                             coords,
@@ -2947,7 +3325,7 @@ impl TryFrom<model::Vtk> for VTKFile {
                 pieces: pieces
                     .into_iter()
                     .map(|piece| {
-                        let piece_data = piece.load_piece_data()?;
+                        let piece_data = piece.into_loaded_piece_data(source_path)?;
                         let num_points = piece_data.num_points();
                         let model::UnstructuredGridPiece {
                             points,
@@ -2980,7 +3358,7 @@ impl TryFrom<model::Vtk> for VTKFile {
                 pieces: pieces
                     .into_iter()
                     .map(|piece| {
-                        let piece_data = piece.load_piece_data()?;
+                        let piece_data = piece.into_loaded_piece_data(source_path)?;
                         let num_points = piece_data.num_points();
                         let number_of_verts = piece_data.num_verts();
                         let number_of_lines = piece_data.num_lines();
@@ -3064,10 +3442,17 @@ impl TryFrom<model::Vtk> for VTKFile {
             version,
             byte_order,
             header_type: Some(header_type),
-            compressor: Compressor::None,
+            compressor,
             appended_data,
             data_set,
         })
+    }
+}
+
+impl TryFrom<model::Vtk> for VTKFile {
+    type Error = Error;
+    fn try_from(vtk: model::Vtk) -> Result<VTKFile> {
+        vtk.try_into_xml_format(Compressor::None, 0)
     }
 }
 
@@ -3077,9 +3462,21 @@ pub(crate) fn import(file_path: impl AsRef<Path>) -> Result<VTKFile> {
     parse(std::io::BufReader::new(f))
 }
 
+fn de_from_reader(reader: impl BufRead) -> Result<VTKFile> {
+    let mut reader = quick_xml::Reader::from_reader(reader);
+    reader
+        .expand_empty_elements(true)
+        .check_end_names(true)
+        .trim_text(true);
+    //TODO: Uncomment when https://github.com/tafia/quick-xml/pull/253 is merged
+    //.trim_text_end(false);
+    let mut de = de::Deserializer::new(reader);
+    Ok(VTKFile::deserialize(&mut de)?)
+}
+
 /// Parse an XML VTK file from the given reader.
 pub(crate) fn parse(reader: impl BufRead) -> Result<VTKFile> {
-    Ok(de::from_reader(reader)?)
+    Ok(de_from_reader(reader)?)
 }
 
 /// Import an XML VTK file from the specified path.
@@ -3087,7 +3484,7 @@ pub(crate) fn parse(reader: impl BufRead) -> Result<VTKFile> {
 pub(crate) async fn import_async(file_path: impl AsRef<Path>) -> Result<VTKFile> {
     let f = tokio::fs::File::open(file_path).await?;
     // Blocked on async support from quick-xml (e.g. https://github.com/tafia/quick-xml/pull/233)
-    Ok(de::from_reader(std::io::BufReader::new(f))?)
+    Ok(de_from_reader(std::io::BufReader::new(f))?)
 }
 
 /// Export an XML VTK file to the specified path.
@@ -3264,7 +3661,7 @@ mod tests {
         //eprintln!("{:#?}", &vtk);
         let as_bytes = se::to_bytes(&vtk)?;
         //eprintln!("{:?}", &as_bytes);
-        let vtk_roundtrip = de::from_reader(as_bytes.as_slice()).unwrap();
+        let vtk_roundtrip = de_from_reader(as_bytes.as_slice()).unwrap();
         assert_eq!(vtk, vtk_roundtrip);
         Ok(())
     }
@@ -3275,7 +3672,7 @@ mod tests {
         //eprintln!("{:#?}", &vtk);
         let as_bytes = se::to_bytes(&vtk)?;
         //eprintln!("{:?}", &as_bytes);
-        let vtk_roundtrip = de::from_reader(as_bytes.as_slice()).unwrap();
+        let vtk_roundtrip = de_from_reader(as_bytes.as_slice()).unwrap();
         assert_eq!(vtk, vtk_roundtrip);
         Ok(())
     }
@@ -3286,7 +3683,7 @@ mod tests {
         //eprintln!("{:#?}", &vtk);
         let as_bytes = se::to_bytes(&vtk)?;
         //eprintln!("{:?}", &as_bytes);
-        let vtk_roundtrip = de::from_reader(as_bytes.as_slice()).unwrap();
+        let vtk_roundtrip = de_from_reader(as_bytes.as_slice()).unwrap();
         assert_eq!(vtk, vtk_roundtrip);
         Ok(())
     }
@@ -3351,9 +3748,9 @@ mod tests {
     #[test]
     fn hexahedron_appended() -> Result<()> {
         let vtk = import("assets/hexahedron.vtu")?;
-        eprintln!("{:#?}", &vtk);
+        //eprintln!("{:#?}", &vtk);
         let as_str = se::to_string(&vtk).unwrap();
-        eprintln!("{}", &as_str);
+        //eprintln!("{}", &as_str);
         let vtk_roundtrip = de::from_str(&as_str).unwrap();
         assert_eq!(vtk, vtk_roundtrip);
         Ok(())
@@ -3384,17 +3781,6 @@ mod tests {
         let vtk_ascii = model::Vtk::try_from(vtk_ascii.clone())?;
         let vtk_binary = model::Vtk::try_from(vtk.clone())?;
         assert_eq!(&vtk_ascii, &vtk_binary);
-        Ok(())
-    }
-
-    #[test]
-    fn parallel_compressed_cube() -> Result<()> {
-        let vtk = import("assets/cube_compressed.pvtu")?;
-        //eprintln!("{:#?}", &vtk);
-        let as_str = se::to_string(&vtk).unwrap();
-        //eprintln!("{}", &as_str);
-        let vtk_roundtrip = de::from_str(&as_str).unwrap();
-        assert_eq!(vtk, vtk_roundtrip);
         Ok(())
     }
 
@@ -3512,7 +3898,8 @@ mod tests {
                             Attribute::generic("Z Velocity", 1).with_data(vec![0.0f32, 0.5, 0.0]),
                         ]
                     }
-                })
+                }),
+                file_path: None,
             }
         );
         Ok(())

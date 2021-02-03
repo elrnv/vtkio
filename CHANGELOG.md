@@ -1,10 +1,29 @@
+# CHANGELOG
+
+This document outlines changes and updates in major releases of `vtkio`.
+
 # Release 0.6
 
-Another small update to make API function names more consistent throughout the library (more
+Make API function names more consistent throughout the library (more
 specifically between parse and write functions).
 
 - `parse_vtk_{be|le}` is renamed to `parse_legacy_{be|le}`.
 - `parse_vtk_buf_{be|le}` is renamed to `parse_legacy_buf_{be|le}`.
+
+Add support for compression and decompression (feature gated by the "compression" feature which is
+enabled by default).
+
+- LZMA, LZ4 and Zlib compression are now all supported for base64 encoded appended data blobs.
+- Compression level is currently ignored on LZ4 until either the `lz4_flex` crate implements
+  support, or the `lz4` crate supports LZ4 block format.
+- Binary appended data blobs are currently not supported until
+  [#253](https://github.com/tafia/quick-xml/pull/253) is merged into the `quick-xml` crate.
+- Note that solutions to either of the above problems should only cause a minor version bumb.
+
+The VTK file API was changed to include an optional `file_path`, which encodes the original path to the
+VTK file. This allows relative paths when reading in "parallel" XML files. This is how
+ParaView deals with "parallel" XML files for instance. Note that the "parallel" files refers to how
+they are defined in the VTK documentation; async file loading is not yet supprted, but it is planned.
 
 There are also additional fixes and docs clarifications.
 

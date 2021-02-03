@@ -59,11 +59,15 @@ pub mod basic;
 pub mod model;
 pub mod parser;
 pub mod writer;
+#[cfg(feature = "xml")]
 pub mod xml;
 
+#[cfg(feature = "xml")]
 use std::convert::{TryFrom, TryInto};
 use std::fs::File;
-use std::io::{self, BufRead, BufWriter, Read, Write};
+#[cfg(feature = "xml")]
+use std::io::BufRead;
+use std::io::{self, BufWriter, Read, Write};
 use std::path::Path;
 
 use crate::writer::{AsciiWriter, BinaryWriter, WriteVtk};
@@ -76,22 +80,26 @@ pub enum Error {
     IO(io::Error),
     Write(writer::Error),
     Parse(nom::ErrorKind<u32>),
+    #[cfg(feature = "xml")]
     XML(xml::Error),
     UnknownFileExtension(Option<String>),
+    Load(model::Error),
     Unknown,
 }
 
 impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         match self {
-            Error::IO(source) => write!(f, "IO error: {:?}", source),
-            Error::Write(source) => write!(f, "Write error: {:?}", source),
+            Error::IO(source) => write!(f, "IO error: {}", source),
+            Error::Write(source) => write!(f, "Write error: {}", source),
             Error::Parse(source) => write!(f, "Parse error: {:?}", source),
-            Error::XML(source) => write!(f, "XML error: {:?}", source),
+            #[cfg(feature = "xml")]
+            Error::XML(source) => write!(f, "XML error: {}", source),
             Error::UnknownFileExtension(Some(ext)) => {
                 write!(f, "Unknown file extension: {:?}", ext)
             }
             Error::UnknownFileExtension(None) => write!(f, "Missing file extension"),
+            Error::Load(source) => write!(f, "Load error: {}", source),
             Error::Unknown => write!(f, "Unknown error"),
         }
     }
@@ -103,8 +111,10 @@ impl std::error::Error for Error {
             Error::IO(source) => Some(source),
             Error::Write(_) => None, // TODO: implement std::error for writer::Error
             Error::Parse(_) => None,
+            #[cfg(feature = "xml")]
             Error::XML(source) => Some(source),
             Error::UnknownFileExtension(_) => None,
+            Error::Load(source) => Some(source),
             Error::Unknown => None,
         }
     }
@@ -120,6 +130,7 @@ impl From<io::Error> for Error {
 /// Convert [`xml::Error`] error into the top level `vtkio` error.
 ///
 /// [`xml::Error`]: xml.enum.Error.html
+#[cfg(feature = "xml")]
 impl From<xml::Error> for Error {
     fn from(e: xml::Error) -> Error {
         Error::XML(e)
@@ -197,6 +208,7 @@ where
 ///     version: Version::new((2,0)),
 ///     byte_order: ByteOrder::BigEndian, // This is default
 ///     title: String::from("Triangle example"),
+///     file_path: None,
 ///     data: DataSet::inline(PolyDataPiece {
 ///         points: vec![0.0f32, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, -1.0].into(),
 ///         polys: Some(VertexNumbers::Legacy {
@@ -244,6 +256,7 @@ pub fn parse_legacy_be(reader: impl Read) -> Result<model::Vtk, Error> {
 ///     version: Version::new((2,0)),
 ///     byte_order: ByteOrder::BigEndian, // This is default
 ///     title: String::from("Triangle example"),
+///     file_path: None,
 ///     data: DataSet::inline(PolyDataPiece {
 ///         points: vec![0.0f32, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, -1.0].into(),
 ///         polys: Some(VertexNumbers::Legacy {
@@ -314,6 +327,7 @@ pub fn parse_legacy_buf_le(reader: impl Read, buf: &mut Vec<u8>) -> Result<model
 ///     version: Version::new((2,0)),
 ///     byte_order: ByteOrder::BigEndian, // This is default
 ///     title: String::new(),
+///     file_path: None,
 ///     data: DataSet::inline(PolyDataPiece {
 ///         points: vec![0.0f32, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, -1.0].into(),
 ///         polys: Some(VertexNumbers::XML {
@@ -325,6 +339,7 @@ pub fn parse_legacy_buf_le(reader: impl Read, buf: &mut Vec<u8>) -> Result<model
 ///     })
 /// });
 /// ```
+#[cfg(feature = "xml")]
 pub fn parse_xml(reader: impl BufRead) -> Result<model::Vtk, Error> {
     // There is no extension to check with the data is provided directly.
     // Luckily the xml file contains all the data necessary to determine which data is
@@ -395,6 +410,7 @@ fn import_impl(path: &Path) -> Result<model::Vtk, Error> {
         .ok_or(Error::UnknownFileExtension(None))?;
     match ext {
         "vtk" => import_vtk(path, parser::parse_be),
+        #[cfg(feature = "xml")]
         ext => {
             let ft = xml::FileType::try_from_ext(ext)
                 .ok_or(Error::UnknownFileExtension(Some(ext.to_string())))?;
@@ -403,9 +419,13 @@ fn import_impl(path: &Path) -> Result<model::Vtk, Error> {
             if ft != exp_ft {
                 Err(Error::XML(xml::Error::TypeExtensionMismatch))
             } else {
-                Ok(vtk_file.try_into()?)
+                let mut vtk: model::Vtk = vtk_file.try_into()?;
+                vtk.file_path = Some(path.into());
+                Ok(vtk)
             }
         }
+        #[cfg(not(feature = "xml"))]
+        _ => Err(Error::UnknownFileExtension(None)),
     }
 }
 
@@ -445,12 +465,10 @@ fn import_impl(path: &Path) -> Result<model::Vtk, Error> {
 #[cfg(feature = "async_blocked")]
 pub async fn import_async(file_path: impl AsRef<Path>) -> Result<model::Vtk, Error> {
     let path = file_path.as_ref();
-    let ext = path
-        .extension()
-        .and_then(|s| s.to_str())
-        .ok_or(Error::UnknownFileExtension(None))?;
+    let ext = path.extension().and_then(|s| s.to_str()).ok_or()?;
     match ext {
         "vtk" => import_vtk_async(path, parser::parse_be).await,
+        #[cfg(feature = "xml")]
         ext => {
             let ft = xml::FileType::try_from_ext(ext)
                 .ok_or(Error::UnknownFileExtension(Some(ext.to_string())))?;
@@ -462,6 +480,8 @@ pub async fn import_async(file_path: impl AsRef<Path>) -> Result<model::Vtk, Err
                 Ok(vtk_file.try_into()?)
             }
         }
+        #[cfg(not(feature = "xml"))]
+        _ => Err(Error::UnknownFileExtension(None)),
     }
 }
 
@@ -533,6 +553,7 @@ pub fn import_be(file_path: impl AsRef<Path>) -> Result<model::Vtk, Error> {
 ///     version: Version::new((4,1)),
 ///     byte_order: ByteOrder::BigEndian,
 ///     title: String::from("Tetrahedron"),
+///     file_path: Some(PathBuf::from("./test.vtk")),
 ///     data: DataSet::inline(UnstructuredGridPiece {
 ///         points: vec![0.0f32, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, -1.0, 0.0, 1.0, 0.0].into(),
 ///         cells: Cells {
@@ -566,6 +587,7 @@ fn export_impl(data: model::Vtk, path: &Path) -> Result<(), Error> {
             BinaryWriter(BufWriter::new(file)).write_vtk(data)?;
             Ok(())
         }
+        #[cfg(feature = "xml")]
         ext => {
             let ft = xml::FileType::try_from_ext(ext)
                 .ok_or(Error::UnknownFileExtension(Some(ext.to_string())))?;
@@ -578,6 +600,8 @@ fn export_impl(data: model::Vtk, path: &Path) -> Result<(), Error> {
                 Ok(())
             }
         }
+        #[cfg(not(feature = "xml"))]
+        _ => Err(Error::UnknownFileExtension(None)),
     }
 }
 
@@ -597,6 +621,7 @@ fn export_impl(data: model::Vtk, path: &Path) -> Result<(), Error> {
 ///     version: Version::new((2,0)),
 ///     byte_order: ByteOrder::BigEndian, // This is default
 ///     title: String::from("Triangle example"),
+///     file_path: None,
 ///     data: DataSet::inline(PolyDataPiece {
 ///         points: vec![0.0f32, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, -1.0].into(),
 ///         polys: Some(VertexNumbers::Legacy {
@@ -630,6 +655,7 @@ pub fn write_legacy(vtk: model::Vtk, writer: impl std::io::Write) -> Result<(), 
 ///     version: Version::new((2,0)),
 ///     byte_order: ByteOrder::BigEndian, // This is default
 ///     title: String::from("Triangle example"),
+///     file_path: None,
 ///     data: DataSet::inline(PolyDataPiece {
 ///         points: vec![0.0f32, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, -1.0].into(),
 ///         polys: Some(VertexNumbers::Legacy {
@@ -680,6 +706,7 @@ pub fn write_legacy_ascii(vtk: model::Vtk, writer: impl std::fmt::Write) -> Resu
 ///     version: Version::new((2,0)),
 ///     byte_order: ByteOrder::BigEndian, // This is default
 ///     title: String::from("Triangle example"),
+///     file_path: None,
 ///     data: DataSet::inline(PolyDataPiece {
 ///         points: vec![0.0f32, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, -1.0].into(),
 ///         polys: Some(VertexNumbers::Legacy {
@@ -714,6 +741,7 @@ pub fn write_legacy_ascii(vtk: model::Vtk, writer: impl std::fmt::Write) -> Resu
 ///   </PolyData>\
 /// </VTKFile>");
 /// ```
+#[cfg(feature = "xml")]
 pub fn write_xml(vtk: model::Vtk, writer: impl Write) -> Result<(), Error> {
     let vtk_file = xml::VTKFile::try_from(vtk)?;
     xml::write(&vtk_file, writer)?;
@@ -756,6 +784,7 @@ pub fn export_be(data: model::Vtk, file_path: impl AsRef<Path>) -> Result<(), Er
 ///     version: Version::new((4,1)),
 ///     title: String::from("Tetrahedron"),
 ///     byte_order: ByteOrder::BigEndian,
+///     file_path: Some(PathBuf::from("./test.vtk")),
 ///     data: DataSet::inline(UnstructuredGridPiece {
 ///         points: vec![0.0f32, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, -1.0, 0.0, 1.0, 0.0].into(),
 ///         cells: Cells {

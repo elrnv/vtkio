@@ -1,3 +1,4 @@
+#![cfg(feature = "xml")]
 use std::io::BufReader;
 use vtkio::{import, model::*, parse_xml, Error};
 
@@ -8,6 +9,7 @@ fn make_box_vtu() -> Vtk {
         version: Version { major: 4, minor: 2 },
         title: String::new(),
         byte_order: ByteOrder::BigEndian,
+        file_path: None,
         data: DataSet::inline(UnstructuredGridPiece {
             points: IOBuffer::F64(vec![
                 0.5208333134651184,
@@ -91,7 +93,8 @@ fn box_parse_xml() -> Result {
 
 #[test]
 fn box_import() -> Result {
-    let vtk = import("./assets/box.vtu")?;
+    let mut vtk = import("./assets/box.vtu")?;
+    vtk.file_path = None; // erase file path before comparison.
     assert_eq!(vtk, make_box_vtu());
     Ok(())
 }
@@ -101,6 +104,7 @@ fn make_box_para_vtu() -> Vtk {
         version: Version { major: 1, minor: 0 },
         title: String::new(),
         byte_order: ByteOrder::LittleEndian,
+        file_path: None,
         data: DataSet::inline(UnstructuredGridPiece {
             points: IOBuffer::F64(vec![
                 0.5208333134651184,
@@ -179,6 +183,7 @@ fn make_hexahedron_vtu() -> Vtk {
         version: Version { major: 1, minor: 0 },
         title: String::new(),
         byte_order: ByteOrder::LittleEndian,
+        file_path: None,
         data: DataSet::inline(UnstructuredGridPiece {
             #[rustfmt::skip]
             points: IOBuffer::F32(vec![
@@ -208,7 +213,63 @@ fn make_hexahedron_vtu() -> Vtk {
 
 #[test]
 fn hexahedron_appended() -> Result {
-    let vtu = import("./assets/hexahedron.vtu")?;
+    let mut vtu = import("./assets/hexahedron.vtu")?;
+    vtu.file_path = None;
+    assert_eq!(vtu, make_hexahedron_vtu());
+    Ok(())
+}
+
+#[test]
+fn hexahedron_pvtu() -> Result {
+    let mut vtu = import("./assets/hexahedron_parallel.pvtu")?;
+    vtu.load_all_pieces().unwrap();
+    vtu.file_path = None;
+    assert_eq!(vtu, make_hexahedron_vtu());
+    Ok(())
+}
+
+#[test]
+fn hexahedron_lzma_pvtu() -> Result {
+    let mut vtu = import("./assets/hexahedron_parallel_lzma.pvtu")?;
+    vtu.load_all_pieces().unwrap();
+    vtu.file_path = None;
+    assert_eq!(vtu, make_hexahedron_vtu());
+    Ok(())
+}
+
+#[test]
+fn hexahedron_zlib() -> Result {
+    let mut vtu = import("./assets/hexahedron_zlib.vtu")?;
+    vtu.load_all_pieces().unwrap();
+    vtu.file_path = None;
+    assert_eq!(vtu, make_hexahedron_vtu());
+    Ok(())
+}
+
+// TODO: Will not work until https://github.com/tafia/quick-xml/pull/253 is merged.
+//#[test]
+//fn hexahedron_zlib_binary() -> Result {
+//    let mut vtu = import("./assets/hexahedron_zlib_binary.vtu")?;
+//    vtu.load_all_pieces().unwrap();
+//    vtu.file_path = None;
+//    assert_eq!(vtu, make_hexahedron_vtu());
+//    Ok(())
+//}
+
+#[test]
+fn hexahedron_lz4() -> Result {
+    let mut vtu = import("./assets/hexahedron_lz4.vtu")?;
+    vtu.load_all_pieces().unwrap();
+    vtu.file_path = None;
+    assert_eq!(vtu, make_hexahedron_vtu());
+    Ok(())
+}
+
+#[test]
+fn hexahedron_binary() -> Result {
+    let mut vtu = import("./assets/hexahedron_binary.vtu")?;
+    vtu.load_all_pieces().unwrap();
+    vtu.file_path = None;
     assert_eq!(vtu, make_hexahedron_vtu());
     Ok(())
 }

@@ -13,6 +13,7 @@ use std::any::TypeId;
 use std::convert::TryFrom;
 use std::fmt;
 use std::ops::RangeInclusive;
+use std::path::{Path, PathBuf};
 
 use bytemuck::{cast_slice, cast_vec};
 use num_derive::FromPrimitive;
@@ -74,6 +75,95 @@ pub struct Vtk {
     pub title: String,
     pub byte_order: ByteOrder,
     pub data: DataSet,
+    /// The path to the source file of this Vtk file (if any).
+    ///
+    /// This is used to load pieces stored in other files used in "Parallel" XML file types.
+    pub file_path: Option<PathBuf>,
+}
+
+impl Vtk {
+    /// Loads all referenced pieces into the current struct.
+    ///
+    /// This function is useful for "Parallel" XML files like `.pvtu`, `.pvtp`, etc.
+    /// For all other files this is a no-op.
+    pub fn load_all_pieces(&mut self) -> Result<(), Error> {
+        let Vtk {
+            data, file_path, ..
+        } = self;
+
+        fn flatten_pieces<P, F>(pieces: &mut Vec<Piece<P>>, mut pick_data_set_pieces: F)
+        where
+            F: FnMut(DataSet) -> Option<Vec<Piece<P>>>,
+        {
+            let owned_pieces = std::mem::take(pieces);
+            *pieces = owned_pieces
+                .into_iter()
+                .flat_map(|piece| {
+                    let (loaded, rest) = match piece {
+                        Piece::Loaded(data_set) => (pick_data_set_pieces(*data_set), None),
+                        p => (None, Some(p)),
+                    };
+                    loaded.into_iter().flatten().chain(rest.into_iter())
+                })
+                .collect();
+        }
+        let file_path = file_path.as_ref().map(|p| p.as_ref());
+        match data {
+            DataSet::ImageData { pieces, meta, .. } => {
+                for p in pieces.iter_mut() {
+                    p.load_piece_in_place_recursive(file_path)?;
+                }
+                // flatten the loaded pieces stored in each piece into a single Vec.
+                flatten_pieces(pieces, |data_set| match data_set {
+                    DataSet::ImageData { pieces, .. } => Some(pieces),
+                    _ => None,
+                });
+                *meta = None;
+            }
+            DataSet::StructuredGrid { pieces, meta, .. } => {
+                for p in pieces.iter_mut() {
+                    p.load_piece_in_place_recursive(file_path)?;
+                }
+                flatten_pieces(pieces, |data_set| match data_set {
+                    DataSet::StructuredGrid { pieces, .. } => Some(pieces),
+                    _ => None,
+                });
+                *meta = None;
+            }
+            DataSet::RectilinearGrid { pieces, meta, .. } => {
+                for p in pieces.iter_mut() {
+                    p.load_piece_in_place_recursive(file_path)?;
+                }
+                flatten_pieces(pieces, |data_set| match data_set {
+                    DataSet::RectilinearGrid { pieces, .. } => Some(pieces),
+                    _ => None,
+                });
+                *meta = None;
+            }
+            DataSet::UnstructuredGrid { pieces, meta, .. } => {
+                for p in pieces.iter_mut() {
+                    p.load_piece_in_place_recursive(file_path)?;
+                }
+                flatten_pieces(pieces, |data_set| match data_set {
+                    DataSet::UnstructuredGrid { pieces, .. } => Some(pieces),
+                    _ => None,
+                });
+                *meta = None;
+            }
+            DataSet::PolyData { pieces, meta, .. } => {
+                for p in pieces.iter_mut() {
+                    p.load_piece_in_place_recursive(file_path)?;
+                }
+                flatten_pieces(pieces, |data_set| match data_set {
+                    DataSet::PolyData { pieces, .. } => Some(pieces),
+                    _ => None,
+                });
+                *meta = None;
+            }
+            _ => {} // No-op
+        }
+        Ok(())
+    }
 }
 
 /// Version number (e.g. `4.1 => Version { major: 4, minor: 1 }`)
@@ -282,6 +372,11 @@ impl IOBuffer {
         match_buf!(self, v => v.len())
     }
 
+    /// Returns the number of bytes held by this buffer.
+    pub fn num_bytes(&self) -> usize {
+        self.len() * self.scalar_size()
+    }
+
     /// Checks if the buffer is empty.
     pub fn is_empty(&self) -> bool {
         self.len() == 0
@@ -292,13 +387,20 @@ impl IOBuffer {
     /// The size of the scalar type in bytes is stored as a 64-bit integer at the very beginning.
     ///
     /// This is how VTK data arrays store data in the XML files.
-    pub fn into_bytes_with_size(self, bo: ByteOrder) -> Vec<u8> {
+    #[cfg(feature = "xml")]
+    pub fn into_bytes_with_size(
+        self,
+        bo: ByteOrder,
+        compressor: crate::xml::Compressor,
+        compression_level: u32,
+    ) -> Vec<u8> {
         use byteorder::WriteBytesExt;
         use byteorder::{BE, LE};
-        let size = self.len() as u64 * self.scalar_size() as u64;
-        self.into_bytes_with_size_impl(bo, |out| match bo {
-            ByteOrder::BigEndian => out.write_u64::<BE>(size).unwrap(),
-            ByteOrder::LittleEndian => out.write_u64::<LE>(size).unwrap(),
+        self.into_bytes_with_size_impl(bo, compressor, compression_level, 8, |mut out, size| {
+            match bo {
+                ByteOrder::BigEndian => out.write_u64::<BE>(size as u64).unwrap(),
+                ByteOrder::LittleEndian => out.write_u64::<LE>(size as u64).unwrap(),
+            }
         })
     }
 
@@ -307,122 +409,175 @@ impl IOBuffer {
     /// The size of the scalar type in bytes is stored as a 32-bit integer at the very beginning.
     ///
     /// This is how VTK data arrays store data in the XML files.
-    pub fn into_bytes_with_size32(self, bo: ByteOrder) -> Vec<u8> {
-        use byteorder::WriteBytesExt;
-        use byteorder::{BE, LE};
-        let size = self.len() as u32 * self.scalar_size() as u32;
-        self.into_bytes_with_size_impl(bo, |out| match bo {
-            ByteOrder::BigEndian => out.write_u32::<BE>(size).unwrap(),
-            ByteOrder::LittleEndian => out.write_u32::<LE>(size).unwrap(),
-        })
-    }
-
-    fn into_bytes_with_size_impl(
+    #[cfg(feature = "xml")]
+    pub fn into_bytes_with_size32(
         self,
         bo: ByteOrder,
-        write_size: impl Fn(&mut Vec<u8>),
+        compressor: crate::xml::Compressor,
+        compression_level: u32,
     ) -> Vec<u8> {
         use byteorder::WriteBytesExt;
         use byteorder::{BE, LE};
-        let mut out: Vec<u8> = Vec::new();
+        self.into_bytes_with_size_impl(bo, compressor, compression_level, 4, |mut out, size| {
+            match bo {
+                ByteOrder::BigEndian => out.write_u32::<BE>(size as u32).unwrap(),
+                ByteOrder::LittleEndian => out.write_u32::<LE>(size as u32).unwrap(),
+            }
+        })
+    }
 
-        // Write out the size prefix
-        write_size(&mut out);
+    #[cfg(feature = "xml")]
+    fn into_bytes_with_size_impl(
+        self,
+        bo: ByteOrder,
+        compressor: crate::xml::Compressor,
+        compression_level: u32,
+        prefix_size: usize,
+        write_size: impl Fn(&mut [u8], usize),
+    ) -> Vec<u8> {
+        use crate::xml::Compressor;
 
-        match self {
-            IOBuffer::Bit(mut v) => out.append(&mut v),
-            IOBuffer::U8(mut v) => out.append(&mut v),
-            IOBuffer::I8(v) => out.append(&mut cast_vec(v)),
-            IOBuffer::U16(v) => {
-                out.reserve(v.len() * std::mem::size_of::<u16>());
-                match bo {
-                    ByteOrder::BigEndian => {
-                        v.into_iter().for_each(|x| out.write_u16::<BE>(x).unwrap())
-                    }
-                    ByteOrder::LittleEndian => {
-                        v.into_iter().for_each(|x| out.write_u16::<LE>(x).unwrap())
-                    }
+        // Allocate enough bytes for the prefix.
+        // We will know what exactly to put there after compression.
+        let mut out = vec![0u8; prefix_size];
+
+        let num_uncompressed_bytes = self.num_bytes();
+
+        // Reserve the number of bytes of the uncompressed data.
+        out.reserve(num_uncompressed_bytes);
+
+        // Handle fast pass cases where we can just do a memcpy.
+        if compressor == Compressor::None || compression_level == 0 {
+            match self {
+                IOBuffer::Bit(mut v) | IOBuffer::U8(mut v) => {
+                    out.append(&mut v);
+                    write_size(out.as_mut_slice(), num_uncompressed_bytes);
+                    return out;
                 }
-            }
-            IOBuffer::I16(v) => {
-                out.reserve(v.len() * std::mem::size_of::<i16>());
-                match bo {
-                    ByteOrder::BigEndian => {
-                        v.into_iter().for_each(|x| out.write_i16::<BE>(x).unwrap())
-                    }
-                    ByteOrder::LittleEndian => {
-                        v.into_iter().for_each(|x| out.write_i16::<LE>(x).unwrap())
-                    }
+                IOBuffer::I8(v) => {
+                    out.append(&mut cast_vec(v));
+                    write_size(out.as_mut_slice(), num_uncompressed_bytes);
+                    return out;
                 }
-            }
-            IOBuffer::U32(v) => {
-                out.reserve(v.len() * std::mem::size_of::<u32>());
-                match bo {
-                    ByteOrder::BigEndian => {
-                        v.into_iter().for_each(|x| out.write_u32::<BE>(x).unwrap())
-                    }
-                    ByteOrder::LittleEndian => {
-                        v.into_iter().for_each(|x| out.write_u32::<LE>(x).unwrap())
-                    }
-                }
-            }
-            IOBuffer::I32(v) => {
-                out.reserve(v.len() * std::mem::size_of::<i32>());
-                match bo {
-                    ByteOrder::BigEndian => {
-                        v.into_iter().for_each(|x| out.write_i32::<BE>(x).unwrap())
-                    }
-                    ByteOrder::LittleEndian => {
-                        v.into_iter().for_each(|x| out.write_i32::<LE>(x).unwrap())
-                    }
-                }
-            }
-            IOBuffer::U64(v) => {
-                out.reserve(v.len() * std::mem::size_of::<u64>());
-                match bo {
-                    ByteOrder::BigEndian => {
-                        v.into_iter().for_each(|x| out.write_u64::<BE>(x).unwrap())
-                    }
-                    ByteOrder::LittleEndian => {
-                        v.into_iter().for_each(|x| out.write_u64::<LE>(x).unwrap())
-                    }
-                }
-            }
-            IOBuffer::I64(v) => {
-                out.reserve(v.len() * std::mem::size_of::<i64>());
-                match bo {
-                    ByteOrder::BigEndian => {
-                        v.into_iter().for_each(|x| out.write_i64::<BE>(x).unwrap())
-                    }
-                    ByteOrder::LittleEndian => {
-                        v.into_iter().for_each(|x| out.write_i64::<LE>(x).unwrap())
-                    }
-                }
-            }
-            IOBuffer::F32(v) => {
-                out.reserve(v.len() * std::mem::size_of::<f32>());
-                match bo {
-                    ByteOrder::BigEndian => {
-                        v.into_iter().for_each(|x| out.write_f32::<BE>(x).unwrap())
-                    }
-                    ByteOrder::LittleEndian => {
-                        v.into_iter().for_each(|x| out.write_f32::<LE>(x).unwrap())
-                    }
-                }
-            }
-            IOBuffer::F64(v) => {
-                out.reserve(v.len() * std::mem::size_of::<f64>());
-                match bo {
-                    ByteOrder::BigEndian => {
-                        v.into_iter().for_each(|x| out.write_f64::<BE>(x).unwrap())
-                    }
-                    ByteOrder::LittleEndian => {
-                        v.into_iter().for_each(|x| out.write_f64::<LE>(x).unwrap())
-                    }
-                }
+                // Can't just copy the bytes, so we will do a conversion.
+                _ => {}
             }
         }
+
+        match compressor {
+            Compressor::ZLib =>
+            #[cfg(feature = "flate2")]
+            {
+                use flate2::{write::ZlibEncoder, Compression};
+                let mut e = ZlibEncoder::new(out, Compression::new(compression_level));
+                self.write_bytes(&mut e, bo);
+                let mut out = e.finish().unwrap();
+                let num_compressed_bytes = out.len() - prefix_size;
+                write_size(out.as_mut_slice(), num_compressed_bytes);
+                return out;
+            }
+            Compressor::LZMA =>
+            #[cfg(feature = "xz2")]
+            {
+                let mut e = xz2::write::XzEncoder::new(out, compression_level);
+                self.write_bytes(&mut e, bo);
+                let mut out = e.finish().unwrap();
+                let num_compressed_bytes = out.len() - prefix_size;
+                write_size(out.as_mut_slice(), num_compressed_bytes);
+                return out;
+            }
+            Compressor::LZ4 => {
+                #[cfg(feature = "lz4")]
+                {
+                    //let mut e = lz4::EncoderBuilder::new()
+                    //    .level(compression_level)
+                    //    .checksum(lz4::ContentChecksum::NoChecksum)
+                    //    .build(out)
+                    //    .unwrap();
+                    //self.write_bytes(&mut e, bo);
+                    //let mut out = e.finish().0;
+
+                    // Initially write raw bytes to out.
+                    self.write_bytes(&mut out, bo);
+
+                    // Then compress them.
+                    // This should be done using a writer, but lz4_flex does not implement this at
+                    // this time, and it seems like the lz4 crate doesn't support lz4's block format.
+                    let mut out = lz4::compress(&out);
+
+                    let num_compressed_bytes = out.len() - prefix_size;
+                    write_size(out.as_mut_slice(), num_compressed_bytes);
+                    return out;
+                }
+            }
+            Compressor::None => {}
+        }
+
+        self.write_bytes(&mut out, bo);
+        write_size(out.as_mut_slice(), num_uncompressed_bytes);
+
+        // Remove excess bytes.
+        out.shrink_to_fit();
+
         out
+    }
+
+    #[cfg(feature = "xml")]
+    fn write_bytes<W: byteorder::WriteBytesExt>(self, out: &mut W, bo: ByteOrder) {
+        use byteorder::{BE, LE};
+        match self {
+            IOBuffer::Bit(v) => v.into_iter().for_each(|x| out.write_u8(x).unwrap()),
+            IOBuffer::U8(v) => v.into_iter().for_each(|x| out.write_u8(x).unwrap()),
+            IOBuffer::I8(v) => v.into_iter().for_each(|x| out.write_i8(x).unwrap()),
+            IOBuffer::U16(v) => match bo {
+                ByteOrder::BigEndian => v.into_iter().for_each(|x| out.write_u16::<BE>(x).unwrap()),
+                ByteOrder::LittleEndian => {
+                    v.into_iter().for_each(|x| out.write_u16::<LE>(x).unwrap())
+                }
+            },
+            IOBuffer::I16(v) => match bo {
+                ByteOrder::BigEndian => v.into_iter().for_each(|x| out.write_i16::<BE>(x).unwrap()),
+                ByteOrder::LittleEndian => {
+                    v.into_iter().for_each(|x| out.write_i16::<LE>(x).unwrap())
+                }
+            },
+            IOBuffer::U32(v) => match bo {
+                ByteOrder::BigEndian => v.into_iter().for_each(|x| out.write_u32::<BE>(x).unwrap()),
+                ByteOrder::LittleEndian => {
+                    v.into_iter().for_each(|x| out.write_u32::<LE>(x).unwrap())
+                }
+            },
+            IOBuffer::I32(v) => match bo {
+                ByteOrder::BigEndian => v.into_iter().for_each(|x| out.write_i32::<BE>(x).unwrap()),
+                ByteOrder::LittleEndian => {
+                    v.into_iter().for_each(|x| out.write_i32::<LE>(x).unwrap())
+                }
+            },
+            IOBuffer::U64(v) => match bo {
+                ByteOrder::BigEndian => v.into_iter().for_each(|x| out.write_u64::<BE>(x).unwrap()),
+                ByteOrder::LittleEndian => {
+                    v.into_iter().for_each(|x| out.write_u64::<LE>(x).unwrap())
+                }
+            },
+            IOBuffer::I64(v) => match bo {
+                ByteOrder::BigEndian => v.into_iter().for_each(|x| out.write_i64::<BE>(x).unwrap()),
+                ByteOrder::LittleEndian => {
+                    v.into_iter().for_each(|x| out.write_i64::<LE>(x).unwrap())
+                }
+            },
+            IOBuffer::F32(v) => match bo {
+                ByteOrder::BigEndian => v.into_iter().for_each(|x| out.write_f32::<BE>(x).unwrap()),
+                ByteOrder::LittleEndian => {
+                    v.into_iter().for_each(|x| out.write_f32::<LE>(x).unwrap())
+                }
+            },
+            IOBuffer::F64(v) => match bo {
+                ByteOrder::BigEndian => v.into_iter().for_each(|x| out.write_f64::<BE>(x).unwrap()),
+                ByteOrder::LittleEndian => {
+                    v.into_iter().for_each(|x| out.write_f64::<LE>(x).unwrap())
+                }
+            },
+        }
     }
 
     /// Constructs an `IOBuffer` from a slice of bytes and a corresponding scalar type.
@@ -1532,40 +1687,79 @@ pub enum Piece<P> {
 }
 
 pub trait PieceData: Sized {
-    fn from_data_set(data_set: DataSet) -> Result<Self, Error>;
+    fn from_data_set(data_set: DataSet, source_path: Option<&Path>) -> Result<Self, Error>;
+}
+
+/// Build an absolute path to the referenced piece.
+fn build_piece_path(path: impl AsRef<Path>, source_path: Option<&Path>) -> PathBuf {
+    let path = path.as_ref();
+    if !path.has_root() {
+        if let Some(root) = source_path.and_then(|p| p.parent()) {
+            root.join(path)
+        } else {
+            PathBuf::from(path)
+        }
+    } else {
+        PathBuf::from(path)
+    }
 }
 
 impl<P: PieceData> Piece<P> {
-    /// Converts `self` to loaded piece data.
+    /// Converts `self` into a loaded piece if the current piece is only a `Source`.
+    ///
+    /// This function recursively loads any referenced pieces down the hierarchy.
+    ///
+    /// If this pieces is `Loaded` or `Inline`, this function does nothing.
+    ///
+    /// The given `source_path` is the path to the file containing this piece (if any).
+    pub fn load_piece_in_place_recursive(
+        &mut self,
+        source_path: Option<&Path>,
+    ) -> Result<(), Error> {
+        match self {
+            Piece::Source(path, _) => {
+                let piece_path = build_piece_path(path, source_path);
+                let mut piece_vtk = crate::import(&piece_path)?;
+                piece_vtk.load_all_pieces()?;
+                let piece = Box::new(piece_vtk.data);
+                *self = Piece::Loaded(piece);
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+
+    /// Consumes `self` and returns loaded piece data.
     ///
     /// If the piece is not yet loaded, this function will load it and return the reference to the
     /// resulting data.
-    pub fn load_piece_data(mut self) -> Result<P, Error> {
+    pub fn into_loaded_piece_data(self, source_path: Option<&Path>) -> Result<P, Error> {
         match self {
             Piece::Source(path, _) => {
-                let piece_vtk = crate::import(&path)?;
-                let piece = Box::new(piece_vtk.data);
-                self = Piece::Loaded(piece);
-                self.load_piece_data()
+                let piece_path = build_piece_path(path, source_path);
+                let piece_vtk = crate::import(&piece_path)?;
+                P::from_data_set(piece_vtk.data, Some(piece_path.as_ref()))
             }
-            Piece::Loaded(data_set) => P::from_data_set(*data_set),
+            Piece::Loaded(data_set) => P::from_data_set(*data_set, source_path),
             Piece::Inline(piece_data) => Ok(*piece_data),
         }
     }
 
-    /// Converts `self` to loaded piece data.
+    /// Consumes `self` and returns loaded piece data.
     ///
-    /// This is the async version of `load_piece_data` function.
+    /// This is the async version of `into_loaded_piece_data` function.
     #[cfg(feature = "async_blocked")]
-    pub async fn load_piece_data_async(mut self) -> Result<P, Error> {
+    pub async fn into_loaded_piece_data_async(
+        mut self,
+        source_path: Option<&Path>,
+    ) -> Result<P, Error> {
         match self {
             Piece::Source(path, _) => {
-                let piece_vtk = crate::import_async(&path).await?;
-                let piece = Box::new(piece_vtk.data);
-                self = Piece::Loaded(piece);
-                self.load_piece_data() // Not async since the piece is now loaded.
+                let piece_path = build_piece_path(path, source_path);
+                let piece_vtk = crate::import_async(&piece_path).await?;
+                P::from_data_set(piece_vtk.data, Some(piece_path.as_ref()))
             }
-            Piece::Loaded(data_set) => P::from_data_set(*data_set),
+            Piece::Loaded(data_set) => P::from_data_set(*data_set, source_path),
             Piece::Inline(piece_data) => Ok(*piece_data),
         }
     }
@@ -1704,17 +1898,17 @@ macro_rules! impl_piece_data {
         impl TryFrom<DataSet> for $piece {
             type Error = Error;
             fn try_from(data_set: DataSet) -> Result<Self, Error> {
-                Self::from_data_set(data_set)
+                Self::from_data_set(data_set, None)
             }
         }
         impl PieceData for $piece {
-            fn from_data_set(data_set: DataSet) -> Result<Self, Error> {
+            fn from_data_set(data_set: DataSet, source_path: Option<&Path>) -> Result<Self, Error> {
                 match data_set {
                     DataSet::$data_set { pieces, .. } => pieces
                         .into_iter()
                         .next()
                         .ok_or(Error::MissingPieceData)?
-                        .load_piece_data(),
+                        .into_loaded_piece_data(source_path),
                     _ => Err(Error::PieceDataMismatch),
                 }
             }
