@@ -13,6 +13,7 @@ specifically between parse and write functions).
 
 - `parse_vtk_{be|le}` is renamed to `parse_legacy_{be|le}`.
 - `parse_vtk_buf_{be|le}` is renamed to `parse_legacy_buf_{be|le}`.
+- `import_{be|le}` is renamed to `import_legacy_{be|le}`.
 
 Support for compression and decompression (feature gated by the "compression" feature which is
 enabled by default) are also added.
