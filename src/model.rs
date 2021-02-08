@@ -201,6 +201,21 @@ pub enum ByteOrder {
     LittleEndian,
 }
 
+impl ByteOrder {
+    /// A constructor for creating a byte order from a given [`byteorder::ByteOrder`] type.
+    pub fn new<BO: byteorder::ByteOrder + 'static>() -> ByteOrder {
+        if TypeId::of::<BO>() == TypeId::of::<byteorder::BigEndian>() {
+            ByteOrder::BigEndian
+        } else {
+            ByteOrder::LittleEndian
+        }
+    }
+    /// Construct a byte order with native endianness.
+    pub fn native() -> ByteOrder {
+        Self::new::<byteorder::NativeEndian>()
+    }
+}
+
 /// Numeric data buffer.
 ///
 /// This represents any loaded data such as attributes, cell indices or point coordinates.
@@ -1741,8 +1756,7 @@ impl<P: PieceData> Piece<P> {
 
     /// Consumes `self` and returns loaded piece data.
     ///
-    /// If the piece is not yet loaded, this function will load it and return the reference to the
-    /// resulting data.
+    /// If the piece is not yet loaded, this function will load it and return the resulting data.
     pub fn into_loaded_piece_data(self, source_path: Option<&Path>) -> Result<P, Error> {
         match self {
             Piece::Source(path, _) => {

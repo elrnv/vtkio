@@ -95,7 +95,7 @@ enum PolyDataTopology {
     Strips,
 }
 
-impl<BO: ByteOrder> VtkParser<BO> {
+impl<BO: ByteOrder + 'static> VtkParser<BO> {
     #[allow(unused_variables)]
     fn points(input: &[u8], ft: FileType) -> IResult<&[u8], IOBuffer> {
         do_parse!(
@@ -774,7 +774,7 @@ impl<BO: ByteOrder> VtkParser<BO> {
                     >> (Vtk {
                         version: h.0,
                         // This is ignored in Legacy formats
-                        byte_order: ByteOrderTag::BigEndian,
+                        byte_order: ByteOrderTag::new::<BO>(),
                         title: h.1,
                         data: d,
                         file_path: None,

@@ -180,7 +180,8 @@ impl Vtk {
 
     /// Parse a legacy VTK file from the given reader.
     ///
-    /// If the file is in binary format, numeric types will be interpreted in big endian format.
+    /// If the file is in binary format, numeric types will be interpreted in big endian format,
+    /// which is the most common among VTK files.
     /// Note that this function and [`parse_legacy_le`](Vtk::parse_legacy_le) also work equally well for
     /// parsing VTK files in ASCII format.
     ///
@@ -208,7 +209,7 @@ impl Vtk {
     ///
     /// assert_eq!(vtk, Vtk {
     ///     version: Version::new((2,0)),
-    ///     byte_order: ByteOrder::BigEndian, // This is default
+    ///     byte_order: ByteOrder::BigEndian,
     ///     title: String::from("Triangle example"),
     ///     file_path: None,
     ///     data: DataSet::inline(PolyDataPiece {
@@ -256,7 +257,7 @@ impl Vtk {
     ///
     /// assert_eq!(vtk, Vtk {
     ///     version: Version::new((2,0)),
-    ///     byte_order: ByteOrder::BigEndian, // This is default
+    ///     byte_order: ByteOrder::LittleEndian,
     ///     title: String::from("Triangle example"),
     ///     file_path: None,
     ///     data: DataSet::inline(PolyDataPiece {
@@ -516,13 +517,18 @@ impl Vtk {
 
     /// Import a legacy VTK file at the specified path.
     ///
-    /// if the file is in binary format, numeric types will be interpreted in little endian format.
-    /// for the default byte order used by most `.vtk` files use [`import`] or [`import_be`].
+    /// If the file is in binary format, numeric types will be interpreted in little endian format.
+    /// For the default byte order used by most `.vtk` files use [`import`] or [`import_legacy_be`].
     ///
     /// [`import`]: fn.import.html
-    /// [`import_be`]: fn.import_be.html
-    pub fn import_le(file_path: impl AsRef<Path>) -> Result<Vtk, Error> {
+    /// [`import_legacy_be`]: fn.import_legacy_be.html
+    pub fn import_legacy_le(file_path: impl AsRef<Path>) -> Result<Vtk, Error> {
         Vtk::import_vtk(file_path.as_ref(), parser::parse_le)
+    }
+
+    #[deprecated(since = "0.6.2", note = "Please use Vtk::import_legacy_le instead")]
+    pub fn import_le(file_path: impl AsRef<Path>) -> Result<Vtk, Error> {
+        Vtk::import_legacy_le(file_path.as_ref())
     }
 
     /// Import a legacy VTK file at the specified path.
@@ -532,8 +538,13 @@ impl Vtk {
     /// legacy `.vtk` format.
     ///
     /// [`import`]: fn.import.html
-    pub fn import_be(file_path: impl AsRef<Path>) -> Result<Vtk, Error> {
+    pub fn import_legacy_be(file_path: impl AsRef<Path>) -> Result<Vtk, Error> {
         Vtk::import_vtk(file_path.as_ref(), parser::parse_be)
+    }
+
+    #[deprecated(since = "0.6.2", note = "Please use Vtk::import_legacy_be instead")]
+    pub fn import_be(file_path: impl AsRef<Path>) -> Result<Vtk, Error> {
+        Vtk::import_legacy_be(file_path.as_ref())
     }
 
     /// Export given [`Vtk`] file to the specified file.
@@ -620,7 +631,7 @@ impl Vtk {
     ///
     /// Vtk {
     ///     version: Version::new((2,0)),
-    ///     byte_order: ByteOrder::BigEndian, // This is default
+    ///     byte_order: ByteOrder::BigEndian,
     ///     title: String::from("Triangle example"),
     ///     file_path: None,
     ///     data: DataSet::inline(PolyDataPiece {
@@ -654,7 +665,7 @@ impl Vtk {
     ///
     /// Vtk {
     ///     version: Version::new((2,0)),
-    ///     byte_order: ByteOrder::BigEndian, // This is default
+    ///     byte_order: ByteOrder::BigEndian, // Ignored
     ///     title: String::from("Triangle example"),
     ///     file_path: None,
     ///     data: DataSet::inline(PolyDataPiece {
@@ -705,7 +716,7 @@ impl Vtk {
     ///
     /// Vtk {
     ///     version: Version::new((2,0)),
-    ///     byte_order: ByteOrder::BigEndian, // This is default
+    ///     byte_order: ByteOrder::BigEndian,
     ///     title: String::from("Triangle example"),
     ///     file_path: None,
     ///     data: DataSet::inline(PolyDataPiece {
