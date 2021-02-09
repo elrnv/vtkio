@@ -214,7 +214,7 @@ fn make_hexahedron_vtu() -> Vtk {
 #[test]
 fn hexahedron_appended() -> Result {
     let mut vtu = Vtk::import("./assets/hexahedron.vtu")?;
-    vtu.file_path = None;
+    vtu.file_path = None; // Reset file path to satisfy comparison
     assert_eq!(vtu, make_hexahedron_vtu());
     Ok(())
 }
@@ -223,7 +223,7 @@ fn hexahedron_appended() -> Result {
 fn hexahedron_pvtu() -> Result {
     let mut vtu = Vtk::import("./assets/hexahedron_parallel.pvtu")?;
     vtu.load_all_pieces().unwrap();
-    vtu.file_path = None;
+    vtu.file_path = None; // Reset file path to satisfy comparison
     assert_eq!(vtu, make_hexahedron_vtu());
     Ok(())
 }
@@ -233,7 +233,7 @@ fn hexahedron_pvtu() -> Result {
 fn hexahedron_lzma_pvtu() -> Result {
     let mut vtu = Vtk::import("./assets/hexahedron_parallel_lzma.pvtu")?;
     vtu.load_all_pieces().unwrap();
-    vtu.file_path = None;
+    vtu.file_path = None; // Reset file path to satisfy comparison
     assert_eq!(vtu, make_hexahedron_vtu());
     Ok(())
 }
@@ -242,8 +242,7 @@ fn hexahedron_lzma_pvtu() -> Result {
 #[test]
 fn hexahedron_zlib() -> Result {
     let mut vtu = Vtk::import("./assets/hexahedron_zlib.vtu")?;
-    vtu.load_all_pieces().unwrap();
-    vtu.file_path = None;
+    vtu.file_path = None; // Reset file path to satisfy comparison
     assert_eq!(vtu, make_hexahedron_vtu());
     Ok(())
 }
@@ -252,8 +251,7 @@ fn hexahedron_zlib() -> Result {
 #[test]
 fn hexahedron_zlib_binary() -> Result {
     let mut vtu = Vtk::import("./assets/hexahedron_zlib_binary.vtu")?;
-    vtu.load_all_pieces().unwrap();
-    vtu.file_path = None;
+    vtu.file_path = None; // Reset file path to satisfy comparison
     assert_eq!(vtu, make_hexahedron_vtu());
     Ok(())
 }
@@ -262,8 +260,7 @@ fn hexahedron_zlib_binary() -> Result {
 #[test]
 fn hexahedron_lz4() -> Result {
     let mut vtu = Vtk::import("./assets/hexahedron_lz4.vtu")?;
-    vtu.load_all_pieces().unwrap();
-    vtu.file_path = None;
+    vtu.file_path = None; // Reset file path to satisfy comparison
     assert_eq!(vtu, make_hexahedron_vtu());
     Ok(())
 }
@@ -271,8 +268,58 @@ fn hexahedron_lz4() -> Result {
 #[test]
 fn hexahedron_binary() -> Result {
     let mut vtu = Vtk::import("./assets/hexahedron_binary.vtu")?;
-    vtu.load_all_pieces().unwrap();
-    vtu.file_path = None;
+    vtu.file_path = None; // Reset file path to satisfy comparison
     assert_eq!(vtu, make_hexahedron_vtu());
+    Ok(())
+}
+
+fn make_tet_vtu() -> Vtk {
+    Vtk {
+        version: Version { major: 1, minor: 0 },
+        title: String::new(),
+        byte_order: ByteOrder::LittleEndian,
+        file_path: None,
+        data: DataSet::inline(UnstructuredGridPiece {
+            #[rustfmt::skip]
+            points: IOBuffer::F64(vec![
+		0.0, 1.0, 0.0,
+		-0.9428102970123291, -0.3333297073841095, 0.0,
+		0.47140514850616455, -0.3333297073841095, 0.8164976239204407,
+		0.47140514850616455, -0.3333297073841095, -0.8164976239204407,
+            ]),
+            cells: Cells {
+                cell_verts: VertexNumbers::XML {
+                    connectivity: vec![3, 1, 0, 2],
+                    offsets: vec![4],
+                },
+                types: vec![CellType::Tetra; 1],
+            },
+            data: Attributes {
+                point: vec![Attribute::DataArray(DataArrayBase {
+                    name: String::from("pressure"),
+                    elem: ElementType::Scalars {
+                        num_comp: 1,
+                        lookup_table: None,
+                    },
+                    data: IOBuffer::F32(vec![0.0, -0.9428103, 0.47140515, 0.47140515]),
+                })],
+                cell: vec![Attribute::DataArray(DataArrayBase {
+                    name: String::from("mtl_id"),
+                    elem: ElementType::Scalars {
+                        num_comp: 1,
+                        lookup_table: None,
+                    },
+                    data: IOBuffer::I32(vec![1]),
+                })],
+            },
+        }),
+    }
+}
+
+#[test]
+fn single_tet_vtu() -> Result {
+    let mut vtu = Vtk::import("./assets/tet.vtu")?;
+    vtu.file_path = None; // Reset file path to satisfy comparison
+    assert_eq!(vtu, make_tet_vtu());
     Ok(())
 }
