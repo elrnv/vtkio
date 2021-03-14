@@ -1754,6 +1754,25 @@ impl<P: PieceData> Piece<P> {
         Ok(())
     }
 
+    /// Borrows `self` and returns a loaded (or cloned) piece data.
+    ///
+    /// If the piece is not yet loaded, this function will load it and return the resulting data,
+    /// otherwise the data is cloned.
+    pub fn load_piece_data(&self, source_path: Option<&Path>) -> Result<P, Error>
+    where
+        P: Clone,
+    {
+        match self {
+            Piece::Source(path, _) => {
+                let piece_path = build_piece_path(path, source_path);
+                let piece_vtk = Vtk::import(&piece_path)?;
+                P::from_data_set(piece_vtk.data, Some(piece_path.as_ref()))
+            }
+            Piece::Loaded(data_set) => P::from_data_set(*data_set.clone(), source_path),
+            Piece::Inline(piece_data) => Ok(*piece_data.clone()),
+        }
+    }
+
     /// Consumes `self` and returns loaded piece data.
     ///
     /// If the piece is not yet loaded, this function will load it and return the resulting data.
