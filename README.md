@@ -27,20 +27,110 @@ vtkio = "0.6"
 Many sample files can be found in the `assets` directory. For the following example, we
 will load a VTK file named `tet.vtk`, modify it and write it back in Legacy ASCII format.
 
+### Import/Export
+
 ```rust
 use vtkio::model::*; // import model definition of a VTK file
 use vtkio::{import, export_ascii};
 fn main() {
     use std::path::PathBuf;
     let file_path = PathBuf::from("assets/tet.vtk");
-    
+
     let mut vtk_file = import(&file_path)
         .expect(&format!("Failed to load file: {:?}", file_path));
-    
+
     vtk_file.version = Version::new((4,2)); // arbitrary change
 
     export_ascii(vtk_file, &file_path)
         .expect(&format!("Failed to save file: {:?}", file_path));
+}
+```
+
+### Simple triangular cell
+
+```rust
+fn make_triangle() -> Vtk {
+    Vtk {
+        version: Version { major: 4, minor: 2 },
+        title: String::new(),
+        byte_order: ByteOrder::BigEndian,
+        file_path: None,
+        data: DataSet::inline(UnstructuredGridPiece {
+            points: IOBuffer::F64(vec![
+              // coordinates of node 0
+              -1.0, -1.0, 0.0,
+
+               // coordinates of node 1
+               1.0, -1.0, 0.0,
+
+               // coordinates of node 2
+               1.0,  1.0, 0.0,
+            ]),
+            cells: Cells {
+                cell_verts: VertexNumbers::XML {
+                    // connect node 0, 1, 2 (in this order)
+                    connectivity: vec![0, 1, 2],
+
+                    // only one group of size 3
+                    offsets: vec![3],
+                },
+                // only one cell of type triangle
+                types: vec![CellType::Triangle; 1],
+            },
+            data: Attributes {
+                ..Default::default()
+            },
+        }),
+    }
+}
+```
+
+### Mixing Cell Types
+
+```rust
+fn make_mixed_flat_elements() -> Vtk {
+    Vtk {
+        version: Version { major: 4, minor: 2 },
+        title: String::new(),
+        byte_order: ByteOrder::BigEndian,
+        file_path: None,
+        data: DataSet::inline(UnstructuredGridPiece {
+            points: IOBuffer::F64(vec![
+                -1.0, -1.0, 0.0,
+                 1.0, -1.0, 0.0,
+                 1.0,  1.0, 0.0,
+                -1.0,  1.0, 0.0,
+                 2.0, -1.0, 0.2,
+                 2.0,  1.0, 0.2,
+            ]),
+            cells: Cells {
+                cell_verts: VertexNumbers::XML {
+                    connectivity: vec![
+                      // nodes of triangle
+                      0, 1, 2,
+
+                      // nodes of quadrangle
+                      1, 4, 5, 2,
+                    ],
+                    offsets: vec![
+                      // number of nodes cell 1
+                      3,
+
+                      // number of nodes cell 1 + number of nodes of cell 2
+                      // 3 + 4 = 7
+                      7
+                    ],
+                },
+                types: vec![
+                  CellType::Triangle,
+                  CellType::Quad
+                ],
+            },
+            data: Attributes {
+                ..Default::default()
+            },
+        }),
+    }
 }
 ```
 
