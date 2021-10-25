@@ -13,6 +13,7 @@ parallel XML file formats are supported.
 The Legacy format parser is written using [nom](https://crates.io/crates/nom).
 XML VTK files are import and exported with [`quick-xml`](https://crates.io/crates/quick-xml) and [`serde`](https://crates.io/crates/serde) crates.
 
+
 # Usage
 
 To use this library simply add the crate name to your `Cargo.toml` file:
@@ -22,12 +23,14 @@ To use this library simply add the crate name to your `Cargo.toml` file:
 vtkio = "0.6"
 ```
 
+
 ## Examples
 
-Many sample files can be found in the `assets` directory. For the following example, we
-will load a VTK file named `tet.vtk`, modify it and write it back in Legacy ASCII format.
+Many sample files can be found in the `assets` directory. Below are some examples for using this library. 
 
 ### Import/Export
+
+Below we load a VTK file named `tet.vtk`, modify it and write it back in Legacy ASCII format.
 
 ```rust
 use vtkio::model::*; // import model definition of a VTK file
@@ -46,7 +49,12 @@ fn main() {
 }
 ```
 
+The next two examples show how to create new `Vtk` instances manually.
+
+
 ### Simple triangular cell
+
+Here, we create a Vtk instance containing a single triangle represented as a cell of an unstructured grid.
 
 ```rust
 fn make_triangle() -> Vtk {
@@ -85,7 +93,10 @@ fn make_triangle() -> Vtk {
 }
 ```
 
+
 ### Mixing Cell Types
+
+The following example creates a mesh with a triangle and a quadrilateral.
 
 ```rust
 fn make_mixed_flat_elements() -> Vtk {
@@ -109,7 +120,7 @@ fn make_mixed_flat_elements() -> Vtk {
                       // nodes of triangle
                       0, 1, 2,
 
-                      // nodes of quadrangle
+                      // nodes of quadrilateral
                       1, 4, 5, 2,
                     ],
                     offsets: vec![
@@ -133,6 +144,7 @@ fn make_mixed_flat_elements() -> Vtk {
     }
 }
 ```
+
 
 ## Features
 
