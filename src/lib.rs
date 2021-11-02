@@ -47,6 +47,48 @@
 //!     println!("{}", output);
 //! }
 //! ```
+//! 
+//! To quickly extract some data from a file, you can cast it to an `f64` type as follows
+//! 
+//! ```no_run
+//! use vtkio::model::*; // import model definition of a VTK file
+//! 
+//! // Load up vtk file.
+//! let file_path = "../assets/para_tet.vtk";
+//! let mut vtk = Vtk::import(&file_path)
+//!     .expect(&format!("Failed to load file: {:?}", file_path));
+//! 
+//! // Get all the pieces knowing that type they are.
+//! let pieces = if let DataSet::UnstructuredGrid { pieces, .. } = vtk.data {
+//!     pieces
+//! } else {
+//!     panic!("Wrong vtk data type");
+//! };
+//!
+//! // Often files have only a single piece, so we load it up here.
+//! // To avoid cloning you can also use `into_loaded_piece_data` here.
+//! let piece = pieces[0].load_piece_data(None).unwrap();
+//! 
+//! // Get the first cell attribute.
+//! let attribute = &piece.data.cell[0];
+//!
+//! // Find the attribute with a specific name (in this case "FloatValue"),
+//! // and return the corresponding data in `f64` format.
+//! let field_name = "FloatValue";
+//! let data = if let Attribute::Field { data_array, .. } = attribute {
+//!     data_array
+//!         .iter()
+//!         .find(|&DataArrayBase { name, .. }| name == field_name)
+//!         .expect(&format!("Failed to find {:?} field", field_name))
+//!         .data
+//!         .cast_into::<f64>() // Cast to f64 to get a view of the data.
+//!         .expect("Failed cast to f64")
+//! } else {
+//!     panic!("First attribute is not a field");
+//! };
+//! 
+//! assert_eq!(data.as_slice(), &[0.0]);
+//! ``` 
 #[macro_use]
 extern crate nom;
 
@@ -125,6 +167,13 @@ impl std::error::Error for Error {
 impl From<io::Error> for Error {
     fn from(e: io::Error) -> Error {
         Error::IO(e)
+    }
+}
+
+/// Convert `vtkio::model::Error` into a `vtkio::Error`.
+impl From<model::Error> for Error {
+    fn from(e: model::Error) -> Error {
+        Error::Load(e)
     }
 }
 
