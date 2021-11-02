@@ -748,20 +748,20 @@ impl IOBuffer {
     /// Cast a vector of numbers into a given number type `T`.
     ///
     /// In case of overflow, `None` is returned.
-    pub fn cast_into<T: Scalar>(self) -> Option<Vec<T>> {
+    pub fn cast_into<T: Scalar>(&self) -> Option<Vec<T>> {
         use IOBuffer::*;
         match self {
             Bit(_) => None, // Not supported
-            U8(v) => v.into_iter().map(|x| T::from_u8(x)).collect(),
-            I8(v) => v.into_iter().map(|x| T::from_i8(x)).collect(),
-            U16(v) => v.into_iter().map(|x| T::from_u16(x)).collect(),
-            I16(v) => v.into_iter().map(|x| T::from_i16(x)).collect(),
-            U32(v) => v.into_iter().map(|x| T::from_u32(x)).collect(),
-            I32(v) => v.into_iter().map(|x| T::from_i32(x)).collect(),
-            U64(v) => v.into_iter().map(|x| T::from_u64(x)).collect(),
-            I64(v) => v.into_iter().map(|x| T::from_i64(x)).collect(),
-            F32(v) => v.into_iter().map(|x| T::from_f32(x)).collect(),
-            F64(v) => v.into_iter().map(|x| T::from_f64(x)).collect(),
+            U8(v) => v.iter().map(|&x| T::from_u8(x)).collect(),
+            I8(v) => v.iter().map(|&x| T::from_i8(x)).collect(),
+            U16(v) => v.iter().map(|&x| T::from_u16(x)).collect(),
+            I16(v) => v.iter().map(|&x| T::from_i16(x)).collect(),
+            U32(v) => v.iter().map(|&x| T::from_u32(x)).collect(),
+            I32(v) => v.iter().map(|&x| T::from_i32(x)).collect(),
+            U64(v) => v.iter().map(|&x| T::from_u64(x)).collect(),
+            I64(v) => v.iter().map(|&x| T::from_i64(x)).collect(),
+            F32(v) => v.iter().map(|&x| T::from_f32(x)).collect(),
+            F64(v) => v.iter().map(|&x| T::from_f64(x)).collect(),
         }
     }
 }
