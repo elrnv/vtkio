@@ -37,7 +37,7 @@ pretty_assertions = "1.0"
 env_logger = "0.11"
 
 [features]
-default = ["xml", "compression"]
+default = ["xml", "lz4", "flate2"]
 async = ["tokio"]
 compression = ["lz4", "xz2", "flate2"]
 parallel = ["rayon"]
