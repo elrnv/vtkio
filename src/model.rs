@@ -1346,14 +1346,14 @@ impl Attributes {
 ///
 /// This struct compiles a list of point indices that make up each cell.
 ///
-/// # Legacy
+/// # Contiguous
 ///
 /// In legacy format, cell vertex numbers are listed with a preceeding number of points per cell.
 /// In other words, each cell's point list is given by a number of points in the cell followed by
 /// the individual point numbers.
 /// This struct could represent one of VERTICES, LINES, POLYGONS, TRIANGLE_STRIPS or CELLS.
 ///
-/// # Modern (XML)
+/// # Offsets
 ///
 /// In XML format, the cell vertex numbers listed as a contiguous array, so to distinguish between
 /// different cells, a secondary array of offsets is given to indicate the ends of each cell as an
@@ -1361,12 +1361,16 @@ impl Attributes {
 /// `Verts`, `Lines`, `Strips` or `Polys`.
 #[derive(Clone, PartialEq, Debug)]
 pub enum VertexNumbers {
+    /// Specifies the vertex numbers for cells using a contiguous array of cell sizes and vertex
+    /// indices.
     Legacy {
         /// Total number of cells contained in the `vertices` vector.
         num_cells: u32,
         /// Each cell in `vertices` is of the form: `n i_1 ... i_n`.
         vertices: Vec<u32>,
     },
+    /// Specifies the vertex numbers for cells using an array of offsets into a connectivity array
+    /// giving the actual vertex indices.
     XML {
         /// A contiguous array of all of the cells' point lists concatenated together.
         connectivity: Vec<u64>,
