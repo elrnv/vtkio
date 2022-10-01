@@ -242,7 +242,6 @@ mod write_vtk_impl {
         fn write_fmt(&mut self, args: Arguments) -> Result;
         fn write_file_type(&mut self) -> Result;
         fn write_cell_types<BO: ByteOrder>(&mut self, data: Vec<CellType>) -> Result;
-        fn write_u32_vec<BO: ByteOrder>(&mut self, data: Vec<u32>) -> Result;
         fn write_vec<T: Display + ToPrimitive + 'static, BO: ByteOrder>(
             &mut self,
             data: Vec<T>,
@@ -529,7 +528,7 @@ mod write_vtk_impl {
 
                             let (_, vertices) = cell_verts.into_legacy();
 
-                            self.write_u32_vec::<BO>(vertices).map_err(|e| {
+                            self.write_vec::<u32, BO>(vertices).map_err(|e| {
                                 Error::DataSet(DataSetError::PolyData(DataSetPart::Cells(
                                     EntryPart::Data(e.into()),
                                 )))
@@ -621,7 +620,7 @@ mod write_vtk_impl {
 
                             let (_, vertices) = cells.cell_verts.into_legacy();
 
-                            self.write_u32_vec::<BO>(vertices).map_err(|e| {
+                            self.write_vec::<u32, BO>(vertices).map_err(|e| {
                                 Error::DataSet(DataSetError::UnstructuredGrid(DataSetPart::Cells(
                                     EntryPart::Data(e.into()),
                                 )))
@@ -843,10 +842,6 @@ mod write_vtk_impl {
             }
             writeln!(&mut self.0).map_err(|_| Error::NewLine)
         }
-        fn write_u32_vec<BO: ByteOrder>(&mut self, data: Vec<u32>) -> Result {
-            let buf = IOBuffer::from(data);
-            self.write_buf::<BO>(buf)
-        }
         fn write_vec<T: Display + ToPrimitive + 'static, BO: ByteOrder>(
             &mut self,
             data: Vec<T>,
@@ -911,9 +906,6 @@ mod write_vtk_impl {
         fn write_cell_types<BO: ByteOrder>(&mut self, data: Vec<CellType>) -> Result {
             BinaryWriter(self).write_cell_types::<BO>(data)
         }
-        fn write_u32_vec<BO: ByteOrder>(&mut self, data: Vec<u32>) -> Result {
-            BinaryWriter(self).write_u32_vec::<BO>(data)
-        }
         fn write_vec<T: Display + ToPrimitive + 'static, BO: ByteOrder>(
             &mut self,
             data: Vec<T>,
@@ -942,17 +934,6 @@ mod write_vtk_impl {
                 writeln!(&mut self.0, "{}", t as u8).map_err(|_| err)?;
             }
             writeln!(&mut self.0).map_err(|_| err)?;
-            Ok(())
-        }
-        fn write_u32_vec<BO: ByteOrder>(&mut self, data: Vec<u32>) -> Result {
-            for i in 0..data.len() {
-                write!(&mut self.0, "{}", data[i])?;
-                if i < data.len() - 1 {
-                    // add an extra space between elements
-                    write!(&mut self.0, " ")?;
-                }
-            }
-            writeln!(&mut self.0)?; // finish with a new line
             Ok(())
         }
         fn write_vec<T: Display + ToPrimitive + 'static, BO: ByteOrder>(
@@ -985,9 +966,6 @@ mod write_vtk_impl {
         }
         fn write_cell_types<BO: ByteOrder>(&mut self, data: Vec<CellType>) -> Result {
             AsciiWriter(self).write_cell_types::<BO>(data)
-        }
-        fn write_u32_vec<BO: ByteOrder>(&mut self, data: Vec<u32>) -> Result {
-            AsciiWriter(self).write_u32_vec::<BO>(data)
         }
         fn write_vec<T: Display + ToPrimitive + 'static, BO: ByteOrder>(
             &mut self,
