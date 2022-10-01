@@ -147,11 +147,9 @@ impl<BO: ByteOrder + 'static> VtkParser<BO> {
             do_parse!(
                 offsets: call!(Self::topo, "OFFSETS", n, ft)
                     >> connectivity: call!(Self::topo, "CONNECTIVITY", size, ft)
-                    >> ({
-                        VertexNumbers::XML {
-                            offsets,
-                            connectivity,
-                        }
+                    >> (VertexNumbers::XML {
+                        offsets,
+                        connectivity,
                     })
             )
         )
