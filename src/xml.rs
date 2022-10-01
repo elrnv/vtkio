@@ -1529,6 +1529,23 @@ impl Cells {
         }
     }
 
+    /// Decodes a data array for types.
+    ///
+    /// These can be specified as u8 or some other integer type.
+    /// This logic is encapsulated in this function.
+    fn get_type_codes(
+        buf: model::IOBuffer,
+    ) -> std::result::Result<Vec<model::CellType>, ValidationError> {
+        use num_traits::FromPrimitive;
+        let type_codes = buf
+            .cast_into::<u8>()
+            .ok_or_else(|| ValidationError::InvalidDataFormat)?;
+        type_codes
+            .into_iter()
+            .map(|x| model::CellType::from_u8(x).ok_or_else(|| ValidationError::InvalidCellType(x)))
+            .collect()
+    }
+
     /// Given the expected number of elements and an optional appended data,
     /// converts this `Topo` struct into a `mode::VertexNumbers` type.
     pub fn into_model_cells(
@@ -1537,15 +1554,7 @@ impl Cells {
         appended: Option<&AppendedData>,
         ei: EncodingInfo,
     ) -> std::result::Result<model::Cells, ValidationError> {
-        use num_traits::FromPrimitive;
-
-        let type_codes: Option<Vec<u8>> = self.types.into_io_buffer(l, appended, ei)?.into();
-        let type_codes = type_codes.ok_or_else(|| ValidationError::InvalidDataFormat)?;
-        let types: std::result::Result<Vec<model::CellType>, ValidationError> = type_codes
-            .into_iter()
-            .map(|x| model::CellType::from_u8(x).ok_or_else(|| ValidationError::InvalidCellType(x)))
-            .collect();
-        let types = types?;
+        let types = Self::get_type_codes(self.types.into_io_buffer(l, appended, ei)?)?;
 
         let offsets: Option<Vec<u64>> = self.offsets.into_io_buffer(l, appended, ei)?.cast_into();
         let offsets = offsets.ok_or_else(|| ValidationError::InvalidDataFormat)?;
