@@ -112,6 +112,68 @@ impl<BO: ByteOrder + 'static> VtkParser<BO> {
         )
     }
 
+    /// Parse cell topology indices in the legacy way.
+    ///
+    /// Cells are stored as a single contiguous array with the format `n v0 v1 ... vn` for each cell.
+    fn legacy_cell_topo<'a>(
+        input: &'a [u8],
+        n: u32,
+        size: u32,
+        ft: FileType,
+    ) -> IResult<&'a [u8], VertexNumbers> {
+        do_parse!(
+            input,
+            data: call!(parse_data_vec::<u32, BO>, size as usize, ft)
+                >> ({
+                    VertexNumbers::Legacy {
+                        num_cells: n,
+                        vertices: data,
+                    }
+                })
+        )
+    }
+
+    /// Parse cell topology indices in modern way using offsets and connectivity arras.
+    ///
+    /// Cells are stored as two arrays: OFFSETS and CONNECTIVITY, which are specified separately.
+    fn modern_cell_topo<'a>(
+        input: &'a [u8],
+        n: u32,
+        size: u32,
+        ft: FileType,
+    ) -> IResult<&'a [u8], VertexNumbers> {
+        complete!(
+            input,
+            do_parse!(
+                offsets: call!(Self::topo, "OFFSETS", n, ft)
+                    >> connectivity: call!(Self::topo, "CONNECTIVITY", size, ft)
+                    >> ({
+                        VertexNumbers::XML {
+                            offsets,
+                            connectivity,
+                        }
+                    })
+            )
+        )
+    }
+
+    /// Parse either a CONNECTIVITY or OFFSETS array.
+    fn topo<'a>(
+        input: &'a [u8],
+        tag: &'static str,
+        n: u32,
+        ft: FileType,
+    ) -> IResult<&'a [u8], Vec<u64>> {
+        do_parse!(
+            input,
+            ws!(tag_no_case!(tag))
+                >> take_until!("\n") // Skip data type, parse everything as u64
+                >> tag!("\n")
+                >> data: call!(parse_data_vec::<u64, BO>, n as usize, ft)
+                >> (data)
+        )
+    }
+
     /// Parse a collection of cells. The given tag should be one of
     ///  * "CELLS"
     ///  * "VERTICES"
@@ -128,13 +190,12 @@ impl<BO: ByteOrder + 'static> VtkParser<BO> {
             n: ws!(do_parse!(tag_no_case!(tag) >> n: u32_b >> (n)))
                 >> size: sp!(u32_b)
                 >> tag!("\n")
-                >> data: call!(parse_data_vec::<u32, BO>, size as usize, ft)
-                >> ({
-                    VertexNumbers::Legacy {
-                        num_cells: n,
-                        vertices: data,
-                    }
-                })
+                >> vertex_numbers:
+                    alt!(
+                        call!(Self::modern_cell_topo, n, size, ft)
+                            | call!(Self::legacy_cell_topo, n, size, ft)
+                    )
+                >> (vertex_numbers)
         )
     }
 
