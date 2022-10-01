@@ -160,7 +160,7 @@ fn legacy_ascii() -> Result {
     test_ignore_rem!(parse_be(input) => out1);
     let mut outtest = String::new();
     outtest.write_vtk_ne(out1.clone())?;
-    println!("{}", outtest);
+    // println!("{}", outtest);
     test_b!(parse_ne(String::new().write_vtk_ne(out1.clone())?.as_bytes()) => ne(&out1));
     test_b!(parse_ne(Vec::<u8>::new().write_vtk_ne(out1.clone())?) => ne(&out1));
     test_b!(parse_le(Vec::<u8>::new().write_vtk_le(out1.clone())?) => le(&out1));
@@ -176,7 +176,7 @@ fn legacy_binary() -> Result {
     test_ignore_rem!(parse_be(input) => out1);
     let mut outtest = String::new();
     outtest.write_vtk_ne(out1.clone())?;
-    println!("{}", outtest);
+    // println!("{}", outtest);
     test_b!(parse_ne(String::new().write_vtk_ne(out1.clone())?.as_bytes()) => ne(&out1));
     test_b!(parse_ne(Vec::<u8>::new().write_vtk_ne(out1.clone())?) => ne(&out1));
     test_b!(parse_le(Vec::<u8>::new().write_vtk_le(out1.clone())?) => le(&out1));
@@ -258,7 +258,6 @@ fn xml_lzma() -> Result {
 }
 
 #[test]
-#[ignore]
 fn xml_no_compression() -> Result {
     let mut vtu = Vtk::import("./assets/pygmsh/no-compression.vtu")?;
     assert_and_fix_xml_vtu(&mut vtu);
