@@ -1,6 +1,7 @@
 use std::fmt::Arguments;
 
 use byteorder::{BigEndian, ByteOrder, LittleEndian};
+use num_traits::ToPrimitive;
 
 use crate::model::ByteOrder as ByteOrderTag;
 use crate::model::*;
@@ -12,6 +13,8 @@ pub struct AsciiWriter<W: std::fmt::Write>(pub W);
 pub struct BinaryWriter<W: std::io::Write>(pub W);
 
 mod write_vtk_impl {
+    use std::fmt::Display;
+
     use super::*;
     use byteorder::WriteBytesExt;
 
@@ -240,6 +243,10 @@ mod write_vtk_impl {
         fn write_file_type(&mut self) -> Result;
         fn write_cell_types<BO: ByteOrder>(&mut self, data: Vec<CellType>) -> Result;
         fn write_u32_vec<BO: ByteOrder>(&mut self, data: Vec<u32>) -> Result;
+        fn write_vec<T: Display + ToPrimitive + 'static, BO: ByteOrder>(
+            &mut self,
+            data: Vec<T>,
+        ) -> Result;
         fn write_buf<BO: ByteOrder>(&mut self, data: IOBuffer) -> Result;
 
         fn write_attributes<BO: ByteOrder>(
@@ -576,23 +583,50 @@ mod write_vtk_impl {
                         })?;
 
                         let num_cells = cells.cell_verts.num_cells();
-                        let num_verts = cells.cell_verts.num_verts();
 
-                        writeln!(self, "\nCELLS {} {}", num_cells, num_cells + num_verts).map_err(
-                            |_| {
+                        // Write CELLS structure.
+                        if vtk.version.major >= 5 {
+                            // From version 5 and on the cells are written as an offsets and connectivity pair.
+                            let (connectivity, offsets) = cells.cell_verts.into_xml();
+
+                            writeln!(self, "\nCELLS {} {}", offsets.len(), connectivity.len())
+                                .map_err(|_| {
+                                    Error::DataSet(DataSetError::UnstructuredGrid(
+                                        DataSetPart::Cells(EntryPart::Header),
+                                    ))
+                                })?;
+
+                            writeln!(self, "\nOFFSETS vtktypeint64")?;
+                            self.write_vec::<_, BO>(offsets).map_err(|e| {
                                 Error::DataSet(DataSetError::UnstructuredGrid(DataSetPart::Cells(
-                                    EntryPart::Header,
+                                    EntryPart::Data(e.into()),
                                 )))
-                            },
-                        )?;
+                            })?;
 
-                        let (_, vertices) = cells.cell_verts.into_legacy();
+                            writeln!(self, "\nCONNECTIVITY vtktypeint64")?;
+                            self.write_vec::<_, BO>(connectivity).map_err(|e| {
+                                Error::DataSet(DataSetError::UnstructuredGrid(DataSetPart::Cells(
+                                    EntryPart::Data(e.into()),
+                                )))
+                            })?;
+                        } else {
+                            let num_verts = cells.cell_verts.num_verts();
 
-                        self.write_u32_vec::<BO>(vertices).map_err(|e| {
-                            Error::DataSet(DataSetError::UnstructuredGrid(DataSetPart::Cells(
-                                EntryPart::Data(e.into()),
-                            )))
-                        })?;
+                            writeln!(self, "\nCELLS {} {}", num_cells, num_cells + num_verts)
+                                .map_err(|_| {
+                                    Error::DataSet(DataSetError::UnstructuredGrid(
+                                        DataSetPart::Cells(EntryPart::Header),
+                                    ))
+                                })?;
+
+                            let (_, vertices) = cells.cell_verts.into_legacy();
+
+                            self.write_u32_vec::<BO>(vertices).map_err(|e| {
+                                Error::DataSet(DataSetError::UnstructuredGrid(DataSetPart::Cells(
+                                    EntryPart::Data(e.into()),
+                                )))
+                            })?;
+                        }
 
                         writeln!(self, "\nCELL_TYPES {}", cells.types.len()).map_err(|_| {
                             Error::DataSet(DataSetError::UnstructuredGrid(DataSetPart::CellTypes(
@@ -813,6 +847,13 @@ mod write_vtk_impl {
             let buf = IOBuffer::from(data);
             self.write_buf::<BO>(buf)
         }
+        fn write_vec<T: Display + ToPrimitive + 'static, BO: ByteOrder>(
+            &mut self,
+            data: Vec<T>,
+        ) -> Result {
+            let buf = IOBuffer::from(data);
+            self.write_buf::<BO>(buf)
+        }
         fn write_buf<BO: ByteOrder>(&mut self, buf: IOBuffer) -> Result {
             fn write_buf_impl<T, W, E>(vec: Vec<T>, writer: &mut W, elem_writer: E) -> Result
             where
@@ -873,6 +914,12 @@ mod write_vtk_impl {
         fn write_u32_vec<BO: ByteOrder>(&mut self, data: Vec<u32>) -> Result {
             BinaryWriter(self).write_u32_vec::<BO>(data)
         }
+        fn write_vec<T: Display + ToPrimitive + 'static, BO: ByteOrder>(
+            &mut self,
+            data: Vec<T>,
+        ) -> Result {
+            BinaryWriter(self).write_vec::<T, BO>(data)
+        }
         fn write_buf<BO: ByteOrder>(&mut self, buf: IOBuffer) -> Result {
             BinaryWriter(self).write_buf::<BO>(buf)
         }
@@ -908,6 +955,20 @@ mod write_vtk_impl {
             writeln!(&mut self.0)?; // finish with a new line
             Ok(())
         }
+        fn write_vec<T: Display + ToPrimitive + 'static, BO: ByteOrder>(
+            &mut self,
+            data: Vec<T>,
+        ) -> Result {
+            for i in 0..data.len() {
+                write!(&mut self.0, "{}", data[i])?;
+                if i < data.len() - 1 {
+                    // add an extra space between elements
+                    write!(&mut self.0, " ")?;
+                }
+            }
+            writeln!(&mut self.0)?; // finish with a new line
+            Ok(())
+        }
 
         fn write_buf<BO: ByteOrder>(&mut self, data: IOBuffer) -> Result {
             writeln!(&mut self.0, "{}", data)?;
@@ -927,6 +988,12 @@ mod write_vtk_impl {
         }
         fn write_u32_vec<BO: ByteOrder>(&mut self, data: Vec<u32>) -> Result {
             AsciiWriter(self).write_u32_vec::<BO>(data)
+        }
+        fn write_vec<T: Display + ToPrimitive + 'static, BO: ByteOrder>(
+            &mut self,
+            data: Vec<T>,
+        ) -> Result {
+            AsciiWriter(self).write_vec::<T, BO>(data)
         }
         fn write_buf<BO: ByteOrder>(&mut self, buf: IOBuffer) -> Result {
             AsciiWriter(self).write_buf::<BO>(buf)
