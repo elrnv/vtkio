@@ -1353,7 +1353,7 @@ impl Attributes {
 /// the individual point numbers.
 /// This struct could represent one of VERTICES, LINES, POLYGONS, TRIANGLE_STRIPS or CELLS.
 ///
-/// # XML
+/// # Modern (XML)
 ///
 /// In XML format, the cell vertex numbers listed as a contiguous array, so to distinguish between
 /// different cells, a secondary array of offsets is given to indicate the ends of each cell as an
@@ -1371,6 +1371,10 @@ pub enum VertexNumbers {
         /// A contiguous array of all of the cells' point lists concatenated together.
         connectivity: Vec<u64>,
         /// The offsets into the connectivity array indicating the end of each cell.
+        ///
+        /// This array may or may not have a leading zero. This depends on the input VTK file.
+        /// Some file (in particular Legacy type VTK files version 5 and higher) include a leading zero,
+        /// however, XML files typically do not.
         offsets: Vec<u64>,
     },
 }
