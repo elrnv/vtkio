@@ -1968,7 +1968,7 @@ impl DataArray {
             DataArrayFormat::Binary => {
                 // First byte gives the bytes
                 let bytes = base64::decode(data[0].clone().into_string())?;
-                //eprintln!("{:?}", &bytes[..header_bytes]);
+                // eprintln!("{:?}", &bytes[..header_bytes]);
                 let buf = IOBuffer::from_bytes(
                     &bytes[header_bytes..],
                     scalar_type.into(),
@@ -2768,7 +2768,7 @@ impl TryFrom<VTKFile> for model::Vtk {
 
         let encoding_info = EncodingInfo {
             byte_order,
-            header_type: header_type.unwrap_or(ScalarType::UInt64),
+            header_type: header_type.unwrap_or(ScalarType::UInt32),
             compressor,
             compression_level: 0, // This is meaningless when decoding
         };

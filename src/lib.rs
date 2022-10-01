@@ -351,7 +351,7 @@ impl Vtk {
     /// use vtkio::model::*; // import the model definition of a VTK file
     ///
     /// let input: &[u8] = b"\
-    /// <VTKFile type=\"PolyData\" version=\"2.0\" byte_order=\"BigEndian\">\
+    /// <VTKFile type=\"PolyData\" version=\"2.0\" byte_order=\"BigEndian\", header_type=\"UInt64\">\
     ///   <PolyData>\
     ///     <Piece NumberOfPoints=\"3\" NumberOfLines=\"0\" NumberOfStrips=\"0\" NumberOfPolys=\"1\" NumberOfVerts=\"0\">\
     ///       <PointData/>\
