@@ -1,4 +1,5 @@
 /target
+/target_remote
 **/*.rs.bk
 Cargo.lock
 .vscode
