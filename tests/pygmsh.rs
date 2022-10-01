@@ -184,17 +184,9 @@ fn legacy_binary() -> Result {
     Ok(())
 }
 
-#[test]
-fn xml_ascii() -> Result {
-    let mut vtu = Vtk::import("./assets/pygmsh/ascii.vtu")?;
-    vtu.file_path = None; // Reset file path to satisfy comparison
-    assert_eq!(vtu.version, Version::new((0, 1))); // XML file version is ignored.
-    vtu.version = (5, 1).into(); // Explicitly set version to satisfy comparison.
-    assert_eq!(vtu.title, String::new()); // Default empty title
-    vtu.title = "written by meshio v5.3.0".into(); // Match test file
-    vtu.byte_order = ByteOrder::BigEndian; // Match test file
-    let expected = make_test_file(false);
-
+/// Ensures that points from the two given vtk files are equivalent up to floating point error, and then overwrites
+/// the first input to match exactly to the points in the second input, so the can be compared using `PartialEq` later.
+fn compare_points_in_float_and_overwrite(vtu: &mut Vtk, expected: &Vtk) {
     let expected_points = if let DataSet::UnstructuredGrid { ref pieces, .. } = expected.data {
         pieces[0]
             .load_piece_data(None)
@@ -225,12 +217,65 @@ fn xml_ascii() -> Result {
             }
             piece_data.points = points.into();
         } else {
-            return Err(Error::Load(vtkio::model::Error::PieceDataMismatch));
+            panic!("Loaded vtk file has no inline unstructured grid piece");
         }
     } else {
-        return Err(Error::Load(vtkio::model::Error::PieceDataMismatch));
+        panic!("Loaded vtk file is not an unstructured grid");
     }
+}
 
+/// Ensures the given xml based vtk file has the right values and overwrites them to match
+/// the asset returned by make_test_file.
+fn assert_and_fix_xml_vtu(vtu: &mut Vtk) {
+    vtu.file_path = None; // Reset file path to satisfy comparison
+    assert_eq!(vtu.version, Version::new((0, 1))); // XML file version is ignored.
+    vtu.version = (5, 1).into(); // Explicitly set version to satisfy comparison.
+    assert_eq!(vtu.title, String::new()); // Default empty title
+    vtu.title = "written by meshio v5.3.0".into(); // Match test file
+    vtu.byte_order = ByteOrder::BigEndian; // Match test file
+}
+
+#[test]
+fn xml_ascii() -> Result {
+    let mut vtu = Vtk::import("./assets/pygmsh/ascii.vtu")?;
+    assert_and_fix_xml_vtu(&mut vtu);
+    let expected = make_test_file(false);
+    compare_points_in_float_and_overwrite(&mut vtu, &expected);
+    assert_eq!(vtu, expected);
+    Ok(())
+}
+
+#[test]
+#[ignore]
+#[cfg(feature = "xz2")]
+fn xml_lzma() -> Result {
+    let mut vtu = Vtk::import("./assets/pygmsh/lzma.vtu")?;
+    assert_and_fix_xml_vtu(&mut vtu);
+    let expected = make_test_file(false);
+    compare_points_in_float_and_overwrite(&mut vtu, &expected);
+    assert_eq!(vtu, expected);
+    Ok(())
+}
+
+#[test]
+#[ignore]
+fn xml_no_compression() -> Result {
+    let mut vtu = Vtk::import("./assets/pygmsh/no-compression.vtu")?;
+    assert_and_fix_xml_vtu(&mut vtu);
+    let expected = make_test_file(false);
+    compare_points_in_float_and_overwrite(&mut vtu, &expected);
+    assert_eq!(vtu, expected);
+    Ok(())
+}
+
+#[test]
+#[ignore]
+#[cfg(feature = "flate2")]
+fn xml_zlib() -> Result {
+    let mut vtu = Vtk::import("./assets/pygmsh/zlib.vtu")?;
+    assert_and_fix_xml_vtu(&mut vtu);
+    let expected = make_test_file(false);
+    compare_points_in_float_and_overwrite(&mut vtu, &expected);
     assert_eq!(vtu, expected);
     Ok(())
 }
