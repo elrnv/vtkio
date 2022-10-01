@@ -47,17 +47,17 @@
 //!     println!("{}", output);
 //! }
 //! ```
-//! 
+//!
 //! To quickly extract some data from a file, you can cast it to an `f64` type as follows
-//! 
+//!
 //! ```no_run
 //! use vtkio::model::*; // import model definition of a VTK file
-//! 
+//!
 //! // Load up vtk file.
 //! let file_path = "../assets/para_tet.vtk";
 //! let mut vtk = Vtk::import(&file_path)
 //!     .expect(&format!("Failed to load file: {:?}", file_path));
-//! 
+//!
 //! // Get all the pieces knowing that type they are.
 //! let pieces = if let DataSet::UnstructuredGrid { pieces, .. } = vtk.data {
 //!     pieces
@@ -68,7 +68,7 @@
 //! // Often files have only a single piece, so we load it up here.
 //! // To avoid cloning you can also use `into_loaded_piece_data` here.
 //! let piece = pieces[0].load_piece_data(None).unwrap();
-//! 
+//!
 //! // Get the first cell attribute.
 //! let attribute = &piece.data.cell[0];
 //!
@@ -86,9 +86,9 @@
 //! } else {
 //!     panic!("First attribute is not a field");
 //! };
-//! 
+//!
 //! assert_eq!(data.as_slice(), &[0.0]);
-//! ``` 
+//! ```
 #[macro_use]
 extern crate nom;
 
