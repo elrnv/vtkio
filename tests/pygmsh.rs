@@ -50,7 +50,7 @@ fn le(vtk: &Vtk) -> Vtk {
     }
 }
 
-fn make_test_file() -> Vtk {
+fn make_test_file(leading_zero_offset: bool) -> Vtk {
     Vtk {
         version: Version::new((5, 1)),
         byte_order: ByteOrder::BigEndian,
@@ -116,10 +116,17 @@ fn make_test_file() -> Vtk {
             .into(),
             cells: Cells {
                 cell_verts: VertexNumbers::XML {
-                    offsets: vec![
-                        0, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24, 27, 30, 33, 36, 39, 42, 45,
-                        48, 51, 54, 57, 60, 63, 66, 69, 72, 75, 78, 81, 84, 87, 90, 91, 92, 93, 94,
-                    ],
+                    offsets: {
+                        let mut offsets = vec![
+                            2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24, 27, 30, 33, 36, 39, 42, 45,
+                            48, 51, 54, 57, 60, 63, 66, 69, 72, 75, 78, 81, 84, 87, 90, 91, 92, 93,
+                            94,
+                        ];
+                        if leading_zero_offset {
+                            offsets.insert(0, 0);
+                        }
+                        offsets
+                    },
                     connectivity: vec![
                         0, 4, 4, 5, 5, 1, 1, 6, 6, 7, 7, 8, 8, 2, 2, 9, 9, 10, 10, 3, 3, 11, 11, 0,
                         10, 13, 14, 13, 12, 14, 10, 3, 13, 8, 2, 9, 4, 5, 15, 9, 10, 14, 3, 11, 13,
@@ -148,7 +155,7 @@ fn make_test_file() -> Vtk {
 #[test]
 fn legacy_ascii() -> Result {
     let input = include_str!("../assets/pygmsh/ascii.vtk").as_bytes();
-    let out1 = make_test_file();
+    let out1 = make_test_file(true);
     assert!(parse_be(input).is_done());
     test_ignore_rem!(parse_be(input) => out1);
     let mut outtest = String::new();
@@ -164,7 +171,7 @@ fn legacy_ascii() -> Result {
 #[test]
 fn legacy_binary() -> Result {
     let input = include_bytes!("../assets/pygmsh/binary.vtk");
-    let out1 = make_test_file();
+    let out1 = make_test_file(true);
     assert!(parse_be(input).is_done());
     test_ignore_rem!(parse_be(input) => out1);
     let mut outtest = String::new();
@@ -178,10 +185,52 @@ fn legacy_binary() -> Result {
 }
 
 #[test]
-#[ignore]
 fn xml_ascii() -> Result {
     let mut vtu = Vtk::import("./assets/pygmsh/ascii.vtu")?;
     vtu.file_path = None; // Reset file path to satisfy comparison
-    assert_eq!(vtu, make_test_file());
+    assert_eq!(vtu.version, Version::new((0, 1))); // XML file version is ignored.
+    vtu.version = (5, 1).into(); // Explicitly set version to satisfy comparison.
+    assert_eq!(vtu.title, String::new()); // Default empty title
+    vtu.title = "written by meshio v5.3.0".into(); // Match test file
+    vtu.byte_order = ByteOrder::BigEndian; // Match test file
+    let expected = make_test_file(false);
+
+    let expected_points = if let DataSet::UnstructuredGrid { ref pieces, .. } = expected.data {
+        pieces[0]
+            .load_piece_data(None)
+            .unwrap()
+            .points
+            .cast_into::<f64>()
+            .unwrap()
+    } else {
+        panic!("Wring vtk data type");
+    };
+
+    // Compare positions via floating point comparisons.
+    if let DataSet::UnstructuredGrid { pieces, .. } = &mut vtu.data {
+        let piece = &mut pieces[0];
+        if let Piece::Inline(piece_data) = piece {
+            let mut points = piece_data
+                .points
+                .cast_into::<f64>()
+                .expect("Point have the wrong type.");
+            for (i, (point, &expected_point)) in
+                points.iter_mut().zip(expected_points.iter()).enumerate()
+            {
+                if (*point - expected_point).abs() > 1e-6 * expected_point.abs() {
+                    eprintln!("{}: actual {} vs. expected {}", i, *point, expected_point);
+                }
+                assert!((*point - expected_point).abs() <= 1e-6 * expected_point.abs());
+                *point = expected_point; // match test data for full comparison later.
+            }
+            piece_data.points = points.into();
+        } else {
+            return Err(Error::Load(vtkio::model::Error::PieceDataMismatch));
+        }
+    } else {
+        return Err(Error::Load(vtkio::model::Error::PieceDataMismatch));
+    }
+
+    assert_eq!(vtu, expected);
     Ok(())
 }
