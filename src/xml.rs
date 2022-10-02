@@ -1921,6 +1921,49 @@ impl DataArray {
         DataArray { num_comp, ..self }
     }
 
+    /// Helper to extract possibly compressed binary data from a `String` in `IOBuffer` format.
+    fn extract_data(
+        ei: EncodingInfo,
+        scalar_type: ScalarType,
+        data: Data,
+    ) -> std::result::Result<model::IOBuffer, ValidationError> {
+        use model::IOBuffer;
+
+        let header_bytes = ei.header_type.size();
+        // Binary data in a data array (i.e. not in appended data) is always base64 encoded.
+        // It can also be compressed.
+        if matches!(ei.compressor, Compressor::None) {
+            // First byte gives the bytes
+            let bytes = base64::decode(data.into_string())?;
+            // eprintln!("{:?}", &bytes[..header_bytes]);
+            return Ok(IOBuffer::from_bytes(
+                &bytes[header_bytes..],
+                scalar_type.into(),
+                ei.byte_order,
+            )?);
+        }
+
+        // Temporary buffer used for decoding compressed types.
+        let mut buf = Vec::new();
+
+        let data_string = data.into_string();
+        let encoded_data = data_string.as_bytes();
+        let bytes = decode_and_decompress(
+            &mut buf,
+            base64_decode_buf,
+            to_b64,
+            encoded_data,
+            header_bytes,
+            ei,
+        )?;
+
+        Ok(IOBuffer::from_bytes(
+            bytes.as_slice(),
+            scalar_type.into(),
+            ei.byte_order,
+        )?)
+    }
+
     /// Convert this data array into a `model::FieldArray` type.
     ///
     /// The given arguments are the number of elements (not bytes) in the expected output
@@ -1946,7 +1989,6 @@ impl DataArray {
         //eprintln!("name = {:?}", &name);
 
         let num_elements = usize::try_from(num_comp).unwrap() * l;
-        let header_bytes = ei.header_type.size();
 
         let data = match format {
             DataArrayFormat::Appended => {
@@ -1966,14 +2008,7 @@ impl DataArray {
                 }
             }
             DataArrayFormat::Binary => {
-                // First byte gives the bytes
-                let bytes = base64::decode(data[0].clone().into_string())?;
-                // eprintln!("{:?}", &bytes[..header_bytes]);
-                let buf = IOBuffer::from_bytes(
-                    &bytes[header_bytes..],
-                    scalar_type.into(),
-                    ei.byte_order,
-                )?;
+                let buf = Self::extract_data(ei, scalar_type, data.into_iter().next().unwrap())?;
                 if buf.len() != num_elements {
                     return Err(ValidationError::DataArraySizeMismatch {
                         name,
@@ -2209,6 +2244,151 @@ pub enum Encoding {
     Raw,
 }
 
+/// Customized base64::decode function that accepts a buffer.
+fn base64_decode_buf<'a>(
+    input: &[u8],
+    buf: &'a mut Vec<u8>,
+) -> std::result::Result<&'a [u8], ValidationError> {
+    base64::decode_config_buf(
+        input,
+        base64::STANDARD.decode_allow_trailing_bits(true),
+        buf,
+    )?;
+    Ok(buf.as_slice())
+}
+
+/// Converts the number of target bytes to number of chars in base64 encoding.
+fn to_b64(bytes: usize) -> usize {
+    4 * (bytes as f64 / 3.0).ceil() as usize
+    //(bytes * 4 + 1) / 3 + match bytes % 3 {
+    //    1 => 2, 2 => 1, _ => 0
+    //}
+}
+
+// Helper function to read a single header number, which depends on the encoding parameters.
+fn read_header_num<R: AsRef<[u8]>>(
+    header_buf: &mut std::io::Cursor<R>,
+    ei: EncodingInfo,
+) -> std::result::Result<usize, ValidationError> {
+    use byteorder::ReadBytesExt;
+    use byteorder::{BE, LE};
+    Ok(match ei.byte_order {
+        model::ByteOrder::LittleEndian => {
+            if ei.header_type == ScalarType::UInt64 {
+                header_buf.read_u64::<LE>()? as usize
+            } else {
+                header_buf.read_u32::<LE>()? as usize
+            }
+        }
+        model::ByteOrder::BigEndian => {
+            if ei.header_type == ScalarType::UInt64 {
+                header_buf.read_u64::<BE>()? as usize
+            } else {
+                header_buf.read_u32::<BE>()? as usize
+            }
+        }
+    })
+}
+
+/// Returns an allocated decompressed Vec of bytes.
+// Allow this warning which are fired when compression is disabled.
+#[allow(unused_variables)]
+fn decode_and_decompress<'a, D, B>(
+    buf: &'a mut Vec<u8>,
+    mut decode: D,
+    mut to_b64: B,
+    data: &'a [u8],
+    header_bytes: usize,
+    ei: EncodingInfo,
+) -> std::result::Result<Vec<u8>, ValidationError>
+where
+    D: for<'b> FnMut(&'b [u8], &'b mut Vec<u8>) -> std::result::Result<&'b [u8], ValidationError>,
+    B: FnMut(usize) -> usize,
+{
+    use std::io::Cursor;
+
+    // Compressed data has a more complex header.
+    // The data is organized as [nb][nu][np][nc_1]...[nc_nb][Data]
+    // Where
+    //   [nb] = Number of blocks in the data array
+    //   [nu] = Block size before compression
+    //   [np] = Size of the last partial block before compression (zero if it is not needed)
+    //   [nc_i] = Size in bytes of block i after compression
+    // See https://vtk.org/Wiki/VTK_XML_Formats for details.
+    // In this case we don't know how many bytes are in the data array so we must first read
+    // this information from a header.
+
+    // First we need to determine the number of blocks stored.
+    let num_blocks = {
+        let encoded_header = &data[0..to_b64(header_bytes)];
+        let decoded_header = decode(encoded_header, buf)?;
+        read_header_num(&mut Cursor::new(decoded_header), ei)?
+    };
+
+    let full_header_bytes = header_bytes * (3 + num_blocks); // nb + nu + np + sum_i nc_i
+    buf.clear();
+
+    let encoded_header = &data[0..to_b64(full_header_bytes)];
+    let decoded_header = decode(encoded_header, buf)?;
+    let mut header_cursor = Cursor::new(decoded_header);
+    let _nb = read_header_num(&mut header_cursor, ei); // We already know the number of blocks
+    let _nu = read_header_num(&mut header_cursor, ei);
+    let _np = read_header_num(&mut header_cursor, ei);
+    let nc_total = (0..num_blocks).fold(0, |acc, _| {
+        acc + read_header_num(&mut header_cursor, ei).unwrap_or(0)
+    });
+    let num_data_bytes = to_b64(nc_total);
+    let start = to_b64(full_header_bytes);
+    buf.clear();
+    let encoded_data = &data[start..start + num_data_bytes];
+    let decoded_data = decode(encoded_data, buf)?;
+
+    // Now that the data is decoded, what is left is to decompress it.
+    match ei.compressor {
+        Compressor::ZLib => {
+            #[cfg(not(feature = "flate2"))]
+            {
+                return Err(ValidationError::MissingCompressionLibrary(ei.compressor));
+            }
+            #[cfg(feature = "flate2")]
+            {
+                use std::io::Read;
+                let mut out = Vec::new();
+                let mut decoder = flate2::read::ZlibDecoder::new(decoded_data);
+                decoder.read_to_end(&mut out)?;
+                Ok(out)
+            }
+        }
+        Compressor::LZ4 => {
+            #[cfg(not(feature = "lz4"))]
+            {
+                return Err(ValidationError::MissingCompressionLibrary(ei.compressor));
+            }
+            #[cfg(feature = "lz4")]
+            {
+                Ok(lz4::decompress(decoded_data, num_data_bytes)?)
+            }
+        }
+        Compressor::LZMA => {
+            #[cfg(not(feature = "xz2"))]
+            {
+                return Err(ValidationError::MissingCompressionLibrary(ei.compressor));
+            }
+            #[cfg(feature = "xz2")]
+            {
+                use std::io::Read;
+                let mut out = Vec::new();
+                let mut decoder = xz2::read::XzDecoder::new(decoded_data);
+                decoder.read_to_end(&mut out)?;
+                Ok(out)
+            }
+        }
+        _ => {
+            unreachable!()
+        }
+    }
+}
+
 impl AppendedData {
     /// Extract the decompressed and unencoded raw bytes from appended data.
     ///
@@ -2223,14 +2403,6 @@ impl AppendedData {
         scalar_type: ScalarType,
         ei: EncodingInfo,
     ) -> std::result::Result<model::IOBuffer, ValidationError> {
-        // Convert number of target bytes to number of chars in base64 encoding.
-        fn to_b64(bytes: usize) -> usize {
-            4 * (bytes as f64 / 3.0).ceil() as usize
-            //(bytes * 4 + 1) / 3 + match bytes % 3 {
-            //    1 => 2, 2 => 1, _ => 0
-            //}
-        }
-
         let header_bytes = ei.header_type.size();
         let expected_num_bytes = num_elements * scalar_type.size();
         let mut start = offset;
@@ -2275,136 +2447,10 @@ impl AppendedData {
             };
         }
 
-        // Compressed data has a more complex header.
-        // The data is organized as [nb][nu][np][nc_1]...[nc_nb][Data]
-        // Where
-        //   [nb] = Number of blocks in the data array
-        //   [nu] = Block size before compression
-        //   [np] = Size of the last partial block before compression (zero if it is not needed)
-        //   [nc_i] = Size in bytes of block i after compression
-        // See https://vtk.org/Wiki/VTK_XML_Formats for details.
-        // In this case we dont know how many bytes are in the data array so we must first read
-        // this information from a header.
-
-        // Helper function to read a single header number, which depends on the encoding parameters.
-        fn read_header_num<R: AsRef<[u8]>>(
-            header_buf: &mut std::io::Cursor<R>,
-            ei: EncodingInfo,
-        ) -> std::result::Result<usize, ValidationError> {
-            use byteorder::ReadBytesExt;
-            use byteorder::{BE, LE};
-            Ok(match ei.byte_order {
-                model::ByteOrder::LittleEndian => {
-                    if ei.header_type == ScalarType::UInt64 {
-                        header_buf.read_u64::<LE>()? as usize
-                    } else {
-                        header_buf.read_u32::<LE>()? as usize
-                    }
-                }
-                model::ByteOrder::BigEndian => {
-                    if ei.header_type == ScalarType::UInt64 {
-                        header_buf.read_u64::<BE>()? as usize
-                    } else {
-                        header_buf.read_u32::<BE>()? as usize
-                    }
-                }
-            })
-        }
-
-        // Allow this warning which are fired when compression is disabled.
-        #[allow(unused_variables)]
-        fn get_data_slice<'a, D, B>(
-            buf: &'a mut Vec<u8>,
-            mut decode: D,
-            mut to_b64: B,
-            data: &'a [u8],
-            header_bytes: usize,
-            ei: EncodingInfo,
-        ) -> std::result::Result<Vec<u8>, ValidationError>
-        where
-            D: for<'b> FnMut(
-                &'b [u8],
-                &'b mut Vec<u8>,
-            ) -> std::result::Result<&'b [u8], ValidationError>,
-            B: FnMut(usize) -> usize,
-        {
-            use std::io::Cursor;
-
-            // First we need to determine the number of blocks stored.
-            let num_blocks = {
-                let encoded_header = &data[0..to_b64(header_bytes)];
-                let decoded_header = decode(encoded_header, buf)?;
-                read_header_num(&mut Cursor::new(decoded_header), ei)?
-            };
-
-            let full_header_bytes = header_bytes * (3 + num_blocks); // nb + nu + np + sum_i nc_i
-            buf.clear();
-
-            let encoded_header = &data[0..to_b64(full_header_bytes)];
-            let decoded_header = decode(encoded_header, buf)?;
-            let mut header_cursor = Cursor::new(decoded_header);
-            let _nb = read_header_num(&mut header_cursor, ei); // We already know the number of blocks
-            let _nu = read_header_num(&mut header_cursor, ei);
-            let _np = read_header_num(&mut header_cursor, ei);
-            let nc_total = (0..num_blocks).fold(0, |acc, _| {
-                acc + read_header_num(&mut header_cursor, ei).unwrap_or(0)
-            });
-            let num_data_bytes = to_b64(nc_total);
-            let start = to_b64(full_header_bytes);
-            buf.clear();
-            let encoded_data = &data[start..start + num_data_bytes];
-            let decoded_data = decode(encoded_data, buf)?;
-
-            // Now that the data is decoded, what is left is to decompress it.
-            match ei.compressor {
-                Compressor::ZLib => {
-                    #[cfg(not(feature = "flate2"))]
-                    {
-                        return Err(ValidationError::MissingCompressionLibrary(ei.compressor));
-                    }
-                    #[cfg(feature = "flate2")]
-                    {
-                        use std::io::Read;
-                        let mut out = Vec::new();
-                        let mut decoder = flate2::read::ZlibDecoder::new(decoded_data);
-                        decoder.read_to_end(&mut out)?;
-                        Ok(out)
-                    }
-                }
-                Compressor::LZ4 => {
-                    #[cfg(not(feature = "lz4"))]
-                    {
-                        return Err(ValidationError::MissingCompressionLibrary(ei.compressor));
-                    }
-                    #[cfg(feature = "lz4")]
-                    {
-                        Ok(lz4::decompress(decoded_data, num_data_bytes)?)
-                    }
-                }
-                Compressor::LZMA => {
-                    #[cfg(not(feature = "xz2"))]
-                    {
-                        return Err(ValidationError::MissingCompressionLibrary(ei.compressor));
-                    }
-                    #[cfg(feature = "xz2")]
-                    {
-                        use std::io::Read;
-                        let mut out = Vec::new();
-                        let mut decoder = xz2::read::XzDecoder::new(decoded_data);
-                        decoder.read_to_end(&mut out)?;
-                        Ok(out)
-                    }
-                }
-                _ => {
-                    unreachable!()
-                }
-            }
-        }
-
         let out = match self.encoding {
             Encoding::Raw => {
                 let mut buf = Vec::new();
-                get_data_slice(
+                decode_and_decompress(
                     &mut buf,
                     |header, _| Ok(header),
                     |x| x,
@@ -2415,16 +2461,9 @@ impl AppendedData {
             }
             Encoding::Base64 => {
                 let mut buf = Vec::new();
-                get_data_slice(
+                decode_and_decompress(
                     &mut buf,
-                    |header, buf| {
-                        base64::decode_config_buf(
-                            header,
-                            base64::STANDARD.decode_allow_trailing_bits(true),
-                            buf,
-                        )?;
-                        Ok(buf.as_slice())
-                    },
+                    base64_decode_buf,
                     to_b64,
                     &self.data.0[offset..],
                     header_bytes,

@@ -246,7 +246,6 @@ fn xml_ascii() -> Result {
 }
 
 #[test]
-#[ignore]
 #[cfg(feature = "xz2")]
 fn xml_lzma() -> Result {
     let mut vtu = Vtk::import("./assets/pygmsh/lzma.vtu")?;
@@ -268,7 +267,6 @@ fn xml_no_compression() -> Result {
 }
 
 #[test]
-#[ignore]
 #[cfg(feature = "flate2")]
 fn xml_zlib() -> Result {
     let mut vtu = Vtk::import("./assets/pygmsh/zlib.vtu")?;
