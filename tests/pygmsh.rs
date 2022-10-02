@@ -249,7 +249,6 @@ fn xml_ascii() -> Result {
 }
 
 #[test]
-#[ignore]
 #[cfg(feature = "xml")]
 #[cfg(feature = "xz2")]
 fn xml_lzma() -> Result {
@@ -273,7 +272,6 @@ fn xml_no_compression() -> Result {
 }
 
 #[test]
-#[ignore]
 #[cfg(feature = "xml")]
 #[cfg(feature = "flate2")]
 fn xml_zlib() -> Result {
