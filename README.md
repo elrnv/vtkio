@@ -20,7 +20,7 @@ To use this library simply add the crate name to your `Cargo.toml` file:
 
 ```rust
 [dependencies]
-vtkio = "0.6"
+vtkio = "0.7"
 ```
 
 
@@ -144,6 +144,39 @@ fn make_mixed_flat_elements() -> Vtk {
 }
 ```
 
+### Extract field data
+
+Once a Vtk file is read or loaded from a file, it is useful to extract useful data from it.
+In the following snippet, an "id" field attached to vertices is extracted from a Vtk struct.
+
+```rust
+fn extract_id_field(vtk: Vtk) -> Vec<i32> {
+    let pieces = if let DataSet::UnstructuredGrid { pieces, .. } = vtk.data {
+        pieces
+    } else {
+        panic!("Wrong vtk data type");
+    };
+
+    // If piece is already inline, this just returns a piece data clone.
+    let piece = pieces[0].load_piece_data(None).expect("Failed to load piece data");
+
+    let attribute = &piece.data.point[0];
+
+    if let Attribute::Field { data_array, .. } = attribute {
+         data_array
+            .iter()
+            .find(|&DataArrayBase { name, .. }| name == "id")
+            .expect("Failed to find id field")
+            .data
+            .clone()
+            .cast_into::<i32>()
+            .expect("Failed cast")
+    } else {
+        panic!("No field attribute found");
+    }
+}
+```
+
 
 ## Features
 
@@ -163,14 +196,14 @@ add it to the list under `features`. For instance to disable only the `compressi
 
 ```rust
 [dependencies]
-vtkio = { version = "0.6", default-features = false, features = ["xml"] }
+vtkio = { version = "0.7", default-features = false, features = ["xml"] }
 ```
 
 To disable all additional features use
 
 ```rust
 [dependencies]
-vtkio = { version = "0.6", default-features = false }
+vtkio = { version = "0.7", default-features = false }
 ```
 
 # Changes
