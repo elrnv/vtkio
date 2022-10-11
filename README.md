@@ -168,7 +168,6 @@ fn extract_id_field(vtk: Vtk) -> Vec<i32> {
             .find(|&DataArrayBase { name, .. }| name == "id")
             .expect("Failed to find id field")
             .data
-            .clone()
             .cast_into::<i32>()
             .expect("Failed cast")
     } else {
