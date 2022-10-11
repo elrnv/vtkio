@@ -2331,9 +2331,9 @@ where
     let encoded_header = &data[0..to_b64(full_header_bytes)];
     let decoded_header = decode(encoded_header, buf)?;
     let mut header_cursor = Cursor::new(decoded_header);
-    let _nb = read_header_num(&mut header_cursor, ei); // We already know the number of blocks
-    let _nu = read_header_num(&mut header_cursor, ei);
-    let _np = read_header_num(&mut header_cursor, ei);
+    let _nb = read_header_num(&mut header_cursor, ei)?; // We already know the number of blocks
+    let nu = read_header_num(&mut header_cursor, ei)?; // Block size before compression
+    let np = read_header_num(&mut header_cursor, ei)?; // Last block size before compression
     let nc_total = (0..num_blocks).fold(0, |acc, _| {
         acc + read_header_num(&mut header_cursor, ei).unwrap_or(0)
     });
@@ -2366,7 +2366,13 @@ where
             }
             #[cfg(feature = "lz4")]
             {
-                Ok(lz4::decompress(decoded_data, num_data_bytes)?)
+                let mut uncompressed_size = nu * num_blocks;
+                if np > 0 && num_blocks > 0 {
+                    // If the last block has size, add it instead of nu
+                    uncompressed_size -= nu;
+                    uncompressed_size += np;
+                }
+                Ok(lz4::decompress(decoded_data, uncompressed_size)?)
             }
         }
         Compressor::LZMA => {

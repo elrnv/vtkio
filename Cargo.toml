@@ -23,7 +23,7 @@ num-derive = "0.3"
 byteorder = "1.3"
 base64 = "0.13"
 bytemuck = { version = "1.5", features = ["extern_crate_alloc"] }
-lz4 = { package = "lz4_flex", version = "0.7", optional = true }
+lz4 = { package = "lz4_flex", version = "0.9", optional = true }
 flate2 = { version = "1.0.19", optional = true }
 xz2 = { version = "0.1.6", optional = true } # LZMA
 quick-xml = { version = "0.22", features = ["serialize"], optional = true }
