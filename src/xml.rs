@@ -10,9 +10,11 @@ mod se;
 
 use quick_xml::de;
 use std::convert::{TryFrom, TryInto};
-use std::io::{BufRead, Write};
+use std::io::BufRead;
 use std::path::Path;
 
+use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
+use base64::Engine as _;
 use serde::{Deserialize, Serialize};
 
 use crate::model;
@@ -119,8 +121,7 @@ impl From<std::io::Error> for Error {
 /// Module used to serialize and deserialize the compressor enum.
 mod compressor {
     use super::Compressor;
-    use serde::de::{self, Deserialize, Deserializer, Visitor};
-    use serde::ser::{Serialize, Serializer};
+    use serde::de::{self, Visitor};
     use std::fmt;
 
     struct CompressorVisitor;
@@ -192,10 +193,12 @@ mod extent {
             let mut iter = v.split_ascii_whitespace();
             let mut count = 0;
             let mut advance = |i: &mut std::str::SplitAsciiWhitespace| {
-                let elem = i.next().ok_or(de::Error::invalid_length(count, &self))?;
+                let elem = i
+                    .next()
+                    .ok_or_else(|| de::Error::invalid_length(count, &self))?;
                 count += 1;
                 elem.parse()
-                    .map_err(|e| de::Error::custom(&format!("failed to parse integer: {}", e)))
+                    .map_err(|e| de::Error::custom(format!("failed to parse integer: {}", e)))
             };
             Ok([
                 advance(&mut iter)?,
@@ -255,7 +258,7 @@ mod vector3 {
                     .ok_or_else(|| de::Error::invalid_length(count, &self))?;
                 count += 1;
                 elem.parse()
-                    .map_err(|e| de::Error::custom(&format!("failed to parse float: {}", e)))
+                    .map_err(|e| de::Error::custom(format!("failed to parse float: {}", e)))
             };
             Ok([
                 advance(&mut iter)?,
@@ -319,9 +322,9 @@ mod version {
             let advance = |i: &mut std::str::Split<'_, char>| {
                 let elem = i
                     .next()
-                    .ok_or(de::Error::custom("need a major and minor version numbers"))?;
+                    .ok_or_else(|| de::Error::custom("need a major and minor version numbers"))?;
                 elem.parse()
-                    .map_err(|e| de::Error::custom(&format!("failed to parse version: {}", e)))
+                    .map_err(|e| de::Error::custom(format!("failed to parse version: {}", e)))
             };
             Ok(Version::new((advance(&mut iter)?, advance(&mut iter)?)))
         }
@@ -482,10 +485,7 @@ mod data {
     use std::fmt;
     // A helper function to detect whitespace bytes.
     fn is_whitespace(b: u8) -> bool {
-        match b {
-            b' ' | b'\r' | b'\n' | b'\t' => true,
-            _ => false,
-        }
+        matches!(b, b' ' | b'\r' | b'\n' | b'\t')
     }
 
     #[derive(Debug, serde::Deserialize)]
@@ -534,7 +534,7 @@ mod data {
         where
             D: Deserializer<'de>,
         {
-            Ok(d.deserialize_any(DataVisitor)?)
+            d.deserialize_any(DataVisitor)
         }
     }
 
@@ -593,11 +593,11 @@ mod data {
         where
             D: Deserializer<'de>,
         {
-            Ok(d.deserialize_struct(
+            d.deserialize_struct(
                 "AppendedData",
                 &["@encoding", "$value"],
                 AppendedDataVisitor,
-            )?)
+            )
         }
     }
 
@@ -647,129 +647,9 @@ mod data {
         where
             D: Deserializer<'de>,
         {
-            Ok(d.deserialize_bytes(RawDataVisitor)?)
+            d.deserialize_bytes(RawDataVisitor)
         }
     }
-}
-
-mod data_set {
-    use super::*;
-    use serde::ser::{Serialize, SerializeStruct, Serializer};
-
-    // impl Serialize for ImageData {
-    //     fn serialize<S>(&self, s: S) -> std::result::Result<S::Ok, S::Error>
-    //     where
-    //         S: Serializer,
-    //     {
-    //         let mut ss = s.serialize_struct("ImageData", 3 + self.pieces.len())?;
-    //         ss.serialize_field("WholeExtent", &self.whole_extent)?;
-    //         ss.serialize_field("Origin", &vector3::Vector3(self.origin))?;
-    //         ss.serialize_field("Spacing", &vector3::Vector3(self.spacing))?;
-    //         for p in &self.pieces {
-    //             ss.serialize_field("Piece", p)?;
-    //         }
-    //         ss.end()
-    //     }
-    // }
-
-    // impl Serialize for Grid {
-    //     fn serialize<S>(&self, s: S) -> std::result::Result<S::Ok, S::Error>
-    //     where
-    //         S: Serializer,
-    //     {
-    //         let mut ss = s.serialize_struct("Grid", 1 + &self.pieces.len())?;
-    //         ss.serialize_field("WholeExtent", &self.whole_extent)?;
-    //         for p in &self.pieces {
-    //             ss.serialize_field("Piece", p)?;
-    //         }
-    //         ss.end()
-    //     }
-    // }
-
-    // impl Serialize for Unstructured {
-    //     fn serialize<S>(&self, s: S) -> std::result::Result<S::Ok, S::Error>
-    //     where
-    //         S: Serializer,
-    //     {
-    //         let mut ss = s.serialize_struct("Unstructured", self.pieces.len())?;
-    //         for p in &self.pieces {
-    //             ss.serialize_field("Piece", p)?;
-    //         }
-    //         ss.end()
-    //     }
-    // }
-
-    // impl Serialize for PImageData {
-    //     fn serialize<S>(&self, s: S) -> std::result::Result<S::Ok, S::Error>
-    //     where
-    //         S: Serializer,
-    //     {
-    //         let mut ss = s.serialize_struct("PImageData", 6 + self.pieces.len())?;
-    //         ss.serialize_field("GhostLevel", &self.ghost_level)?;
-    //         ss.serialize_field("WholeExtent", &self.whole_extent)?;
-    //         ss.serialize_field("Origin", &vector3::Vector3(self.origin))?;
-    //         ss.serialize_field("Spacing", &vector3::Vector3(self.spacing))?;
-    //         ss.serialize_field("PPointData", &self.point_data)?;
-    //         ss.serialize_field("PCellData", &self.cell_data)?;
-    //         for p in &self.pieces {
-    //             ss.serialize_field("Piece", p)?;
-    //         }
-    //         ss.end()
-    //     }
-    // }
-
-    // impl Serialize for PUnstructured {
-    //     fn serialize<S>(&self, s: S) -> std::result::Result<S::Ok, S::Error>
-    //     where
-    //         S: Serializer,
-    //     {
-    //         let mut ss = s.serialize_struct("PUnstructured", 4 + self.pieces.len())?;
-    //         ss.serialize_field("GhostLevel", &self.ghost_level)?;
-    //         ss.serialize_field("PPointData", &self.point_data)?;
-    //         ss.serialize_field("PCellData", &self.cell_data)?;
-    //         ss.serialize_field("PPoints", &self.points)?;
-    //         for p in &self.pieces {
-    //             ss.serialize_field("Piece", p)?;
-    //         }
-    //         ss.end()
-    //     }
-    // }
-
-    // impl Serialize for PRectilinearGrid {
-    //     fn serialize<S>(&self, s: S) -> std::result::Result<S::Ok, S::Error>
-    //     where
-    //         S: Serializer,
-    //     {
-    //         let mut ss = s.serialize_struct("PRectilinearGrid", 5 + self.pieces.len())?;
-    //         ss.serialize_field("GhostLevel", &self.ghost_level)?;
-    //         ss.serialize_field("WholeExtent", &self.whole_extent)?;
-    //         ss.serialize_field("PPointData", &self.point_data)?;
-    //         ss.serialize_field("PCellData", &self.cell_data)?;
-    //         ss.serialize_field("PCoordinates", &self.coords)?;
-    //         for p in &self.pieces {
-    //             ss.serialize_field("Piece", p)?;
-    //         }
-    //         ss.end()
-    //     }
-    // }
-
-    // impl Serialize for PStructuredGrid {
-    //     fn serialize<S>(&self, s: S) -> std::result::Result<S::Ok, S::Error>
-    //     where
-    //         S: Serializer,
-    //     {
-    //         let mut ss = s.serialize_struct("PStructuredGrid", 5 + self.pieces.len())?;
-    //         ss.serialize_field("GhostLevel", &self.ghost_level)?;
-    //         ss.serialize_field("WholeExtent", &self.whole_extent)?;
-    //         ss.serialize_field("PPointData", &self.point_data)?;
-    //         ss.serialize_field("PCellData", &self.cell_data)?;
-    //         ss.serialize_field("PPoints", &self.points)?;
-    //         for p in &self.pieces {
-    //             ss.serialize_field("Piece", p)?;
-    //         }
-    //         ss.end()
-    //     }
-    // }
 }
 
 mod topo {
@@ -810,8 +690,8 @@ mod topo {
                     _ => return Err(make_err()),
                 }
             }
-            let connectivity = connectivity.ok_or_else(|| make_err())?;
-            let offsets = offsets.ok_or_else(|| make_err())?;
+            let connectivity = connectivity.ok_or_else(make_err)?;
+            let offsets = offsets.ok_or_else(make_err)?;
             Ok(Topo {
                 connectivity,
                 offsets,
@@ -824,7 +704,7 @@ mod topo {
         where
             D: Deserializer<'de>,
         {
-            Ok(d.deserialize_struct("Topo", &["DataArray"; 2], TopoVisitor)?)
+            d.deserialize_struct("Topo", &["DataArray"; 2], TopoVisitor)
         }
     }
 
@@ -874,14 +754,14 @@ mod topo {
         where
             D: Deserializer<'de>,
         {
-            Ok(d.deserialize_struct("Cells", &["DataArray"; 3], CellsVisitor)?)
+            d.deserialize_struct("Cells", &["DataArray"; 3], CellsVisitor)
         }
     }
 }
 
 mod piece {
     use super::{AttributeData, Cells, Coordinates, Extent, Piece, Points, Topo};
-    use serde::de::{Deserialize, Deserializer, MapAccess, Visitor};
+    use serde::de::{MapAccess, Visitor};
     use std::fmt;
 
     #[derive(Debug, serde::Deserialize)]
@@ -1029,8 +909,7 @@ mod vtkfile {
     use super::{
         model, AppendedData, Compressor, DataSet, DataSetType, ScalarType, Unstructured, VTKFile,
     };
-    use serde::de::{Deserialize, Deserializer, MapAccess, Visitor};
-    use serde::ser::{Serialize, Serializer};
+    use serde::de::{MapAccess, Visitor};
     use std::fmt;
 
     //impl Serialize for VTKFile {
@@ -1582,7 +1461,7 @@ impl Cells {
         use num_traits::FromPrimitive;
         let type_codes = buf
             .cast_into::<u8>()
-            .ok_or_else(|| ValidationError::InvalidDataFormat)?;
+            .ok_or(ValidationError::InvalidDataFormat)?;
         type_codes
             .into_iter()
             .map(|x| model::CellType::from_u8(x).ok_or_else(|| ValidationError::InvalidCellType(x)))
@@ -1600,7 +1479,7 @@ impl Cells {
         let types = Self::get_type_codes(self.types.into_io_buffer(l, appended, ei)?)?;
 
         let offsets: Option<Vec<u64>> = self.offsets.into_io_buffer(l, appended, ei)?.cast_into();
-        let offsets = offsets.ok_or_else(|| ValidationError::InvalidDataFormat)?;
+        let offsets = offsets.ok_or(ValidationError::InvalidDataFormat)?;
 
         // Count the total number of vertices we expect in the connectivity array.
         let num_vertices: usize = offsets.last().map(|&x| x as usize).unwrap_or(0);
@@ -1609,7 +1488,7 @@ impl Cells {
             .connectivity
             .into_io_buffer(num_vertices, appended, ei)?
             .cast_into();
-        let connectivity = connectivity.ok_or_else(|| ValidationError::InvalidDataFormat)?;
+        let connectivity = connectivity.ok_or(ValidationError::InvalidDataFormat)?;
         Ok(model::Cells {
             cell_verts: model::VertexNumbers::XML {
                 connectivity,
@@ -1651,7 +1530,7 @@ impl Topo {
             .offsets
             .into_io_buffer(num_elements, appended, ei)?
             .cast_into();
-        let offsets = offsets.ok_or_else(|| ValidationError::InvalidDataFormat)?;
+        let offsets = offsets.ok_or(ValidationError::InvalidDataFormat)?;
 
         // Get the number of elements in the connectivity array from the last offset.
         let num_values = usize::try_from(*offsets.last().unwrap_or(&0))
@@ -1661,7 +1540,7 @@ impl Topo {
             .into_io_buffer(num_values, appended, ei)?
             .cast_into();
         Ok(model::VertexNumbers::XML {
-            connectivity: connectivity.ok_or_else(|| ValidationError::InvalidDataFormat)?,
+            connectivity: connectivity.ok_or(ValidationError::InvalidDataFormat)?,
             offsets,
         })
     }
@@ -1755,44 +1634,41 @@ impl AttributeData {
     pub fn from_model_attributes(attribs: Vec<model::Attribute>, ei: EncodingInfo) -> Self {
         let mut attribute_data = AttributeData::default();
         for attrib in attribs {
-            match attrib {
-                model::Attribute::DataArray(data) => {
-                    // Only pick the first found attribute as the active one.
-                    match data.elem {
-                        model::ElementType::Scalars { .. } => {
-                            if attribute_data.scalars.is_none() {
-                                attribute_data.scalars = Some(data.name.to_string());
-                            }
+            if let model::Attribute::DataArray(data) = attrib {
+                // Only pick the first found attribute as the active one.
+                match data.elem {
+                    model::ElementType::Scalars { .. } => {
+                        if attribute_data.scalars.is_none() {
+                            attribute_data.scalars = Some(data.name.to_string());
                         }
-                        model::ElementType::Vectors => {
-                            if attribute_data.vectors.is_none() {
-                                attribute_data.vectors = Some(data.name.to_string());
-                            }
-                        }
-                        model::ElementType::Normals => {
-                            if attribute_data.normals.is_none() {
-                                attribute_data.normals = Some(data.name.to_string());
-                            }
-                        }
-                        model::ElementType::TCoords(_) => {
-                            if attribute_data.tcoords.is_none() {
-                                attribute_data.tcoords = Some(data.name.to_string());
-                            }
-                        }
-                        model::ElementType::Tensors => {
-                            if attribute_data.tensors.is_none() {
-                                attribute_data.tensors = Some(data.name.to_string());
-                            }
-                        }
-                        _ => {}
                     }
-                    attribute_data
-                        .data_array
-                        .push(DataArray::from_model_data_array(data, ei));
+                    model::ElementType::Vectors => {
+                        if attribute_data.vectors.is_none() {
+                            attribute_data.vectors = Some(data.name.to_string());
+                        }
+                    }
+                    model::ElementType::Normals => {
+                        if attribute_data.normals.is_none() {
+                            attribute_data.normals = Some(data.name.to_string());
+                        }
+                    }
+                    model::ElementType::TCoords(_) => {
+                        if attribute_data.tcoords.is_none() {
+                            attribute_data.tcoords = Some(data.name.to_string());
+                        }
+                    }
+                    model::ElementType::Tensors => {
+                        if attribute_data.tensors.is_none() {
+                            attribute_data.tensors = Some(data.name.to_string());
+                        }
+                    }
+                    _ => {}
                 }
-                // Field attributes are not supported, they are simply ignored.
-                _ => {}
+                attribute_data
+                    .data_array
+                    .push(DataArray::from_model_data_array(data, ei));
             }
+            // Field attributes are not supported, they are simply ignored.
         }
         attribute_data
     }
@@ -1956,7 +1832,7 @@ impl DataArray {
     pub fn from_io_buffer(buf: model::IOBuffer, ei: EncodingInfo) -> Self {
         DataArray {
             scalar_type: buf.scalar_type().into(),
-            data: vec![Data::Data(base64::encode(
+            data: vec![Data::Data(BASE64_STANDARD.encode(
                 if ei.header_type == ScalarType::UInt64 {
                     buf.into_bytes_with_size(ei.byte_order, ei.compressor, ei.compression_level)
                 } else {
@@ -1994,7 +1870,7 @@ impl DataArray {
         // It can also be compressed.
         if matches!(ei.compressor, Compressor::None) {
             // First byte gives the bytes
-            let bytes = base64::decode(data.into_string())?;
+            let bytes = BASE64_STANDARD.decode(data.into_string())?;
             // eprintln!("{:?}", &bytes[..header_bytes]);
             return Ok(IOBuffer::from_bytes(
                 &bytes[header_bytes..],
@@ -2289,14 +2165,8 @@ pub struct AppendedData {
     pub data: RawData,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct RawData(Vec<u8>);
-
-impl Default for RawData {
-    fn default() -> RawData {
-        RawData(Vec::new())
-    }
-}
 
 /// Supported binary encoding formats.
 #[derive(Copy, Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -2306,16 +2176,17 @@ pub enum Encoding {
     Raw,
 }
 
+const BASE64_ENGINE: base64::engine::GeneralPurpose = base64::engine::GeneralPurpose::new(
+    &base64::alphabet::STANDARD,
+    base64::engine::general_purpose::PAD.with_decode_allow_trailing_bits(true),
+);
+
 /// Customized base64::decode function that accepts a buffer.
 fn base64_decode_buf<'a>(
     input: &[u8],
     buf: &'a mut Vec<u8>,
 ) -> std::result::Result<&'a [u8], ValidationError> {
-    base64::decode_config_buf(
-        input,
-        base64::STANDARD.decode_allow_trailing_bits(true),
-        buf,
-    )?;
+    BASE64_ENGINE.decode_vec(input, buf)?;
     Ok(buf.as_slice())
 }
 
@@ -2505,7 +2376,7 @@ impl AppendedData {
                     // Compute how many base64 chars we need to decode l elements.
                     let num_source_bytes = to_b64(num_target_bytes);
                     let bytes = &self.data.0[start..start + num_source_bytes];
-                    let bytes = base64::decode(bytes)?;
+                    let bytes = BASE64_STANDARD.decode(bytes)?;
                     Ok(model::IOBuffer::from_bytes(
                         &bytes[header_bytes..],
                         scalar_type.into(),
@@ -3041,8 +2912,7 @@ impl TryFrom<VTKFile> for model::Vtk {
                             let number_of_cells = extent.num_cells().try_into().unwrap();
                             let number_of_points = extent.num_points().try_into().unwrap();
                             let [nx, ny, nz] = extent.clone().into_dims();
-                            let coords =
-                                coordinates.ok_or_else(|| ValidationError::MissingCoordinates)?;
+                            let coords = coordinates.ok_or(ValidationError::MissingCoordinates)?;
                             let coords = coords.into_model_coordinates(
                                 [nx as usize, ny as usize, nz as usize],
                                 appended_data,
@@ -3598,7 +3468,7 @@ fn de_from_reader(reader: impl BufRead) -> Result<VTKFile> {
 
 /// Parse an XML VTK file from the given reader.
 pub(crate) fn parse(reader: impl BufRead) -> Result<VTKFile> {
-    Ok(de_from_reader(reader)?)
+    de_from_reader(reader)
 }
 
 /// Import an XML VTK file from the specified path.

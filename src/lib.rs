@@ -15,18 +15,16 @@
 //!
 //! ```no_run
 //! use vtkio::model::*; // import model definition of a VTK file
-//! fn main() {
-//!     use std::path::PathBuf;
-//!     let file_path = PathBuf::from("../assets/tet.vtk");
+//! use std::path::PathBuf;
+//! let file_path = PathBuf::from("../assets/tet.vtk");
 //!
-//!     let mut vtk_file = Vtk::import(&file_path)
-//!         .expect(&format!("Failed to load file: {:?}", file_path));
+//! let mut vtk_file = Vtk::import(&file_path)
+//!     .expect(&format!("Failed to load file: {:?}", file_path));
 //!
-//!     vtk_file.version = Version::new((4,2)); // arbitrary change
+//! vtk_file.version = Version::new((4,2)); // arbitrary change
 //!
-//!     vtk_file.export_ascii(&file_path)
-//!         .expect(&format!("Failed to save file: {:?}", file_path));
-//! }
+//! vtk_file.export_ascii(&file_path)
+//!     .expect(&format!("Failed to save file: {:?}", file_path));
 //! ```
 //!
 //! Files are sometimes provided as strings or byte slices, so it is also useful to be able to
@@ -34,18 +32,16 @@
 //!
 //! ```no_run
 //! use vtkio::model::*; // import model definition of a VTK file
-//! fn main() {
-//!     let data: &[u8] = include_str!("../assets/tet.vtk").as_bytes(); // Or just include_bytes!
+//! let data: &[u8] = include_str!("../assets/tet.vtk").as_bytes(); // Or just include_bytes!
 //!
-//!     let mut vtk_file = Vtk::parse_legacy_be(data).expect(&format!("Failed to parse file"));
+//! let mut vtk_file = Vtk::parse_legacy_be(data).expect(&format!("Failed to parse file"));
 //!
-//!     vtk_file.version = Version::new((4,2)); // arbitrary change
+//! vtk_file.version = Version::new((4,2)); // arbitrary change
 //!
-//!     let mut output = String::new();
-//!     Vtk::write_legacy_ascii(vtk_file, &mut output).expect(&format!("Failed to write file"));
+//! let mut output = String::new();
+//! Vtk::write_legacy_ascii(vtk_file, &mut output).expect(&format!("Failed to write file"));
 //!
-//!     println!("{}", output);
-//! }
+//! println!("{}", output);
 //! ```
 //!
 //! To quickly extract some data from a file, you can cast it to an `f64` type as follows

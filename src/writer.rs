@@ -201,9 +201,9 @@ mod write_vtk_impl {
 
         /// Extract a raw IO Error from our error if any. This helps annotate the IO error with
         /// where it originated from when reported from lower level functions.
-        impl Into<Option<std::io::ErrorKind>> for Error {
-            fn into(self) -> Option<std::io::ErrorKind> {
-                match self {
+        impl From<Error> for Option<std::io::ErrorKind> {
+            fn from(val: Error) -> Self {
+                match val {
                     Error::IOError(err) => Some(err),
                     _ => None,
                 }
@@ -272,16 +272,10 @@ mod write_vtk_impl {
                             num_comp,
                             lookup_table,
                         } => {
-                            writeln!(
-                                self,
-                                "SCALARS {} {} {}",
-                                name,
-                                ScalarType::from(data.scalar_type()),
-                                num_comp
-                            )
-                            .map_err(|_| {
-                                Error::Attribute(AttributeError::Scalars(EntryPart::Header))
-                            })?;
+                            writeln!(self, "SCALARS {} {} {}", name, data.scalar_type(), num_comp)
+                                .map_err(|_| {
+                                    Error::Attribute(AttributeError::Scalars(EntryPart::Header))
+                                })?;
                             writeln!(
                                 self,
                                 "LOOKUP_TABLE {}",
@@ -534,7 +528,7 @@ mod write_vtk_impl {
                                 )))
                             })?;
 
-                            num_cells += cur_num_cells as usize;
+                            num_cells += cur_num_cells;
                             Ok(())
                         };
 
@@ -635,7 +629,7 @@ mod write_vtk_impl {
 
                         self.write_cell_types::<BO>(cells.types)?;
 
-                        self.write_attributes::<BO>(data, num_points, num_cells as usize)?;
+                        self.write_attributes::<BO>(data, num_points, num_cells)?;
                     }
                 }
 

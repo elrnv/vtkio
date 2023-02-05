@@ -5,18 +5,14 @@
 
 mod var;
 
-use quick_xml::{
-    events::{BytesBytes, BytesContent, BytesEnd, BytesStart, Event},
-    se::Write,
-    DeError, Writer,
-};
-use serde::ser::{self, Impossible, Serialize};
+use quick_xml::{se::Write, DeError};
+use serde::ser::Serialize;
 
 //use var::{Map, Seq}; //, Struct};
 
 /// Serialize struct into a `Write`r
 pub fn to_writer<W: Write, S: Serialize>(writer: W, value: &S) -> Result<W, DeError> {
-    let mut serializer = quick_xml::se::Serializer::new(writer);
+    let serializer = quick_xml::se::Serializer::new(writer);
     value.serialize(serializer)
 }
 

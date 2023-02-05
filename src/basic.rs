@@ -313,7 +313,7 @@ pub fn parse_data_bit_vec(input: &[u8], n: usize, ft: FileType) -> IResult<&[u8]
     match ft {
         FileType::ASCII => many_m_n(n, n, ws(u8::from_ascii))(input),
         FileType::Binary => {
-            let nbytes: usize = n / 8 + if n % 8 == 0 { 0 } else { 1 };
+            let nbytes = n / 8 + usize::from(n % 8 != 0);
             if input.len() < nbytes {
                 // SAFETY: Can only be called for `nbytes` > 0 as `input.len()` and `nbytes` are both usize
                 unsafe {

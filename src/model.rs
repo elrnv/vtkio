@@ -297,13 +297,13 @@ impl<T: ToPrimitive + 'static> std::iter::FromIterator<T> for IOBuffer {
     }
 }
 
-impl<T: 'static> Into<Option<Vec<T>>> for IOBuffer {
-    fn into(self) -> Option<Vec<T>> {
+impl<T: 'static> From<IOBuffer> for Option<Vec<T>> {
+    fn from(val: IOBuffer) -> Self {
         use std::mem::transmute;
         // SAFETY: in each case we definitively determine the type of the expected Vec, so the
         // transmute is a noop.
         unsafe {
-            Some(match self {
+            Some(match val {
                 IOBuffer::U8(v) if TypeId::of::<T>() == TypeId::of::<u8>() => transmute(v),
                 IOBuffer::I8(v) if TypeId::of::<T>() == TypeId::of::<i8>() => transmute(v),
                 IOBuffer::U16(v) if TypeId::of::<T>() == TypeId::of::<u16>() => transmute(v),
@@ -900,6 +900,8 @@ pub type FieldArray = DataArrayBase<u32>;
 /// particular purpose (e.g. colors, texture coordinates).
 pub type DataArray = DataArrayBase<ElementType>;
 
+// DataArrayBase is generic and cannot be derived for all types correctly.
+#[allow(clippy::derivable_impls)]
 impl Default for DataArray {
     fn default() -> DataArray {
         DataArray {
@@ -1170,9 +1172,9 @@ impl ElementType {
         match self {
             ElementType::ColorScalars(n) => *n,
             ElementType::LookupTable => 4,
-            ElementType::Scalars { num_comp, .. } => *num_comp as u32,
+            ElementType::Scalars { num_comp, .. } => *num_comp,
             ElementType::Vectors | ElementType::Normals => 3,
-            ElementType::TCoords(n) => *n as u32,
+            ElementType::TCoords(n) => *n,
             ElementType::Tensors => 9,
             ElementType::Generic(n) => *n,
         }
@@ -1749,15 +1751,12 @@ impl<P: PieceData> Piece<P> {
         &mut self,
         source_path: Option<&Path>,
     ) -> Result<(), Error> {
-        match self {
-            Piece::Source(path, _) => {
-                let piece_path = build_piece_path(path, source_path);
-                let mut piece_vtk = Vtk::import(&piece_path)?;
-                piece_vtk.load_all_pieces()?;
-                let piece = Box::new(piece_vtk.data);
-                *self = Piece::Loaded(piece);
-            }
-            _ => {}
+        if let Piece::Source(path, _) = self {
+            let piece_path = build_piece_path(path, source_path);
+            let mut piece_vtk = Vtk::import(piece_path)?;
+            piece_vtk.load_all_pieces()?;
+            let piece = Box::new(piece_vtk.data);
+            *self = Piece::Loaded(piece);
         }
         Ok(())
     }
