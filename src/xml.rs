@@ -145,28 +145,28 @@ mod compressor {
         }
     }
 
-    impl Serialize for Compressor {
-        fn serialize<S>(&self, s: S) -> Result<S::Ok, S::Error>
-        where
-            S: Serializer,
-        {
-            let compressor = match self {
-                Compressor::ZLib => "vtkZLibDataCompressor",
-                Compressor::LZ4 => "vtkLZ4DataCompressor",
-                Compressor::LZMA => "vtkLZMADataCompressor",
-                Compressor::None => return s.serialize_none(),
-            };
-            s.serialize_str(compressor)
-        }
-    }
-    impl<'de> Deserialize<'de> for Compressor {
-        fn deserialize<D>(d: D) -> Result<Compressor, D::Error>
-        where
-            D: Deserializer<'de>,
-        {
-            d.deserialize_str(CompressorVisitor)
-        }
-    }
+    // impl Serialize for Compressor {
+    //     fn serialize<S>(&self, s: S) -> Result<S::Ok, S::Error>
+    //     where
+    //         S: Serializer,
+    //     {
+    //         let compressor = match self {
+    //             Compressor::ZLib => "vtkZLibDataCompressor",
+    //             Compressor::LZ4 => "vtkLZ4DataCompressor",
+    //             Compressor::LZMA => "vtkLZMADataCompressor",
+    //             Compressor::None => return s.serialize_none(),
+    //         };
+    //         s.serialize_str(compressor)
+    //     }
+    // }
+    // impl<'de> Deserialize<'de> for Compressor {
+    //     fn deserialize<D>(d: D) -> Result<Compressor, D::Error>
+    //     where
+    //         D: Deserializer<'de>,
+    //     {
+    //         d.deserialize_str(CompressorVisitor)
+    //     }
+    // }
 }
 
 /// Module used to serialize and deserialize whitespace separated sequences of 6 integers.
@@ -491,7 +491,7 @@ mod data {
     #[derive(Debug, serde::Deserialize)]
     #[serde(field_identifier)]
     enum Field {
-        #[serde(rename = "encoding")]
+        #[serde(rename = "@encoding")]
         Encoding,
         #[serde(rename = "$value")]
         Value,
@@ -593,7 +593,11 @@ mod data {
         where
             D: Deserializer<'de>,
         {
-            Ok(d.deserialize_struct("AppendedData", &["encoding", "$value"], AppendedDataVisitor)?)
+            Ok(d.deserialize_struct(
+                "AppendedData",
+                &["@encoding", "$value"],
+                AppendedDataVisitor,
+            )?)
         }
     }
 
@@ -652,120 +656,120 @@ mod data_set {
     use super::*;
     use serde::ser::{Serialize, SerializeStruct, Serializer};
 
-    impl Serialize for ImageData {
-        fn serialize<S>(&self, s: S) -> std::result::Result<S::Ok, S::Error>
-        where
-            S: Serializer,
-        {
-            let mut ss = s.serialize_struct("ImageData", 3 + self.pieces.len())?;
-            ss.serialize_field("WholeExtent", &self.whole_extent)?;
-            ss.serialize_field("Origin", &vector3::Vector3(self.origin))?;
-            ss.serialize_field("Spacing", &vector3::Vector3(self.spacing))?;
-            for p in &self.pieces {
-                ss.serialize_field("Piece", p)?;
-            }
-            ss.end()
-        }
-    }
+    // impl Serialize for ImageData {
+    //     fn serialize<S>(&self, s: S) -> std::result::Result<S::Ok, S::Error>
+    //     where
+    //         S: Serializer,
+    //     {
+    //         let mut ss = s.serialize_struct("ImageData", 3 + self.pieces.len())?;
+    //         ss.serialize_field("WholeExtent", &self.whole_extent)?;
+    //         ss.serialize_field("Origin", &vector3::Vector3(self.origin))?;
+    //         ss.serialize_field("Spacing", &vector3::Vector3(self.spacing))?;
+    //         for p in &self.pieces {
+    //             ss.serialize_field("Piece", p)?;
+    //         }
+    //         ss.end()
+    //     }
+    // }
 
-    impl Serialize for Grid {
-        fn serialize<S>(&self, s: S) -> std::result::Result<S::Ok, S::Error>
-        where
-            S: Serializer,
-        {
-            let mut ss = s.serialize_struct("Grid", 1 + &self.pieces.len())?;
-            ss.serialize_field("WholeExtent", &self.whole_extent)?;
-            for p in &self.pieces {
-                ss.serialize_field("Piece", p)?;
-            }
-            ss.end()
-        }
-    }
+    // impl Serialize for Grid {
+    //     fn serialize<S>(&self, s: S) -> std::result::Result<S::Ok, S::Error>
+    //     where
+    //         S: Serializer,
+    //     {
+    //         let mut ss = s.serialize_struct("Grid", 1 + &self.pieces.len())?;
+    //         ss.serialize_field("WholeExtent", &self.whole_extent)?;
+    //         for p in &self.pieces {
+    //             ss.serialize_field("Piece", p)?;
+    //         }
+    //         ss.end()
+    //     }
+    // }
 
-    impl Serialize for Unstructured {
-        fn serialize<S>(&self, s: S) -> std::result::Result<S::Ok, S::Error>
-        where
-            S: Serializer,
-        {
-            let mut ss = s.serialize_struct("Unstructured", self.pieces.len())?;
-            for p in &self.pieces {
-                ss.serialize_field("Piece", p)?;
-            }
-            ss.end()
-        }
-    }
+    // impl Serialize for Unstructured {
+    //     fn serialize<S>(&self, s: S) -> std::result::Result<S::Ok, S::Error>
+    //     where
+    //         S: Serializer,
+    //     {
+    //         let mut ss = s.serialize_struct("Unstructured", self.pieces.len())?;
+    //         for p in &self.pieces {
+    //             ss.serialize_field("Piece", p)?;
+    //         }
+    //         ss.end()
+    //     }
+    // }
 
-    impl Serialize for PImageData {
-        fn serialize<S>(&self, s: S) -> std::result::Result<S::Ok, S::Error>
-        where
-            S: Serializer,
-        {
-            let mut ss = s.serialize_struct("PImageData", 6 + self.pieces.len())?;
-            ss.serialize_field("GhostLevel", &self.ghost_level)?;
-            ss.serialize_field("WholeExtent", &self.whole_extent)?;
-            ss.serialize_field("Origin", &vector3::Vector3(self.origin))?;
-            ss.serialize_field("Spacing", &vector3::Vector3(self.spacing))?;
-            ss.serialize_field("PPointData", &self.point_data)?;
-            ss.serialize_field("PCellData", &self.cell_data)?;
-            for p in &self.pieces {
-                ss.serialize_field("Piece", p)?;
-            }
-            ss.end()
-        }
-    }
+    // impl Serialize for PImageData {
+    //     fn serialize<S>(&self, s: S) -> std::result::Result<S::Ok, S::Error>
+    //     where
+    //         S: Serializer,
+    //     {
+    //         let mut ss = s.serialize_struct("PImageData", 6 + self.pieces.len())?;
+    //         ss.serialize_field("GhostLevel", &self.ghost_level)?;
+    //         ss.serialize_field("WholeExtent", &self.whole_extent)?;
+    //         ss.serialize_field("Origin", &vector3::Vector3(self.origin))?;
+    //         ss.serialize_field("Spacing", &vector3::Vector3(self.spacing))?;
+    //         ss.serialize_field("PPointData", &self.point_data)?;
+    //         ss.serialize_field("PCellData", &self.cell_data)?;
+    //         for p in &self.pieces {
+    //             ss.serialize_field("Piece", p)?;
+    //         }
+    //         ss.end()
+    //     }
+    // }
 
-    impl Serialize for PUnstructured {
-        fn serialize<S>(&self, s: S) -> std::result::Result<S::Ok, S::Error>
-        where
-            S: Serializer,
-        {
-            let mut ss = s.serialize_struct("PUnstructured", 4 + self.pieces.len())?;
-            ss.serialize_field("GhostLevel", &self.ghost_level)?;
-            ss.serialize_field("PPointData", &self.point_data)?;
-            ss.serialize_field("PCellData", &self.cell_data)?;
-            ss.serialize_field("PPoints", &self.points)?;
-            for p in &self.pieces {
-                ss.serialize_field("Piece", p)?;
-            }
-            ss.end()
-        }
-    }
+    // impl Serialize for PUnstructured {
+    //     fn serialize<S>(&self, s: S) -> std::result::Result<S::Ok, S::Error>
+    //     where
+    //         S: Serializer,
+    //     {
+    //         let mut ss = s.serialize_struct("PUnstructured", 4 + self.pieces.len())?;
+    //         ss.serialize_field("GhostLevel", &self.ghost_level)?;
+    //         ss.serialize_field("PPointData", &self.point_data)?;
+    //         ss.serialize_field("PCellData", &self.cell_data)?;
+    //         ss.serialize_field("PPoints", &self.points)?;
+    //         for p in &self.pieces {
+    //             ss.serialize_field("Piece", p)?;
+    //         }
+    //         ss.end()
+    //     }
+    // }
 
-    impl Serialize for PRectilinearGrid {
-        fn serialize<S>(&self, s: S) -> std::result::Result<S::Ok, S::Error>
-        where
-            S: Serializer,
-        {
-            let mut ss = s.serialize_struct("PRectilinearGrid", 5 + self.pieces.len())?;
-            ss.serialize_field("GhostLevel", &self.ghost_level)?;
-            ss.serialize_field("WholeExtent", &self.whole_extent)?;
-            ss.serialize_field("PPointData", &self.point_data)?;
-            ss.serialize_field("PCellData", &self.cell_data)?;
-            ss.serialize_field("PCoordinates", &self.coords)?;
-            for p in &self.pieces {
-                ss.serialize_field("Piece", p)?;
-            }
-            ss.end()
-        }
-    }
+    // impl Serialize for PRectilinearGrid {
+    //     fn serialize<S>(&self, s: S) -> std::result::Result<S::Ok, S::Error>
+    //     where
+    //         S: Serializer,
+    //     {
+    //         let mut ss = s.serialize_struct("PRectilinearGrid", 5 + self.pieces.len())?;
+    //         ss.serialize_field("GhostLevel", &self.ghost_level)?;
+    //         ss.serialize_field("WholeExtent", &self.whole_extent)?;
+    //         ss.serialize_field("PPointData", &self.point_data)?;
+    //         ss.serialize_field("PCellData", &self.cell_data)?;
+    //         ss.serialize_field("PCoordinates", &self.coords)?;
+    //         for p in &self.pieces {
+    //             ss.serialize_field("Piece", p)?;
+    //         }
+    //         ss.end()
+    //     }
+    // }
 
-    impl Serialize for PStructuredGrid {
-        fn serialize<S>(&self, s: S) -> std::result::Result<S::Ok, S::Error>
-        where
-            S: Serializer,
-        {
-            let mut ss = s.serialize_struct("PStructuredGrid", 5 + self.pieces.len())?;
-            ss.serialize_field("GhostLevel", &self.ghost_level)?;
-            ss.serialize_field("WholeExtent", &self.whole_extent)?;
-            ss.serialize_field("PPointData", &self.point_data)?;
-            ss.serialize_field("PCellData", &self.cell_data)?;
-            ss.serialize_field("PPoints", &self.points)?;
-            for p in &self.pieces {
-                ss.serialize_field("Piece", p)?;
-            }
-            ss.end()
-        }
-    }
+    // impl Serialize for PStructuredGrid {
+    //     fn serialize<S>(&self, s: S) -> std::result::Result<S::Ok, S::Error>
+    //     where
+    //         S: Serializer,
+    //     {
+    //         let mut ss = s.serialize_struct("PStructuredGrid", 5 + self.pieces.len())?;
+    //         ss.serialize_field("GhostLevel", &self.ghost_level)?;
+    //         ss.serialize_field("WholeExtent", &self.whole_extent)?;
+    //         ss.serialize_field("PPointData", &self.point_data)?;
+    //         ss.serialize_field("PCellData", &self.cell_data)?;
+    //         ss.serialize_field("PPoints", &self.points)?;
+    //         for p in &self.pieces {
+    //             ss.serialize_field("Piece", p)?;
+    //         }
+    //         ss.end()
+    //     }
+    // }
 }
 
 mod topo {
@@ -990,35 +994,35 @@ mod piece {
         }
     }
 
-    impl<'de> Deserialize<'de> for Piece {
-        fn deserialize<D>(d: D) -> Result<Self, D::Error>
-        where
-            D: Deserializer<'de>,
-        {
-            Ok(d.deserialize_struct(
-                "Piece",
-                &[
-                    "Extent",
-                    "NumberOfPoints",
-                    "NumberOfCells",
-                    "NumberOfLines",
-                    "NumberOfStrips",
-                    "NumberOfPolys",
-                    "NumberOfVerts",
-                    "PointData",
-                    "CellData",
-                    "Polys",
-                    "Points",
-                    "Cells",
-                    "Verts",
-                    "Lines",
-                    "Strips",
-                    "Coordinates",
-                ],
-                PieceVisitor,
-            )?)
-        }
-    }
+    // impl<'de> Deserialize<'de> for Piece {
+    //     fn deserialize<D>(d: D) -> Result<Self, D::Error>
+    //     where
+    //         D: Deserializer<'de>,
+    //     {
+    //         Ok(d.deserialize_struct(
+    //             "Piece",
+    //             &[
+    //                 "@Extent",
+    //                 "@NumberOfPoints",
+    //                 "@NumberOfCells",
+    //                 "@NumberOfLines",
+    //                 "@NumberOfStrips",
+    //                 "@NumberOfPolys",
+    //                 "@NumberOfVerts",
+    //                 "@PointData",
+    //                 "CellData",
+    //                 "Polys",
+    //                 "Points",
+    //                 "Cells",
+    //                 "Verts",
+    //                 "Lines",
+    //                 "Strips",
+    //                 "Coordinates",
+    //             ],
+    //             PieceVisitor,
+    //         )?)
+    //     }
+    // }
 }
 
 mod vtkfile {
@@ -1029,39 +1033,39 @@ mod vtkfile {
     use serde::ser::{Serialize, Serializer};
     use std::fmt;
 
-    impl Serialize for VTKFile {
-        fn serialize<S>(&self, s: S) -> std::result::Result<S::Ok, S::Error>
-        where
-            S: Serializer,
-        {
-            use serde::ser::SerializeStruct;
-            let mut ss = s.serialize_struct("VTKFile", 7)?;
-            ss.serialize_field("type", &self.data_set_type)?;
-            ss.serialize_field("version", &self.version)?;
-            ss.serialize_field("byte_order", &self.byte_order)?;
-            ss.serialize_field("header_type", &self.header_type)?;
-            ss.serialize_field("compressor", &self.compressor)?;
-            ss.serialize_field("AppendedData", &self.appended_data)?;
-            match &self.data_set {
-                DataSet::ImageData(image_data) => ss.serialize_field("ImageData", image_data)?,
-                DataSet::PolyData(unstructured) => ss.serialize_field("PolyData", unstructured)?,
-                DataSet::RectilinearGrid(grid) => ss.serialize_field("RectilinearGrid", grid)?,
-                DataSet::StructuredGrid(grid) => ss.serialize_field("StructuredGrid", grid)?,
-                DataSet::UnstructuredGrid(grid) => ss.serialize_field("UnstructuredGrid", grid)?,
-                DataSet::PImageData(image_data) => ss.serialize_field("PImageData", image_data)?,
-                DataSet::PPolyData(unstructured) => {
-                    ss.serialize_field("PPolyData", unstructured)?
-                }
-                DataSet::PRectilinearGrid(grid) => ss.serialize_field("PRectilinearGrid", grid)?,
-                DataSet::PStructuredGrid(grid) => ss.serialize_field("PStructuredGrid", grid)?,
-                DataSet::PUnstructuredGrid(grid) => {
-                    ss.serialize_field("PUnstructuredGrid", grid)?
-                }
-            }
+    //impl Serialize for VTKFile {
+    //    fn serialize<S>(&self, s: S) -> std::result::Result<S::Ok, S::Error>
+    //    where
+    //        S: Serializer,
+    //    {
+    //        use serde::ser::SerializeStruct;
+    //        let mut ss = s.serialize_struct("VTKFile", 7)?;
+    //        ss.serialize_field("type", &self.data_set_type)?;
+    //        ss.serialize_field("version", &self.version)?;
+    //        ss.serialize_field("byte_order", &self.byte_order)?;
+    //        ss.serialize_field("header_type", &self.header_type)?;
+    //        ss.serialize_field("compressor", &self.compressor)?;
+    //        ss.serialize_field("AppendedData", &self.appended_data)?;
+    //        match &self.data_set {
+    //            DataSet::ImageData(image_data) => ss.serialize_field("ImageData", image_data)?,
+    //            DataSet::PolyData(unstructured) => ss.serialize_field("PolyData", unstructured)?,
+    //            DataSet::RectilinearGrid(grid) => ss.serialize_field("RectilinearGrid", grid)?,
+    //            DataSet::StructuredGrid(grid) => ss.serialize_field("StructuredGrid", grid)?,
+    //            DataSet::UnstructuredGrid(grid) => ss.serialize_field("UnstructuredGrid", grid)?,
+    //            DataSet::PImageData(image_data) => ss.serialize_field("PImageData", image_data)?,
+    //            DataSet::PPolyData(unstructured) => {
+    //                ss.serialize_field("PPolyData", unstructured)?
+    //            }
+    //            DataSet::PRectilinearGrid(grid) => ss.serialize_field("PRectilinearGrid", grid)?,
+    //            DataSet::PStructuredGrid(grid) => ss.serialize_field("PStructuredGrid", grid)?,
+    //            DataSet::PUnstructuredGrid(grid) => {
+    //                ss.serialize_field("PUnstructuredGrid", grid)?
+    //            }
+    //        }
 
-            ss.end()
-        }
-    }
+    //        ss.end()
+    //    }
+    //}
 
     #[derive(Debug, serde::Deserialize)]
     #[serde(field_identifier)]
@@ -1151,35 +1155,35 @@ mod vtkfile {
         }
     }
 
-    impl<'de> Deserialize<'de> for VTKFile {
-        fn deserialize<D>(d: D) -> Result<Self, D::Error>
-        where
-            D: Deserializer<'de>,
-        {
-            Ok(d.deserialize_struct(
-                "VTKFile",
-                &[
-                    "type",
-                    "version",
-                    "byte_order",
-                    "header_type",
-                    "compressor",
-                    "AppendedData",
-                    "ImageData",
-                    "PolyData",
-                    "RectilinearGrid",
-                    "StructuredGrid",
-                    "UnstructuredGrid",
-                    "PImageData",
-                    "PPolyData",
-                    "PRectilinearGrid",
-                    "PStructuredGrid",
-                    "PUnstructuredGrid",
-                ],
-                VTKFileVisitor,
-            )?)
-        }
-    }
+    // impl<'de> Deserialize<'de> for VTKFile {
+    //     fn deserialize<D>(d: D) -> Result<Self, D::Error>
+    //     where
+    //         D: Deserializer<'de>,
+    //     {
+    //         Ok(d.deserialize_struct(
+    //             "VTKFile",
+    //             &[
+    //                 "type",
+    //                 "version",
+    //                 "byte_order",
+    //                 "header_type",
+    //                 "compressor",
+    //                 "AppendedData",
+    //                 "ImageData",
+    //                 "PolyData",
+    //                 "RectilinearGrid",
+    //                 "StructuredGrid",
+    //                 "UnstructuredGrid",
+    //                 "PImageData",
+    //                 "PPolyData",
+    //                 "PRectilinearGrid",
+    //                 "PStructuredGrid",
+    //                 "PUnstructuredGrid",
+    //             ],
+    //             VTKFileVisitor,
+    //         )?)
+    //     }
+    // }
 }
 
 /*
@@ -1190,15 +1194,26 @@ mod vtkfile {
  * additional handling of Legacy formats or on demand loading of "Parallel" XML files.
  */
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
 pub struct VTKFile {
+    #[serde(rename = "@type")]
     pub data_set_type: DataSetType,
+    #[serde(rename = "@version")]
     pub version: model::Version,
+    #[serde(rename = "@byte_order")]
     pub byte_order: model::ByteOrder,
+    #[serde(rename = "@header_type", skip_serializing_if = "Option::is_none")]
     pub header_type: Option<ScalarType>, // Assumed to be UInt32 if missing
+    #[serde(
+        rename = "@compressor",
+        default,
+        skip_serializing_if = "Compressor::is_none"
+    )]
     pub compressor: Compressor,
-    pub appended_data: Option<AppendedData>,
+    #[serde(rename = "$value")]
     pub data_set: DataSet,
+    #[serde(rename = "AppendedData", skip_serializing_if = "Option::is_none")]
+    pub appended_data: Option<AppendedData>,
 }
 
 impl Default for VTKFile {
@@ -1215,12 +1230,22 @@ impl Default for VTKFile {
     }
 }
 
-#[derive(Copy, Clone, Debug, PartialEq)]
+#[derive(Copy, Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum Compressor {
+    #[serde(rename = "vtkLZ4DataCompressor")]
     LZ4,
+    #[serde(rename = "vtkZLibDataCompressor")]
     ZLib,
+    #[serde(rename = "vtkLZMADataCompressor")]
     LZMA,
+    #[serde(other)]
     None,
+}
+
+impl Compressor {
+    pub fn is_none(&self) -> bool {
+        matches!(self, Compressor::None)
+    }
 }
 
 impl Default for Compressor {
@@ -1229,7 +1254,7 @@ impl Default for Compressor {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
 pub enum DataSet {
     ImageData(ImageData),
     PolyData(Unstructured),
@@ -1243,59 +1268,59 @@ pub enum DataSet {
     PUnstructuredGrid(PUnstructured),
 }
 
-#[derive(Clone, Debug, PartialEq, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
 pub struct ImageData {
-    #[serde(rename = "WholeExtent")]
+    #[serde(rename = "@WholeExtent")]
     whole_extent: Extent,
-    #[serde(rename = "Origin", deserialize_with = "vector3::deserialize")]
+    #[serde(rename = "@Origin", deserialize_with = "vector3::deserialize")]
     origin: [f32; 3],
-    #[serde(rename = "Spacing", deserialize_with = "vector3::deserialize")]
+    #[serde(rename = "@Spacing", deserialize_with = "vector3::deserialize")]
     spacing: [f32; 3],
     #[serde(rename = "Piece")]
     pieces: Vec<Piece>,
 }
 
-#[derive(Clone, Debug, PartialEq, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Grid {
-    #[serde(rename = "WholeExtent")]
+    #[serde(rename = "@WholeExtent")]
     whole_extent: Extent,
     #[serde(rename = "Piece")]
     pieces: Vec<Piece>,
 }
 
-#[derive(Clone, Debug, PartialEq, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Unstructured {
     #[serde(rename = "Piece")]
     pieces: Vec<Piece>,
 }
 
-#[derive(Clone, Debug, PartialEq, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct PImageData {
-    #[serde(rename = "GhostLevel")]
+    #[serde(rename = "@GhostLevel")]
     ghost_level: u32,
-    #[serde(rename = "WholeExtent")]
+    #[serde(rename = "@WholeExtent")]
     whole_extent: Extent,
-    #[serde(rename = "Origin", deserialize_with = "vector3::deserialize")]
+    #[serde(rename = "@Origin", deserialize_with = "vector3::deserialize")]
     origin: [f32; 3],
-    #[serde(rename = "Spacing", deserialize_with = "vector3::deserialize")]
+    #[serde(rename = "@Spacing", deserialize_with = "vector3::deserialize")]
     spacing: [f32; 3],
-    #[serde(rename = "PPointData")]
+    #[serde(rename = "PPointData", skip_serializing_if = "Option::is_none")]
     point_data: Option<PAttributeData>,
-    #[serde(rename = "PCellData")]
+    #[serde(rename = "PCellData", skip_serializing_if = "Option::is_none")]
     cell_data: Option<PAttributeData>,
     #[serde(rename = "Piece")]
     pieces: Vec<PieceSource>,
 }
 
-#[derive(Clone, Debug, PartialEq, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct PRectilinearGrid {
-    #[serde(rename = "GhostLevel")]
+    #[serde(rename = "@GhostLevel")]
     ghost_level: u32,
-    #[serde(rename = "WholeExtent")]
+    #[serde(rename = "@WholeExtent")]
     whole_extent: Extent,
-    #[serde(rename = "PPointData")]
+    #[serde(rename = "PPointData", skip_serializing_if = "Option::is_none")]
     point_data: Option<PAttributeData>,
-    #[serde(rename = "PCellData")]
+    #[serde(rename = "PCellData", skip_serializing_if = "Option::is_none")]
     cell_data: Option<PAttributeData>,
     #[serde(rename = "PCoordinates")]
     coords: PCoordinates,
@@ -1303,15 +1328,15 @@ pub struct PRectilinearGrid {
     pieces: Vec<PieceSource>,
 }
 
-#[derive(Clone, Debug, PartialEq, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct PStructuredGrid {
-    #[serde(rename = "GhostLevel")]
+    #[serde(rename = "@GhostLevel")]
     ghost_level: u32,
-    #[serde(rename = "WholeExtent")]
+    #[serde(rename = "@WholeExtent")]
     whole_extent: Extent,
-    #[serde(rename = "PPointData")]
+    #[serde(rename = "PPointData", skip_serializing_if = "Option::is_none")]
     point_data: Option<PAttributeData>,
-    #[serde(rename = "PCellData")]
+    #[serde(rename = "PCellData", skip_serializing_if = "Option::is_none")]
     cell_data: Option<PAttributeData>,
     #[serde(rename = "PPoints")]
     points: PPoints,
@@ -1319,9 +1344,9 @@ pub struct PStructuredGrid {
     pieces: Vec<PieceSource>,
 }
 
-#[derive(Clone, Debug, PartialEq, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct PUnstructured {
-    #[serde(rename = "GhostLevel")]
+    #[serde(rename = "@GhostLevel")]
     ghost_level: u32,
     #[serde(rename = "PPointData")]
     point_data: Option<PAttributeData>,
@@ -1334,24 +1359,26 @@ pub struct PUnstructured {
 }
 
 #[derive(Clone, Debug, PartialEq, Default, Serialize, Deserialize)]
-#[serde(rename_all = "PascalCase")]
 pub struct PieceSource {
+    #[serde(rename = "@Extent", skip_serializing_if = "Option::is_none")]
     extent: Option<Extent>,
+    #[serde(rename = "@Source")]
     source: String,
 }
 
 /// Contents and attributes of the `PPointData` XML element.
 #[derive(Clone, Debug, PartialEq, Default, Serialize, Deserialize)]
+// #[serde(rename_all = "PascalCase")]
 pub struct PAttributeData {
-    #[serde(rename = "Scalars")]
+    #[serde(rename = "@Scalars")]
     scalars: Option<String>,
-    #[serde(rename = "Vectors")]
+    #[serde(rename = "@Vectors")]
     vectors: Option<String>,
-    #[serde(rename = "Normals")]
+    #[serde(rename = "@Normals")]
     normals: Option<String>,
-    #[serde(rename = "Tensors")]
+    #[serde(rename = "@Tensors")]
     tensors: Option<String>,
-    #[serde(rename = "TCoords")]
+    #[serde(rename = "@TCoords")]
     tcoords: Option<String>,
     #[serde(rename = "$value", default)]
     data_array: Vec<PDataArray>,
@@ -1422,12 +1449,13 @@ pub enum DataSetType {
     PolyData,
     RectilinearGrid,
     StructuredGrid,
-    UnstructuredGrid,
     PImageData,
     PPolyData,
     PRectilinearGrid,
     PStructuredGrid,
     PUnstructuredGrid,
+    #[serde(other)]
+    UnstructuredGrid,
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Default)]
@@ -1459,30 +1487,45 @@ fn is_zero(n: &u32) -> bool {
     *n == 0
 }
 
-#[derive(Clone, Debug, PartialEq, Default, Serialize)]
+// Helper for serializing number_of_components
+fn is_one(n: &u32) -> bool {
+    *n == 1
+}
+
+#[derive(Clone, Debug, PartialEq, Default, Deserialize, Serialize)]
 #[serde(rename_all = "PascalCase")]
 pub struct Piece {
+    #[serde(rename = "@Extent", default, skip_serializing_if = "Option::is_none")]
     pub extent: Option<Extent>,
-    #[serde(default)]
+    #[serde(rename = "@NumberOfPoints", default, skip_serializing_if = "is_zero")]
     pub number_of_points: u32,
-    #[serde(default, skip_serializing_if = "is_zero")]
-    pub number_of_cells: u32,
-    #[serde(default)]
-    pub number_of_lines: u32,
-    #[serde(default)]
-    pub number_of_strips: u32,
-    #[serde(default)]
-    pub number_of_polys: u32,
-    #[serde(default)]
+    #[serde(rename = "@NumberOfVerts", default, skip_serializing_if = "is_zero")]
     pub number_of_verts: u32,
+    #[serde(rename = "@NumberOfLines", default, skip_serializing_if = "is_zero")]
+    pub number_of_lines: u32,
+    #[serde(rename = "@NumberOfStrips", default, skip_serializing_if = "is_zero")]
+    pub number_of_strips: u32,
+    #[serde(rename = "@NumberOfPolys", default, skip_serializing_if = "is_zero")]
+    pub number_of_polys: u32,
+    #[serde(rename = "@NumberOfCells", default, skip_serializing_if = "is_zero")]
+    pub number_of_cells: u32,
+    #[serde(default, skip_serializing_if = "AttributeData::is_default")]
     pub point_data: AttributeData,
+    #[serde(default, skip_serializing_if = "AttributeData::is_default")]
     pub cell_data: AttributeData,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub points: Option<Points>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub cells: Option<Cells>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub verts: Option<Topo>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub lines: Option<Topo>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub strips: Option<Topo>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub polys: Option<Topo>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub coordinates: Option<Coordinates>,
 }
 
@@ -1626,33 +1669,40 @@ impl Topo {
 
 /// Attribute data corresponding to the `PointData` or `CellData` elements.
 #[derive(Clone, Debug, PartialEq, Default, Serialize, Deserialize)]
+// #[serde(rename_all = "PascalCase")]
 pub struct AttributeData {
-    #[serde(rename = "Scalars")]
+    #[serde(rename = "@Scalars", skip_serializing_if = "Option::is_none")]
     pub scalars: Option<String>,
-    #[serde(rename = "Vectors")]
+    #[serde(rename = "@Vectors", skip_serializing_if = "Option::is_none")]
     pub vectors: Option<String>,
-    #[serde(rename = "Normals")]
+    #[serde(rename = "@Normals", skip_serializing_if = "Option::is_none")]
     pub normals: Option<String>,
-    #[serde(rename = "Tensors")]
+    #[serde(rename = "@Tensors", skip_serializing_if = "Option::is_none")]
     pub tensors: Option<String>,
-    #[serde(rename = "TCoords")]
+    #[serde(rename = "@TCoords", skip_serializing_if = "Option::is_none")]
     pub tcoords: Option<String>,
     /// The (possibly empty) collection of data arrays representing individual attributes.
     #[serde(rename = "$value", default)]
     pub data_array: Vec<DataArray>,
 }
 
+impl AttributeData {
+    fn is_default(&self) -> bool {
+        self == &AttributeData::default()
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Default, Serialize, Deserialize)]
 pub struct AttributeInfo {
-    #[serde(rename = "Scalars")]
+    #[serde(rename = "@Scalars")]
     pub scalars: Option<String>,
-    #[serde(rename = "Vectors")]
+    #[serde(rename = "@Vectors")]
     pub vectors: Option<String>,
-    #[serde(rename = "Normals")]
+    #[serde(rename = "@Normals")]
     pub normals: Option<String>,
-    #[serde(rename = "Tensors")]
+    #[serde(rename = "@Tensors")]
     pub tensors: Option<String>,
-    #[serde(rename = "TCoords")]
+    #[serde(rename = "@TCoords")]
     pub tcoords: Option<String>,
 }
 
@@ -1817,11 +1867,15 @@ pub struct EncodingInfo {
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct PDataArray {
-    #[serde(rename = "type")]
+    #[serde(rename = "@type")]
     pub scalar_type: ScalarType,
-    #[serde(rename = "Name", default)]
+    #[serde(rename = "@Name", default)]
     pub name: String,
-    #[serde(rename = "NumberOfComponents", default = "default_num_comp")]
+    #[serde(
+        rename = "@NumberOfComponents",
+        default = "default_num_comp",
+        skip_serializing_if = "is_one"
+    )]
     pub num_comp: u32,
 }
 
@@ -1842,17 +1896,23 @@ impl PDataArray {
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct DataArray {
-    #[serde(rename = "type")]
+    #[serde(rename = "@type")]
     pub scalar_type: ScalarType,
-    #[serde(rename = "Name", default)]
+    #[serde(rename = "@Name", default, skip_serializing_if = "String::is_empty")]
     pub name: String,
-    pub format: DataArrayFormat,
-    pub offset: Option<u32>,
-    #[serde(rename = "NumberOfComponents", default = "default_num_comp")]
+    #[serde(
+        rename = "@NumberOfComponents",
+        default = "default_num_comp",
+        skip_serializing_if = "is_one"
+    )]
     pub num_comp: u32,
-    #[serde(rename = "RangeMin")]
+    #[serde(rename = "@format")]
+    pub format: DataArrayFormat,
+    #[serde(rename = "@offset", skip_serializing_if = "Option::is_none")]
+    pub offset: Option<u32>,
+    #[serde(rename = "@RangeMin", skip_serializing_if = "Option::is_none")]
     pub range_min: Option<f64>,
-    #[serde(rename = "RangeMax")]
+    #[serde(rename = "@RangeMax", skip_serializing_if = "Option::is_none")]
     pub range_max: Option<f64>,
     #[serde(rename = "$value", default)]
     pub data: Vec<Data>,
@@ -2150,6 +2210,7 @@ pub enum ScalarType {
     Int64,
     UInt64,
     Float32,
+    #[serde(other)]
     Float64,
 }
 
@@ -2218,6 +2279,7 @@ pub enum DataArrayFormat {
 #[derive(Clone, Debug, PartialEq, Serialize)]
 pub struct AppendedData {
     /// Encoding used in the `data` field.
+    #[serde(rename = "@encoding")]
     pub encoding: Encoding,
     /// Raw data in binary or base64 format.
     ///
@@ -3530,7 +3592,7 @@ fn de_from_reader(reader: impl BufRead) -> Result<VTKFile> {
         .check_end_names(true)
         .trim_text(true)
         .trim_text_end(false);
-    let mut de = de::Deserializer::new(reader);
+    let mut de = de::Deserializer::from_custom_reader(reader);
     Ok(VTKFile::deserialize(&mut de)?)
 }
 
@@ -3554,8 +3616,9 @@ pub(crate) fn export(vtk: &VTKFile, file_path: impl AsRef<Path>) -> Result<()> {
 }
 
 /// Write an XML VTK file to the specified writer.
-pub(crate) fn write(vtk: &VTKFile, writer: impl Write) -> Result<()> {
-    Ok(se::to_writer(writer, &vtk)?)
+pub(crate) fn write(vtk: &VTKFile, writer: impl quick_xml::se::Write) -> Result<()> {
+    se::to_writer(writer, &vtk)?;
+    Ok(())
 }
 
 impl std::fmt::Display for VTKFile {
@@ -3567,67 +3630,117 @@ impl std::fmt::Display for VTKFile {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use pretty_assertions::assert_eq;
+
+    // Helper to compress the human readable and indented examples below
+    // into what we expect the serializer to output.
+    fn compress_xml_str(s: &str) -> String {
+        let compressed_str = regex::Regex::new(r"(?P<space>\s+<)")
+            .unwrap()
+            .replace_all(s, "<");
+        regex::Regex::new(r">\s+(?P<n>(\d+|_))")
+            .unwrap()
+            .replace_all(&compressed_str, ">$n")
+            .to_string()
+    }
+
+    #[test]
+    fn piece_ser_de() {
+        let piece_str = r#"
+        <Piece Extent="0 1 0 1 0 1">
+            <PointData Scalars="Temperature" Vectors="Velocity"/>
+            <CellData Tensors="Stress"/>
+        </Piece>"#;
+        let piece: Piece = de::from_str(piece_str).unwrap();
+        // eprintln!("{:#?}", &piece);
+        let as_str = se::to_string(&piece).unwrap();
+        assert_eq!(as_str, compress_xml_str(piece_str));
+        let piece_roundtrip = de::from_str(&as_str).unwrap();
+        assert_eq!(piece, piece_roundtrip);
+    }
+
+    // Verify that image data struct works
+    #[test]
+    fn empty_image_data() {
+        let image_data_str = r#" 
+        <ImageData WholeExtent="0 1 0 1 0 1" Origin="0 0 0" Spacing="0.1 0.1 0.1">
+            <Piece Extent="0 1 0 1 0 1">
+                <PointData Scalars="Temperature" Vectors="Velocity"/>
+                <CellData Tensors="Stress"/>
+            </Piece>
+        </ImageData>"#;
+
+        let img: ImageData = de::from_str(image_data_str).unwrap();
+        // eprintln!("{:#?}", &img);
+        let as_str = se::to_string(&img).unwrap();
+        assert_eq!(as_str, compress_xml_str(image_data_str));
+        // eprintln!("{:?}", &as_str);
+        let img_roundtrip = de::from_str(&as_str).unwrap();
+        assert_eq!(img, img_roundtrip);
+    }
 
     // Verify that xmls with default empty meshes files work
     #[test]
-    fn empty_image_data() {
-        let image_data = r#" 
+    fn empty_image_data_file() {
+        let vtk_str = r#" 
         <VTKFile type="ImageData" version="4.2" byte_order="BigEndian">
-            <ImageData WholeExtent="0 1 0 1 0 1" Origin="0.0 0.0 0.0" Spacing="0.1 0.1 0.1">
+            <ImageData WholeExtent="0 1 0 1 0 1" Origin="0 0 0" Spacing="0.1 0.1 0.1">
                 <Piece Extent="0 1 0 1 0 1">
-                    <PointData Scalars="Temperature" Vectors="Velocity"></PointData>
-                    <CellData Tensors="Stress"></CellData>
+                    <PointData Scalars="Temperature" Vectors="Velocity"/>
+                    <CellData Tensors="Stress"/>
                 </Piece>
             </ImageData>
         </VTKFile>"#;
 
-        let vtk: VTKFile = de::from_str(image_data).unwrap();
-        //eprintln!("{:#?}", &vtk);
+        let vtk: VTKFile = de::from_str(vtk_str).unwrap();
+        // eprintln!("{:#?}", &vtk);
         let as_str = se::to_string(&vtk).unwrap();
-        //eprintln!("{:?}", &as_str);
+        assert_eq!(as_str, compress_xml_str(vtk_str));
+        // eprintln!("{:?}", &as_str);
         let vtk_roundtrip = de::from_str(&as_str).unwrap();
         assert_eq!(vtk, vtk_roundtrip);
     }
 
     #[test]
     fn image_data() {
-        let image_data = r#" 
+        let vtk_str = r#" 
         <VTKFile type="ImageData" version="4.2" byte_order="BigEndian">
         <ImageData WholeExtent="0 1 0 1 0 1" Origin="0 0 0" Spacing="0.1 0.1 0.1">
         <Piece Extent="0 1 0 1 0 1">
           <PointData Scalars="Temperature" Vectors="Velocity">
-            <DataArray Name="Temperature" type="Float32" format="ascii">0 1 2 3 4 5 6 7 8 9</DataArray>
-            <DataArray Name="Velocity" type="Float32" NumberOfComponents="3" format="ascii">
+            <DataArray type="Float32" Name="Temperature" format="ascii">0 1 2 3 4 5 6 7 8 9</DataArray>
+            <DataArray type="Float32" Name="Velocity" NumberOfComponents="3" format="ascii">
               0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29
             </DataArray>
           </PointData>
-          <CellData></CellData>
         </Piece>
         </ImageData>
         </VTKFile>"#;
 
-        let vtk: VTKFile = de::from_str(image_data).unwrap();
-        //eprintln!("{:#?}", &vtk);
+        let vtk: VTKFile = de::from_str(vtk_str).unwrap();
+        // eprintln!("{:#?}", &vtk);
         let as_str = se::to_string(&vtk).unwrap();
+        assert_eq!(as_str, compress_xml_str(vtk_str));
         //eprintln!("{}", &as_str);
         let vtk_roundtrip = de::from_str(&as_str).unwrap();
         assert_eq!(vtk, vtk_roundtrip);
     }
 
     #[test]
-    fn polys() -> Result<()> {
-        let polys = r#"<Polys>
+    fn topo() -> Result<()> {
+        let polys = r#"<Topo>
           <DataArray type="Int32" Name="connectivity" format="ascii">
              0 1 2 3 4 5 6 7 0 1 5 4 2 3 7 6 0 4 7 3 1 2 6 5
           </DataArray>
           <DataArray type="Int32" Name="offsets" format="ascii">
              4 8 12 16 20 24
           </DataArray>
-        </Polys>"#;
+        </Topo>"#;
 
         let vtk: Topo = de::from_str(polys)?;
         //eprintln!("{:#?}", &vtk);
         let as_str = se::to_string(&vtk)?;
+        assert_eq!(as_str, compress_xml_str(polys));
         //eprintln!("{}", &as_str);
         let vtk_roundtrip = de::from_str(&as_str)?;
         assert_eq!(vtk, vtk_roundtrip);
@@ -3645,6 +3758,7 @@ mod tests {
 
         let vtk: Points = de::from_str(points)?;
         let as_str = se::to_string(&vtk)?;
+        assert_eq!(as_str, compress_xml_str(points));
         let vtk_roundtrip = de::from_str(&as_str)?;
         assert_eq!(vtk, vtk_roundtrip);
         Ok(())
@@ -3653,13 +3767,7 @@ mod tests {
     #[test]
     fn piece() -> Result<()> {
         let piece = r#"
-        <Piece NumberOfPoints="8" NumberOfVerts="0" NumberOfLines="0"
-               NumberOfStrips="0" NumberOfPolys="6">
-        <Points>
-          <DataArray type="Float32" NumberOfComponents="3" format="ascii">
-            0 0 0 1 0 0 1 1 0 0 1 0 0 0 1 1 0 1 1 1 1 0 1 1
-          </DataArray>
-        </Points>
+        <Piece NumberOfPoints="8" NumberOfPolys="6">
         <PointData Scalars="my_scalars">
           <DataArray type="Float32" Name="my_scalars" format="ascii">
             0 1 2 3 4 5 6 7
@@ -3669,11 +3777,15 @@ mod tests {
           <DataArray type="Int32" Name="cell_scalars" format="ascii">
            0 1 2 3 4 5
           </DataArray>
-          <DataArray type="Float32" Name="cell_normals"
-                     NumberOfComponents="3" format="ascii">
+          <DataArray type="Float32" Name="cell_normals" NumberOfComponents="3" format="ascii">
             0 0 -1 0 0 1 0 -1 0 0 1 0 -1 0 0 1 0 0
           </DataArray>
         </CellData>
+        <Points>
+          <DataArray type="Float32" NumberOfComponents="3" format="ascii">
+            0 0 0 1 0 0 1 1 0 0 1 0 0 0 1 1 0 1 1 1 1 0 1 1
+          </DataArray>
+        </Points>
         <Polys>
           <DataArray type="Int32" Name="connectivity" format="ascii">
              0 1 2 3 4 5 6 7 0 1 5 4 2 3 7 6 0 4 7 3 1 2 6 5
@@ -3687,6 +3799,7 @@ mod tests {
         let vtk: Piece = de::from_str(piece)?;
         //eprintln!("{:#?}", &vtk);
         let as_str = se::to_string(&vtk)?;
+        assert_eq!(as_str, compress_xml_str(piece));
         //eprintln!("{}", &as_str);
         let vtk_roundtrip = de::from_str(&as_str)?;
         assert_eq!(vtk, vtk_roundtrip);
@@ -3699,6 +3812,29 @@ mod tests {
         //eprintln!("{:#?}", &vtk);
         let as_str = se::to_string(&vtk).unwrap();
         //eprintln!("{}", &as_str);
+        let vtk_roundtrip = de::from_str(&as_str).unwrap();
+        assert_eq!(vtk, vtk_roundtrip);
+        Ok(())
+    }
+
+    #[test]
+    fn rectilinear_grid_compressed_reduced() -> Result<()> {
+        let vtk_str = r#"
+            <VTKFile type="RectilinearGrid" version="1.0" byte_order="LittleEndian" header_type="UInt64" compressor="vtkZLibDataCompressor">
+            <RectilinearGrid WholeExtent="0 3 0 1 0 1">
+                <Piece Extent="0 3 0 1 0 1">
+                <CellData Scalars="Pressure"/>
+                </Piece>
+            </RectilinearGrid>
+            <AppendedData encoding="base64">
+            _AQAAAAAAAAAAgAAAAAAAAAwAAAAAAAAACwAAAAAAAAA=eJxjYEAAAAAMAAE=AQAAAAAAAAAAgAAAAAAAAAwAAAAAAAAAEgAAAAAAAAA=eJxjYGiwZ2BgAOIGewAJvQG+AQAAAAAAAAAAgAAAAAAAAAwAAAAAAAAADwAAAAAAAAA=eJxjYIAAY+PN9gADFgFZAQAAAAAAAAAAgAAAAAAAAAwAAAAAAAAADQAAAAAAAAA=eJxjYICBBnsAAUsAwA==AQAAAAAAAAAAgAAAAAAAAAwAAAAAAAAADgAAAAAAAAA=eJxjYAADexABAAFHAEA=AQAAAAAAAAAAgAAAAAAAACAAAAAAAAAAGAAAAAAAAAA=eJxjYAABjgNgiuHDfihtD6E5HAA9JgPvAQAAAAAAAAAAgAAAAAAAABAAAAAAAAAADQAAAAAAAAA=eJxjYEAGH+wBAi8BMA==AQAAAAAAAAAAgAAAAAAAABAAAAAAAAAAEQAAAAAAAAA=eJxjYACBD/sZILQ9ABJGAt8=
+            </AppendedData>
+            </VTKFile>"#;
+        let vtk: VTKFile = de::from_str(vtk_str)?;
+        // eprintln!("{:#?}", &vtk);
+        let as_str = se::to_string(&vtk).unwrap();
+        assert_eq!(as_str, compress_xml_str(vtk_str));
+        // eprintln!("{}", &as_str);
         let vtk_roundtrip = de::from_str(&as_str).unwrap();
         assert_eq!(vtk, vtk_roundtrip);
         Ok(())
@@ -3861,7 +3997,8 @@ mod tests {
     #[test]
     fn data_array_appended() -> Result<()> {
         let appended_xml = "<DataArray type=\"Float32\" Name=\"vectors\" \
-                            NumberOfComponents=\"3\" format=\"appended\" offset=\"0\"/>";
+                            NumberOfComponents=\"3\" format=\"appended\" offset=\"0\" \
+                            RangeMin=\"1.2\" RangeMax=\"4.3\"/>";
         let appended: DataArray = de::from_str(appended_xml)?;
         let appended_xml_round_trip = se::to_string(&appended)?;
         let appended_round_trip: DataArray = de::from_str(&appended_xml_round_trip)?;

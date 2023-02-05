@@ -349,11 +349,9 @@ impl Vtk {
     /// use vtkio::model::*; // import the model definition of a VTK file
     ///
     /// let input: &[u8] = b"\
-    /// <VTKFile type=\"PolyData\" version=\"2.0\" byte_order=\"BigEndian\", header_type=\"UInt64\">\
+    /// <VTKFile type=\"PolyData\" version=\"2.0\" byte_order=\"BigEndian\" header_type=\"UInt64\">\
     ///   <PolyData>\
-    ///     <Piece NumberOfPoints=\"3\" NumberOfLines=\"0\" NumberOfStrips=\"0\" NumberOfPolys=\"1\" NumberOfVerts=\"0\">\
-    ///       <PointData/>\
-    ///       <CellData/>\
+    ///     <Piece NumberOfPoints=\"3\" NumberOfPolys=\"1\">\
     ///       <Points>\
     ///         <DataArray type=\"Float32\" format=\"binary\" NumberOfComponents=\"3\">\
     ///           AAAAAAAAAAQAAAAAAAAAAAAAAAA/gAAAAAAAAAAAAAAAAAAAAAAAAL+AAAA=\
@@ -780,19 +778,17 @@ impl Vtk {
     /// assert_eq!(String::from_utf8_lossy(&vtk_bytes), "\
     /// <VTKFile type=\"PolyData\" version=\"2.0\" byte_order=\"BigEndian\" header_type=\"UInt64\">\
     ///   <PolyData>\
-    ///     <Piece NumberOfPoints=\"3\" NumberOfLines=\"0\" NumberOfStrips=\"0\" NumberOfPolys=\"1\" NumberOfVerts=\"0\">\
-    ///       <PointData/>\
-    ///       <CellData/>\
+    ///     <Piece NumberOfPoints=\"3\" NumberOfPolys=\"1\">\
     ///       <Points>\
-    ///         <DataArray type=\"Float32\" format=\"binary\" NumberOfComponents=\"3\">\
+    ///         <DataArray type=\"Float32\" NumberOfComponents=\"3\" format=\"binary\">\
     ///           AAAAAAAAACQAAAAAAAAAAAAAAAA/gAAAAAAAAAAAAAAAAAAAAAAAAL+AAAA=\
     ///         </DataArray>\
     ///       </Points>\
     ///       <Polys>\
-    ///         <DataArray type=\"UInt64\" Name=\"connectivity\" format=\"binary\" NumberOfComponents=\"1\">\
+    ///         <DataArray type=\"UInt64\" Name=\"connectivity\" format=\"binary\">\
     ///           AAAAAAAAABgAAAAAAAAAAAAAAAAAAAABAAAAAAAAAAI=\
     ///         </DataArray>\
-    ///         <DataArray type=\"UInt64\" Name=\"offsets\" format=\"binary\" NumberOfComponents=\"1\">\
+    ///         <DataArray type=\"UInt64\" Name=\"offsets\" format=\"binary\">\
     ///           AAAAAAAAAAgAAAAAAAAAAw==\
     ///         </DataArray>\
     ///       </Polys>\
