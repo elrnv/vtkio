@@ -20,9 +20,13 @@ jobs:
       run: cargo build --verbose
     - name: Run tests
       run: cargo test --verbose
-    - name: Build with no compression
+    - name: Build with no parallelism
+      run: cargo build --no-default-features --features "xml compression" --verbose
+    - name: Run tests with no parallelism
+      run: cargo test --no-default-features --features "xml compression" --verbose
+    - name: Build with no compression or parallelism
       run: cargo build --no-default-features --features "xml" --verbose
-    - name: Run tests with no compression
+    - name: Run tests with no compression or parallelism
       run: cargo test --no-default-features --features "xml" --verbose
     - name: Build with no default features
       run: cargo build --no-default-features --verbose
