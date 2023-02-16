@@ -26,6 +26,7 @@ pub enum Error {
     FailedToLoadPieceData,
     MissingPieceData,
     PieceDataMismatch,
+    Compression(CompressionError),
     IO(std::io::Error),
     VTKIO(Box<crate::Error>),
 }
@@ -36,6 +37,7 @@ impl std::fmt::Display for Error {
             Error::InvalidCast(source) => write!(f, "Invalid cast error: {:?}", source),
             Error::MissingPieceData => write!(f, "Missing piece data"),
             Error::PieceDataMismatch => write!(f, "Piece type doesn't match data set type"),
+            Error::Compression(source) => write!(f, "Compression error: {}", source),
             Error::IO(source) => write!(f, "IO error: {:?}", source),
             Error::VTKIO(source) => write!(f, "VTK IO error: {:?}", source),
             Error::FailedToLoadPieceData => write!(f, "Failed to load piece data"),
@@ -47,6 +49,7 @@ impl std::error::Error for Error {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
             Error::InvalidCast(source) => Some(source),
+            Error::Compression(source) => Some(source),
             Error::IO(source) => Some(source),
             Error::VTKIO(source) => Some(source),
             _ => None,
@@ -63,6 +66,72 @@ impl From<std::io::Error> for Error {
 impl From<crate::Error> for Error {
     fn from(e: crate::Error) -> Error {
         Error::VTKIO(Box::new(e))
+    }
+}
+
+impl From<CompressionError> for Error {
+    fn from(e: CompressionError) -> Error {
+        Error::Compression(e)
+    }
+}
+
+#[derive(Debug)]
+pub enum CompressionError {
+    #[cfg(feature = "lz4")]
+    LZ4(lz4::frame::Error),
+    #[cfg(feature = "flate2")]
+    ZLib(flate2::CompressError),
+    #[cfg(feature = "xz2")]
+    LZMA(std::io::Error),
+    None,
+}
+
+impl std::fmt::Display for CompressionError {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match self {
+            #[cfg(feature = "lz4")]
+            CompressionError::LZ4(source) => write!(f, "LZ4: {}", source),
+            #[cfg(feature = "flate2")]
+            CompressionError::ZLib(source) => write!(f, "ZLib: {}", source),
+            #[cfg(feature = "xz2")]
+            CompressionError::LZMA(source) => write!(f, "LZMA: {}", source),
+            _ => write!(f, "Unknown"),
+        }
+    }
+}
+
+impl std::error::Error for CompressionError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            #[cfg(feature = "lz4")]
+            CompressionError::LZ4(source) => Some(source),
+            #[cfg(feature = "flate2")]
+            CompressionError::ZLib(source) => Some(source),
+            #[cfg(feature = "xz2")]
+            CompressionError::LZMA(source) => Some(source),
+            _ => None,
+        }
+    }
+}
+
+#[cfg(feature = "lz4")]
+impl From<lz4::frame::Error> for CompressionError {
+    fn from(e: lz4::frame::Error) -> CompressionError {
+        CompressionError::LZ4(e)
+    }
+}
+
+#[cfg(feature = "flate2")]
+impl From<flate2::CompressError> for CompressionError {
+    fn from(e: flate2::CompressError) -> CompressionError {
+        CompressionError::ZLib(e)
+    }
+}
+
+#[cfg(feature = "xz2")]
+impl From<std::io::Error> for CompressionError {
+    fn from(e: std::io::Error) -> CompressionError {
+        CompressionError::LZMA(e)
     }
 }
 
@@ -397,47 +466,38 @@ impl IOBuffer {
         self.len() == 0
     }
 
-    /// Converts this `IOBuffer` into an array of bytes with a 64-bit size prefix.
+    /// Converts this `IOBuffer` into an array of bytes with a prefix.
     ///
-    /// The size of the scalar type in bytes is stored as a 64-bit integer at the very beginning.
-    ///
-    /// This is how VTK data arrays store data in the XML files.
-    #[cfg(feature = "xml")]
-    pub fn into_bytes_with_size(
-        self,
-        bo: ByteOrder,
-        compressor: crate::xml::Compressor,
-        compression_level: u32,
-    ) -> Vec<u8> {
-        use byteorder::WriteBytesExt;
-        use byteorder::{BE, LE};
-        self.into_bytes_with_size_impl(bo, compressor, compression_level, 8, |mut out, size| {
-            match bo {
-                ByteOrder::BigEndian => out.write_u64::<BE>(size as u64).unwrap(),
-                ByteOrder::LittleEndian => out.write_u64::<LE>(size as u64).unwrap(),
-            }
-        })
-    }
-
-    /// Converts this `IOBuffer` into an array of bytes with a 32-bit size prefix.
-    ///
-    /// The size of the scalar type in bytes is stored as a 32-bit integer at the very beginning.
+    /// The size of the scalar type in bytes is stored as an integer at the very beginning.
+    /// The integer is either 64-bit or 32-bit depending on the header type in
+    /// the given `EncodingInfo`.
     ///
     /// This is how VTK data arrays store data in the XML files.
     #[cfg(feature = "xml")]
-    pub fn into_bytes_with_size32(
+    pub fn into_bytes_with_size_encoded<F>(
         self,
-        bo: ByteOrder,
-        compressor: crate::xml::Compressor,
-        compression_level: u32,
-    ) -> Vec<u8> {
+        ei: crate::xml::EncodingInfo,
+        b64_encode: F,
+    ) -> Result<String, Error>
+    where
+        F: for<'a> Fn(&'a [u8], &'a mut String),
+    {
+        use crate::xml::ScalarType;
         use byteorder::WriteBytesExt;
         use byteorder::{BE, LE};
-        self.into_bytes_with_size_impl(bo, compressor, compression_level, 4, |mut out, size| {
-            match bo {
-                ByteOrder::BigEndian => out.write_u32::<BE>(size as u32).unwrap(),
-                ByteOrder::LittleEndian => out.write_u32::<LE>(size as u32).unwrap(),
+        self.try_into_bytes_with_size_impl(ei, b64_encode, |mut out, size| {
+            match ei.header_type {
+                ScalarType::UInt64 => match ei.byte_order {
+                    ByteOrder::BigEndian => out.write_u64::<BE>(size as u64)?,
+                    ByteOrder::LittleEndian => out.write_u64::<LE>(size as u64)?,
+                },
+                _ => match ei.byte_order {
+                    // Default is 32 bits for older vtk Versions
+                    ByteOrder::BigEndian => out.write_u32::<BE>(size as u32)?,
+                    ByteOrder::LittleEndian => out.write_u32::<LE>(size as u32)?,
+                },
             }
+            Ok(())
         })
     }
 
@@ -445,66 +505,132 @@ impl IOBuffer {
     // specifications.
     #[rustfmt::skip]
     #[cfg(feature = "xml")]
-    fn into_bytes_with_size_impl(
+    fn try_into_bytes_with_size_impl<F>(
         self,
-        bo: ByteOrder,
-        compressor: crate::xml::Compressor,
-        compression_level: u32,
-        prefix_size: usize,
-        write_size: impl Fn(&mut [u8], usize),
-    ) -> Vec<u8> {
+        ei: crate::xml::EncodingInfo,
+        b64_encode: F,
+        write_size: impl Fn(&mut [u8], usize) -> Result<(), Error>,
+    ) -> Result<String, Error>
+    where
+        F: for<'a> Fn(&'a [u8], &'a mut String),
+    {
         use crate::xml::Compressor;
 
-        // Allocate enough bytes for the prefix.
-        // We will know what exactly to put there after compression.
-        let mut out = vec![0u8; prefix_size];
+        let prefix_size: usize = ei.header_type.size();
+
+        let mut encoded = String::new();
+        let mut out = Vec::new();
 
         let num_uncompressed_bytes = self.num_bytes();
 
-        // Reserve the number of bytes of the uncompressed data.
-        out.reserve(num_uncompressed_bytes);
-
         // Handle fast pass cases where we can just do a memcpy.
-        if compressor == Compressor::None || compression_level == 0 {
+        if ei.compressor == Compressor::None || ei.compression_level == 0 {
+            // Reserve the number of bytes of the uncompressed data.
+            out.reserve(prefix_size + num_uncompressed_bytes);
+
+            // Allocate enough bytes for the prefix.
+            out.resize(prefix_size, 0u8);
             match self {
                 IOBuffer::Bit(mut v) | IOBuffer::U8(mut v) => {
                     out.append(&mut v);
-                    write_size(out.as_mut_slice(), num_uncompressed_bytes);
-                    return out;
+                    write_size(out.as_mut_slice(), num_uncompressed_bytes)?;
+                    b64_encode(&out, &mut encoded);
+                    return Ok(encoded);
                 }
                 IOBuffer::I8(v) => {
                     out.append(&mut cast_vec(v));
-                    write_size(out.as_mut_slice(), num_uncompressed_bytes);
-                    return out;
+                    write_size(out.as_mut_slice(), num_uncompressed_bytes)?;
+                    b64_encode(&out, &mut encoded);
+                    return Ok(encoded);
                 }
                 // Can't just copy the bytes, so we will do a conversion.
                 _ => {}
             }
-        }
+        } else {
+            // Compressed data has a more complex header.
+            // The data is organized as [nb][nu][np][nc_1]...[nc_nb][Data]
+            // Where
+            //   [nb] = Number of blocks in the data array
+            //   [nu] = Block size before compression
+            //   [np] = Size of the last partial block before compression (zero if it is not needed)
+            //   [nc_i] = Size in bytes of block i after compression
+            // See https://vtk.org/Wiki/VTK_XML_Formats for details.
 
-        {
-            match compressor {
+            log::trace!("[compress]: Uncompressed size: {:?}", num_uncompressed_bytes);
+            // TODO: explore different block sizes (e.g. 32768 is used by paraview)
+            let block_size = 32768; //num_uncompressed_bytes;
+            let num_blocks = (num_uncompressed_bytes / block_size) + 1;
+            let partial_block_bytes = num_uncompressed_bytes % block_size;
+            log::trace!("[compress]: Number of blocks: {:?}", num_blocks);
+            log::trace!("[compress]: Block size: {:?}", block_size);
+            log::trace!("[compress]: Last block size: {:?}", partial_block_bytes);
+
+            // Greedily reserve as if there is no compression.
+            out.reserve((3 + num_blocks) * prefix_size + num_uncompressed_bytes);
+
+            // Add space for nb, nu, np and nc_1 .. nc_nb
+            out.resize((3 + num_blocks) * prefix_size, 0u8);
+            write_size(&mut out[0..prefix_size], num_blocks)?;
+            write_size(&mut out[prefix_size..2*prefix_size], block_size)?;
+            write_size(&mut out[2*prefix_size..3*prefix_size], partial_block_bytes)?;
+            let start = (3 + num_blocks) * prefix_size;
+
+            // TODO: Refactor and parallelize these functions for compressing large files.
+            // Also b64_encode should be able to encode a vector of buffers so as to avoid copying everything into yet another output buffer.
+            match ei.compressor {
                 Compressor::ZLib => {
                     #[cfg(feature = "flate2")]
                     {
                         use flate2::{write::ZlibEncoder, Compression};
-                        let mut e = ZlibEncoder::new(out, Compression::new(compression_level));
-                        self.write_bytes(&mut e, bo);
-                        let mut out = e.finish().unwrap();
-                        let num_compressed_bytes = out.len() - prefix_size;
-                        write_size(out.as_mut_slice(), num_compressed_bytes);
-                        return out;
+                        let mut bufs = vec![];
+                        for i in 0..num_blocks {
+                            let cur_block_size = if i < num_blocks - 1 {
+                                block_size
+                            } else {
+                                partial_block_bytes
+                            };
+                            let mut e = ZlibEncoder::new(Vec::new(), Compression::new(ei.compression_level));
+                            self.write_bytes_block(&mut e, ei.byte_order, (i*block_size)/self.scalar_size(), cur_block_size/self.scalar_size());
+                            let buf = e.finish().map_err(CompressionError::from)?;
+                            let num_compressed_bytes = buf.len();
+                            bufs.push(buf);
+                            log::trace!("[compress]: Compressed size: {:?}", num_compressed_bytes);
+                            write_size(&mut out[(3 + i)*prefix_size..(4 + i)*prefix_size], num_compressed_bytes)?;
+                        }
+                        for mut buf in bufs.into_iter() {
+                            out.append(&mut buf);
+                        }
+                        b64_encode(&out[0..start], &mut encoded);
+                        b64_encode(&out[start..], &mut encoded);
+                        log::trace!("[compress]: Encoded size: {:?}", encoded.len());
+                        return Ok(encoded);
                     }
                 }
                 Compressor::LZMA => {
                     #[cfg(feature = "xz2")]
                     {
-                        let mut e = xz2::write::XzEncoder::new(out, compression_level);
-                        self.write_bytes(&mut e, bo);
-                        let mut out = e.finish().unwrap();
-                        let num_compressed_bytes = out.len() - prefix_size;
-                        write_size(out.as_mut_slice(), num_compressed_bytes);
-                        return out;
+                        let mut bufs = vec![];
+                        for i in 0..num_blocks {
+                            let cur_block_size = if i < num_blocks - 1 {
+                                block_size
+                            } else {
+                                partial_block_bytes
+                            };
+                            let mut e = xz2::write::XzEncoder::new(Vec::new(), ei.compression_level);
+                            self.write_bytes_block(&mut e, ei.byte_order, (i*block_size)/self.scalar_size(), cur_block_size/self.scalar_size());
+                            let buf = e.finish().map_err(CompressionError::from)?;
+                            let num_compressed_bytes = buf.len();
+                            bufs.push(buf);
+                            log::trace!("[compress]: Compressed size: {:?}", num_compressed_bytes);
+                            write_size(&mut out[(3 + i)*prefix_size..(4 + i)*prefix_size], num_compressed_bytes)?;
+                        }
+                        for mut buf in bufs.into_iter() {
+                            out.append(&mut buf);
+                        }
+                        b64_encode(&out[0..start], &mut encoded);
+                        b64_encode(&out[start..], &mut encoded);
+                        log::trace!("[compress]: Encoded size: {:?}", encoded.len());
+                        return Ok(encoded);
                     }
                 }
                 Compressor::LZ4 => {
@@ -512,39 +638,152 @@ impl IOBuffer {
                     {
                         // The following commented out code is a snippet for how to do this encoding
                         // using the lz4 crate, although at the time of this writing it does not
-                        // support lz4 block format.
+                        // support lz4 block format, which is why we use lz4_flex.
+                        // Note that the frame format is more sophisticated and writes extra data describing the lz4
+                        // data, which is not needed here since block data is explicitly handled in VTK files.
                         //let mut e = lz4::EncoderBuilder::new()
-                        //    .level(compression_level)
+                        //    .level(ei.compression_level)
                         //    .checksum(lz4::ContentChecksum::NoChecksum)
                         //    .build(out)
                         //    .unwrap();
-                        //self.write_bytes(&mut e, bo);
+                        //self.write_bytes(&mut e, ei.byte_order);
                         //let mut out = e.finish().0;
 
-                        // Initially write raw bytes to out.
-                        self.write_bytes(&mut out, bo);
+                        let mut bufs = vec![];
+                        for i in 0..num_blocks {
+                            let cur_block_size = if i < num_blocks - 1 {
+                                block_size
+                            } else {
+                                partial_block_bytes
+                            };
+                            let mut buf = Vec::new();
+                            self.write_bytes_block(&mut buf, ei.byte_order, (i*block_size)/self.scalar_size(), cur_block_size/self.scalar_size());
+                            let compressed_bytes = lz4::compress(&buf);
+                            let num_compressed_bytes = compressed_bytes.len();
+                            bufs.push(compressed_bytes);
+                            log::trace!("[compress]: Compressed size: {:?}", num_compressed_bytes);
+                            write_size(&mut out[(3 + i)*prefix_size..(4 + i)*prefix_size], num_compressed_bytes)?;
+                        }
+                        for mut buf in bufs.into_iter() {
+                            out.append(&mut buf);
+                        }
 
-                        // Then compress them.
-                        // This should be done using a writer, but lz4_flex does not implement this at
-                        // this time, and it seems like the lz4 crate doesn't support lz4's block format.
-                        let mut out = lz4::compress(&out);
-
-                        let num_compressed_bytes = out.len() - prefix_size;
-                        write_size(out.as_mut_slice(), num_compressed_bytes);
-                        return out;
+                        b64_encode(&out[0..start], &mut encoded);
+                        b64_encode(&out[start..], &mut encoded);
+                        log::trace!("[compress]: Encoded size: {:?}", encoded.len());
+                        return Ok(encoded);
                     }
                 }
                 Compressor::None => {}
             }
         }
 
-        self.write_bytes(&mut out, bo);
-        write_size(out.as_mut_slice(), num_uncompressed_bytes);
+        // Append data represented by this IOBuffer to out.
+        self.write_bytes(&mut out, ei.byte_order);
+        // Write out the number of bytes to the prefix. (only value in the uncompressed case)
+        write_size(out.as_mut_slice(), num_uncompressed_bytes)?;
 
-        // Remove excess bytes.
-        out.shrink_to_fit();
+        b64_encode(&out, &mut encoded);
+        Ok(encoded)
+    }
 
-        out
+    #[cfg(feature = "xml")]
+    fn write_bytes_block<W: byteorder::WriteBytesExt>(
+        &self,
+        out: &mut W,
+        bo: ByteOrder,
+        offset: usize,
+        block_size: usize,
+    ) {
+        use byteorder::{BE, LE};
+
+        // Consume the inner vector by applying the given function to each element in blocks
+        fn write_block<T: Copy, W, F: Fn(T, &mut W)>(
+            v: &[T],
+            out: &mut W,
+            offset: usize,
+            block_size: usize,
+            apply: F,
+        ) {
+            v[offset..offset + block_size]
+                .iter()
+                .for_each(|&x| apply(x, out))
+        }
+        match self {
+            IOBuffer::Bit(v) => write_block(v, out, offset, block_size, |x, out| {
+                out.write_u8(x).unwrap()
+            }),
+            IOBuffer::U8(v) => write_block(v, out, offset, block_size, |x, out| {
+                out.write_u8(x).unwrap()
+            }),
+            IOBuffer::I8(v) => write_block(v, out, offset, block_size, |x, out| {
+                out.write_i8(x).unwrap()
+            }),
+            IOBuffer::U16(v) => match bo {
+                ByteOrder::BigEndian => write_block(v, out, offset, block_size, |x, out| {
+                    out.write_u16::<BE>(x).unwrap()
+                }),
+                ByteOrder::LittleEndian => write_block(v, out, offset, block_size, |x, out| {
+                    out.write_u16::<LE>(x).unwrap()
+                }),
+            },
+            IOBuffer::I16(v) => match bo {
+                ByteOrder::BigEndian => write_block(v, out, offset, block_size, |x, out| {
+                    out.write_i16::<BE>(x).unwrap()
+                }),
+                ByteOrder::LittleEndian => write_block(v, out, offset, block_size, |x, out| {
+                    out.write_i16::<LE>(x).unwrap()
+                }),
+            },
+            IOBuffer::U32(v) => match bo {
+                ByteOrder::BigEndian => write_block(v, out, offset, block_size, |x, out| {
+                    out.write_u32::<BE>(x).unwrap()
+                }),
+                ByteOrder::LittleEndian => write_block(v, out, offset, block_size, |x, out| {
+                    out.write_u32::<LE>(x).unwrap()
+                }),
+            },
+            IOBuffer::I32(v) => match bo {
+                ByteOrder::BigEndian => write_block(v, out, offset, block_size, |x, out| {
+                    out.write_i32::<BE>(x).unwrap()
+                }),
+                ByteOrder::LittleEndian => write_block(v, out, offset, block_size, |x, out| {
+                    out.write_i32::<LE>(x).unwrap()
+                }),
+            },
+            IOBuffer::U64(v) => match bo {
+                ByteOrder::BigEndian => write_block(v, out, offset, block_size, |x, out| {
+                    out.write_u64::<BE>(x).unwrap()
+                }),
+                ByteOrder::LittleEndian => write_block(v, out, offset, block_size, |x, out| {
+                    out.write_u64::<LE>(x).unwrap()
+                }),
+            },
+            IOBuffer::I64(v) => match bo {
+                ByteOrder::BigEndian => write_block(v, out, offset, block_size, |x, out| {
+                    out.write_i64::<BE>(x).unwrap()
+                }),
+                ByteOrder::LittleEndian => write_block(v, out, offset, block_size, |x, out| {
+                    out.write_i64::<LE>(x).unwrap()
+                }),
+            },
+            IOBuffer::F32(v) => match bo {
+                ByteOrder::BigEndian => write_block(v, out, offset, block_size, |x, out| {
+                    out.write_f32::<BE>(x).unwrap()
+                }),
+                ByteOrder::LittleEndian => write_block(v, out, offset, block_size, |x, out| {
+                    out.write_f32::<LE>(x).unwrap()
+                }),
+            },
+            IOBuffer::F64(v) => match bo {
+                ByteOrder::BigEndian => write_block(v, out, offset, block_size, |x, out| {
+                    out.write_f64::<BE>(x).unwrap()
+                }),
+                ByteOrder::LittleEndian => write_block(v, out, offset, block_size, |x, out| {
+                    out.write_f64::<LE>(x).unwrap()
+                }),
+            },
+        }
     }
 
     #[cfg(feature = "xml")]
@@ -762,6 +1001,65 @@ impl IOBuffer {
             I64(v) => v.iter().map(|&x| T::from_i64(x)).collect(),
             F32(v) => v.iter().map(|&x| T::from_f32(x)).collect(),
             F64(v) => v.iter().map(|&x| T::from_f64(x)).collect(),
+        }
+    }
+
+    /// Utility function to compute the range of numbers stored within this buffer.
+    ///
+    /// This is used when constructing an XML type.
+    ///
+    /// If this buffer is empty, `None` is returned.
+    pub fn compute_range(&self) -> Option<(f64, f64)> {
+        use IOBuffer::*;
+        fn transpose<T: Copy>(a: Option<T>, b: Option<T>) -> Option<(T, T)> {
+            if let (Some(a), Some(b)) = (a, b) {
+                Some((a, b))
+            } else {
+                None
+            }
+        }
+        match self {
+            Bit(v) => {
+                let (zeros, ones) = v.iter().fold((0, 0), |(mut zeros, mut ones), &x| {
+                    zeros += usize::from(x == 0);
+                    ones += usize::from(x == u8::MAX);
+                    (zeros, ones)
+                });
+                Some((
+                    (ones == v.len()) as u8 as f64,
+                    (zeros != v.len()) as u8 as f64,
+                ))
+            }
+            U8(v) => transpose(v.iter().min(), v.iter().max()).map(|(&a, &b)| (a as f64, b as f64)),
+            I8(v) => transpose(v.iter().min(), v.iter().max()).map(|(&a, &b)| (a as f64, b as f64)),
+            U16(v) => {
+                transpose(v.iter().min(), v.iter().max()).map(|(&a, &b)| (a as f64, b as f64))
+            }
+            I16(v) => {
+                transpose(v.iter().min(), v.iter().max()).map(|(&a, &b)| (a as f64, b as f64))
+            }
+            U32(v) => {
+                transpose(v.iter().min(), v.iter().max()).map(|(&a, &b)| (a as f64, b as f64))
+            }
+            I32(v) => {
+                transpose(v.iter().min(), v.iter().max()).map(|(&a, &b)| (a as f64, b as f64))
+            }
+            U64(v) => {
+                transpose(v.iter().min(), v.iter().max()).map(|(&a, &b)| (a as f64, b as f64))
+            }
+            I64(v) => {
+                transpose(v.iter().min(), v.iter().max()).map(|(&a, &b)| (a as f64, b as f64))
+            }
+            F32(v) => transpose(
+                v.iter().cloned().reduce(f32::min),
+                v.iter().cloned().reduce(f32::max),
+            )
+            .map(|x| (x.0 as f64, x.1 as f64)),
+            F64(v) => transpose(
+                v.iter().cloned().reduce(f64::min),
+                v.iter().cloned().reduce(f64::max),
+            )
+            .map(|x| (x.0, x.1)),
         }
     }
 }

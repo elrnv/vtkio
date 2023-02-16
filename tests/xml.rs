@@ -1,8 +1,13 @@
 #![cfg(feature = "xml")]
+use pretty_assertions::assert_eq;
 use std::io::BufReader;
 use vtkio::{model::*, Error};
 
 type Result = std::result::Result<(), Error>;
+
+fn init() {
+    let _ = env_logger::builder().is_test(true).try_init();
+}
 
 fn make_box_vtu() -> Vtk {
     Vtk {
@@ -241,7 +246,11 @@ fn hexahedron_lzma_pvtu() -> Result {
 #[cfg(feature = "flate2")]
 #[test]
 fn hexahedron_zlib() -> Result {
-    let mut vtu = Vtk::import("./assets/hexahedron_zlib.vtu")?;
+    let mut vtu = Vtk::import("./assets/hexahedron_zlib_para.vtu")?;
+    vtu.clone()
+        .try_into_xml_format(vtkio::xml::Compressor::ZLib, 1)
+        .unwrap();
+    // vtkfile.export("./assets/hexahedron_zlib_out.vtu").unwrap();
     vtu.file_path = None; // Reset file path to satisfy comparison
     assert_eq!(vtu, make_hexahedron_vtu());
     Ok(())
@@ -250,18 +259,75 @@ fn hexahedron_zlib() -> Result {
 #[cfg(feature = "flate2")]
 #[test]
 fn hexahedron_zlib_binary() -> Result {
-    let mut vtu = Vtk::import("./assets/hexahedron_zlib_binary.vtu")?;
+    let path = "./assets/hexahedron_zlib_binary.vtu";
+    let mut vtu = Vtk::import(path)?;
     vtu.file_path = None; // Reset file path to satisfy comparison
     assert_eq!(vtu, make_hexahedron_vtu());
+    // TODO: Implement a config for converting to XML files and add the following round trip test.
+    // Write back into a vtkfile to check compression consistency.
+    //let vtkfile = vtu
+    //    .clone()
+    //    .try_into_xml_format(vtkio::xml::Compressor::ZLib, 9)
+    //    .unwrap();
+    //let orig_vtkfile = vtkio::xml::VTKFile::import(path)?;
+    //assert_eq!(vtkfile, orig_vtkfile); // Checks that compression is the same.
+    Ok(())
+}
+
+#[cfg(feature = "flate2")]
+#[test]
+fn hexahedron_zlib_inline_binary() -> Result {
+    init();
+    let path = "./assets/hexahedron_zlib_inline_binary.vtu";
+    let mut vtu = Vtk::import(path)?;
+    vtu.file_path = None; // Reset file path to satisfy comparison
+    assert_eq!(vtu, make_hexahedron_vtu());
+    // Write back into a vtkfile to check compression consistency.
+    let vtkfile = vtu
+        .clone()
+        .try_into_xml_format(vtkio::xml::Compressor::ZLib, 6)
+        .unwrap();
+    // vtkfile.export("./assets/hexahedron_zlib_inline_binary_alt.vtu")?;
+    let orig_vtkfile = vtkio::xml::VTKFile::import(path)?;
+    assert_eq!(vtkfile, orig_vtkfile); // Checks that compression is the same.
     Ok(())
 }
 
 #[cfg(feature = "lz4")]
 #[test]
 fn hexahedron_lz4() -> Result {
-    let mut vtu = Vtk::import("./assets/hexahedron_lz4.vtu")?;
+    init();
+    let path = "./assets/hexahedron_lz4_inline_binary.vtu";
+    let mut vtu = Vtk::import(path)?;
     vtu.file_path = None; // Reset file path to satisfy comparison
     assert_eq!(vtu, make_hexahedron_vtu());
+    // Write back into a vtkfile to check compression consistency.
+    let vtkfile = vtu
+        .clone()
+        .try_into_xml_format(vtkio::xml::Compressor::LZ4, 9)
+        .unwrap();
+    // vtkfile.export("./assets/hexahedron_lz4_inline_binary_alt.vtu")?;
+    let orig_vtkfile = vtkio::xml::VTKFile::import(path)?;
+    assert_eq!(vtkfile, orig_vtkfile); // Checks that compression is the same.
+    Ok(())
+}
+
+#[cfg(feature = "xz2")]
+#[test]
+fn hexahedron_lzma_inline_binary() -> Result {
+    init();
+    let path = "./assets/hexahedron_lzma_inline_binary.vtu";
+    let mut vtu = Vtk::import(path)?;
+    vtu.file_path = None; // Reset file path to satisfy comparison
+    assert_eq!(vtu, make_hexahedron_vtu());
+    // Write back into a vtkfile to check compression consistency.
+    let vtkfile = vtu
+        .clone()
+        .try_into_xml_format(vtkio::xml::Compressor::LZMA, 9)
+        .unwrap();
+    // vtkfile.export("./assets/hexahedron_lzma_inline_binary_alt.vtu")?;
+    let orig_vtkfile = vtkio::xml::VTKFile::import(path)?;
+    assert_eq!(vtkfile, orig_vtkfile); // Checks that compression is the same.
     Ok(())
 }
 

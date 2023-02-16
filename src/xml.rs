@@ -15,6 +15,7 @@ use std::path::Path;
 
 use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
 use base64::Engine as _;
+use log;
 use serde::{Deserialize, Serialize};
 
 use crate::model;
@@ -145,29 +146,6 @@ mod compressor {
             })
         }
     }
-
-    // impl Serialize for Compressor {
-    //     fn serialize<S>(&self, s: S) -> Result<S::Ok, S::Error>
-    //     where
-    //         S: Serializer,
-    //     {
-    //         let compressor = match self {
-    //             Compressor::ZLib => "vtkZLibDataCompressor",
-    //             Compressor::LZ4 => "vtkLZ4DataCompressor",
-    //             Compressor::LZMA => "vtkLZMADataCompressor",
-    //             Compressor::None => return s.serialize_none(),
-    //         };
-    //         s.serialize_str(compressor)
-    //     }
-    // }
-    // impl<'de> Deserialize<'de> for Compressor {
-    //     fn deserialize<D>(d: D) -> Result<Compressor, D::Error>
-    //     where
-    //         D: Deserializer<'de>,
-    //     {
-    //         d.deserialize_str(CompressorVisitor)
-    //     }
-    // }
 }
 
 /// Module used to serialize and deserialize whitespace separated sequences of 6 integers.
@@ -1415,10 +1393,12 @@ pub struct Points {
 }
 
 impl Points {
-    pub fn from_io_buffer(buf: model::IOBuffer, ei: EncodingInfo) -> Points {
-        Points {
-            data: DataArray::from_io_buffer(buf, ei).with_num_comp(3),
-        }
+    pub fn from_io_buffer(buf: model::IOBuffer, ei: EncodingInfo) -> Result<Points> {
+        Ok(Points {
+            data: DataArray::from_io_buffer(buf, ei)?
+                .with_num_comp(3)
+                .with_name("Points"),
+        })
     }
 }
 
@@ -1433,22 +1413,22 @@ pub struct Cells {
 }
 
 impl Cells {
-    fn from_model_cells(cells: model::Cells, ei: EncodingInfo) -> Cells {
+    fn from_model_cells(cells: model::Cells, ei: EncodingInfo) -> Result<Cells> {
         let model::Cells { cell_verts, types } = cells;
         let (connectivity, offsets) = cell_verts.into_xml();
-        Cells {
-            connectivity: DataArray::from_io_buffer(connectivity.into(), ei)
+        Ok(Cells {
+            connectivity: DataArray::from_io_buffer(connectivity.into(), ei)?
                 .with_name("connectivity"),
-            offsets: DataArray::from_io_buffer(offsets.into(), ei).with_name("offsets"),
+            offsets: DataArray::from_io_buffer(offsets.into(), ei)?.with_name("offsets"),
             types: DataArray::from_io_buffer(
                 types
                     .into_iter()
                     .map(|x| x as u8)
                     .collect::<model::IOBuffer>(),
                 ei,
-            )
+            )?
             .with_name("types"),
-        }
+        })
     }
 
     /// Decodes a data array for types.
@@ -1509,13 +1489,13 @@ pub struct Topo {
 
 impl Topo {
     /// Convert model topology type into `Topo`.
-    fn from_model_topo(topo: model::VertexNumbers, ei: EncodingInfo) -> Topo {
+    fn from_model_topo(topo: model::VertexNumbers, ei: EncodingInfo) -> Result<Topo> {
         let (connectivity, offsets) = topo.into_xml();
-        Topo {
-            connectivity: DataArray::from_io_buffer(connectivity.into(), ei)
+        Ok(Topo {
+            connectivity: DataArray::from_io_buffer(connectivity.into(), ei)?
                 .with_name("connectivity"),
-            offsets: DataArray::from_io_buffer(offsets.into(), ei).with_name("offsets"),
-        }
+            offsets: DataArray::from_io_buffer(offsets.into(), ei)?.with_name("offsets"),
+        })
     }
 
     /// Given the expected number of elements and an optional appended data,
@@ -1631,7 +1611,7 @@ impl AttributeInfo {
 }
 
 impl AttributeData {
-    pub fn from_model_attributes(attribs: Vec<model::Attribute>, ei: EncodingInfo) -> Self {
+    pub fn from_model_attributes(attribs: Vec<model::Attribute>, ei: EncodingInfo) -> Result<Self> {
         let mut attribute_data = AttributeData::default();
         for attrib in attribs {
             if let model::Attribute::DataArray(data) = attrib {
@@ -1666,11 +1646,11 @@ impl AttributeData {
                 }
                 attribute_data
                     .data_array
-                    .push(DataArray::from_model_data_array(data, ei));
+                    .push(DataArray::from_model_data_array(data, ei)?);
             }
             // Field attributes are not supported, they are simply ignored.
         }
-        attribute_data
+        Ok(attribute_data)
     }
     pub fn into_model_attributes(
         self,
@@ -1707,12 +1687,12 @@ pub struct Coordinates([DataArray; 3]);
 
 impl Coordinates {
     /// Construct `Coordinates` from `model::Coordinates`.
-    pub fn from_model_coords(coords: model::Coordinates, ei: EncodingInfo) -> Self {
-        Coordinates([
-            DataArray::from_io_buffer(coords.x, ei),
-            DataArray::from_io_buffer(coords.y, ei),
-            DataArray::from_io_buffer(coords.z, ei),
-        ])
+    pub fn from_model_coords(coords: model::Coordinates, ei: EncodingInfo) -> Result<Self> {
+        Ok(Coordinates([
+            DataArray::from_io_buffer(coords.x, ei)?,
+            DataArray::from_io_buffer(coords.y, ei)?,
+            DataArray::from_io_buffer(coords.z, ei)?,
+        ]))
     }
 
     /// Given the expected number of elements and an optional appended data,
@@ -1734,11 +1714,11 @@ impl Coordinates {
 /// A helper struct indicating how to read and write binary data stored in `DataArray`s.
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub struct EncodingInfo {
-    byte_order: model::ByteOrder,
-    header_type: ScalarType,
-    compressor: Compressor,
+    pub byte_order: model::ByteOrder,
+    pub header_type: ScalarType,
+    pub compressor: Compressor,
     // Note that compression level is meaningless during decoding.
-    compression_level: u32,
+    pub compression_level: u32,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -1812,36 +1792,35 @@ impl Default for DataArray {
 
 impl DataArray {
     /// Construct a binary `DataArray` from a given `model::DataArray`.
-    pub fn from_model_data_array(data: model::DataArray, ei: EncodingInfo) -> Self {
+    pub fn from_model_data_array(data: model::DataArray, ei: EncodingInfo) -> Result<Self> {
         let num_comp = u32::try_from(data.num_comp()).unwrap();
-        DataArray {
+        Ok(DataArray {
             name: data.name,
             num_comp,
-            ..DataArray::from_io_buffer(data.data, ei)
-        }
+            ..DataArray::from_io_buffer(data.data, ei)?
+        })
     }
     /// Construct a binary `DataArray` from a given `model::FieldArray`.
-    pub fn from_field_array(field: model::FieldArray, ei: EncodingInfo) -> Self {
-        DataArray {
+    pub fn from_field_array(field: model::FieldArray, ei: EncodingInfo) -> Result<Self> {
+        Ok(DataArray {
             name: field.name,
             num_comp: field.elem,
-            ..DataArray::from_io_buffer(field.data, ei)
-        }
+            ..DataArray::from_io_buffer(field.data, ei)?
+        })
     }
     /// Construct a binary `DataArray` from a given [`model::IOBuffer`].
-    pub fn from_io_buffer(buf: model::IOBuffer, ei: EncodingInfo) -> Self {
-        DataArray {
+    pub fn from_io_buffer(buf: model::IOBuffer, ei: EncodingInfo) -> Result<Self> {
+        // Automatically determine the range for this buffer.
+        let range = buf.compute_range();
+        Ok(DataArray {
             scalar_type: buf.scalar_type().into(),
-            data: vec![Data::Data(BASE64_STANDARD.encode(
-                if ei.header_type == ScalarType::UInt64 {
-                    buf.into_bytes_with_size(ei.byte_order, ei.compressor, ei.compression_level)
-                } else {
-                    buf.into_bytes_with_size32(ei.byte_order, ei.compressor, ei.compression_level)
-                    // Older vtk Versions
-                },
-            ))],
+            range_min: range.map(|x| x.0),
+            range_max: range.map(|x| x.1),
+            data: vec![Data::Data({
+                buf.into_bytes_with_size_encoded(ei, |x, s| BASE64_STANDARD.encode_string(x, s))?
+            })],
             ..Default::default()
-        }
+        })
     }
 
     /// Returns the given `DataArray` with name set to `name`.
@@ -2223,6 +2202,98 @@ fn read_header_num<R: AsRef<[u8]>>(
     })
 }
 
+// A trait for generalizing the decoder.
+trait DecoderKit<'a> {
+    fn read(&mut self, out: &mut [u8]) -> std::result::Result<usize, ValidationError>;
+    fn make(input: &'a [u8]) -> Self;
+}
+
+impl<'a> DecoderKit<'a> for flate2::bufread::ZlibDecoder<&'a [u8]> {
+    fn read(&mut self, out: &mut [u8]) -> std::result::Result<usize, ValidationError> {
+        Ok(std::io::Read::read(self, out)?)
+    }
+    fn make(input: &'a [u8]) -> Self {
+        flate2::bufread::ZlibDecoder::new(input)
+    }
+}
+
+impl<'a> DecoderKit<'a> for xz2::read::XzDecoder<&'a [u8]> {
+    fn read(&mut self, out: &mut [u8]) -> std::result::Result<usize, ValidationError> {
+        Ok(std::io::Read::read(self, out)?)
+    }
+    fn make(input: &'a [u8]) -> Self {
+        xz2::read::XzDecoder::new(input)
+    }
+}
+
+struct Lz4Decoder<'a>(&'a [u8]);
+
+impl<'a> DecoderKit<'a> for Lz4Decoder<'a> {
+    fn read(&mut self, out: &mut [u8]) -> std::result::Result<usize, ValidationError> {
+        Ok(lz4::block::decompress_into(self.0, out)?)
+    }
+    fn make(input: &'a [u8]) -> Self {
+        Lz4Decoder(input)
+    }
+}
+
+fn decompress<'a, D>(
+    [nb, nu, np]: [usize; 3],
+    compressed_block_offsets: &[usize],
+    decoded_data: &'a [u8],
+) -> std::result::Result<Vec<u8>, ValidationError>
+where
+    D: DecoderKit<'a>,
+{
+    #[cfg(feature = "rayon")]
+    use rayon::prelude::*;
+
+    let mut out = vec![0u8; nu * (nb - 1) + np];
+    #[cfg(feature = "rayon")]
+    let blocks_iter = compressed_block_offsets.par_windows(2).map(|window| {
+        let (a, b) = unsafe { (*window.get_unchecked(0), *window.get_unchecked(1)) };
+        &decoded_data[a..b]
+    });
+    #[cfg(not(feature = "rayon"))]
+    let blocks_iter = compressed_block_offsets.windows(2).map(|window| {
+        let (a, b) = unsafe { (*window.get_unchecked(0), *window.get_unchecked(1)) };
+        &decoded_data[a..b]
+    });
+    #[cfg(feature = "rayon")]
+    if !blocks_iter
+        .zip(out.par_chunks_mut(nu))
+        .fold(
+            || true,
+            |mut acc, (block, out)| {
+                let mut decoder = D::make(block);
+                if let Ok(n) = decoder.read(out) {
+                    acc &= n == out.len();
+                } else {
+                    return false;
+                }
+                acc
+            },
+        )
+        .reduce(
+            || true,
+            |mut a, b| {
+                a &= b;
+                a
+            },
+        )
+    {
+        return Err(ValidationError::DecompressError);
+    }
+    #[cfg(not(feature = "rayon"))]
+    for (block, out) in blocks_iter.zip(out.chunks_mut(nu)) {
+        let mut decoder = D::make(block);
+        if decoder.read(out)? != out.len() {
+            return Err(ValidationError::DecompressError);
+        }
+    }
+    Ok(out)
+}
+
 /// Returns an allocated decompressed Vec of bytes.
 // Allow this warning which are fired when compression is disabled.
 #[allow(unused_variables)]
@@ -2261,15 +2332,38 @@ where
     let full_header_bytes = header_bytes * (3 + num_blocks); // nb + nu + np + sum_i nc_i
     buf.clear();
 
+    log::trace!("[decompress]: Num blocks: {:?}", num_blocks);
+    log::trace!("[decompress]: header bytes: {:?}", header_bytes);
+    log::trace!("[decompress]: full header bytes: {:?}", full_header_bytes);
+    log::trace!(
+        "[decompress]: full header bytes in base 64: {:?}",
+        to_b64(full_header_bytes)
+    );
+
     let encoded_header = &data[0..to_b64(full_header_bytes)];
     let decoded_header = decode(encoded_header, buf)?;
+    log::trace!(
+        "[decompress]: Decoded header length: {:?}",
+        decoded_header.len()
+    );
     let mut header_cursor = Cursor::new(decoded_header);
     let _nb = read_header_num(&mut header_cursor, ei)?; // We already know the number of blocks
     let nu = read_header_num(&mut header_cursor, ei)?; // Block size before compression
+    log::trace!("[decompress]: Block size: {:?}", nu);
     let np = read_header_num(&mut header_cursor, ei)?; // Last block size before compression
-    let nc_total = (0..num_blocks).fold(0, |acc, _| {
-        acc + read_header_num(&mut header_cursor, ei).unwrap_or(0)
-    });
+    log::trace!("[decompress]: Last block size: {:?}", np);
+    let compressed_block_offsets: Vec<_> = std::iter::once(0)
+        .chain((0..num_blocks).scan(0, |state, _| {
+            *state += read_header_num(&mut header_cursor, ei).unwrap_or(0);
+            Some(*state)
+        }))
+        .collect();
+    let nc_total = *compressed_block_offsets.last().unwrap_or(&0);
+    log::trace!(
+        "[decompress]: Compressed offsets: {:?}",
+        compressed_block_offsets
+    );
+    log::trace!("[decompress]: Total number of bytes: {:?}", nc_total);
     let num_data_bytes = to_b64(nc_total);
     let start = to_b64(full_header_bytes);
     buf.clear();
@@ -2285,11 +2379,11 @@ where
             }
             #[cfg(feature = "flate2")]
             {
-                use std::io::Read;
-                let mut out = Vec::new();
-                let mut decoder = flate2::read::ZlibDecoder::new(decoded_data);
-                decoder.read_to_end(&mut out)?;
-                Ok(out)
+                decompress::<flate2::bufread::ZlibDecoder<&'a [u8]>>(
+                    [num_blocks, nu, np],
+                    &compressed_block_offsets,
+                    decoded_data,
+                )
             }
         }
         Compressor::LZ4 => {
@@ -2299,13 +2393,11 @@ where
             }
             #[cfg(feature = "lz4")]
             {
-                let mut uncompressed_size = nu * num_blocks;
-                if np > 0 && num_blocks > 0 {
-                    // If the last block has size, add it instead of nu
-                    uncompressed_size -= nu;
-                    uncompressed_size += np;
-                }
-                Ok(lz4::decompress(decoded_data, uncompressed_size)?)
+                decompress::<Lz4Decoder>(
+                    [num_blocks, nu, np],
+                    &compressed_block_offsets,
+                    decoded_data,
+                )
             }
         }
         Compressor::LZMA => {
@@ -2315,11 +2407,11 @@ where
             }
             #[cfg(feature = "xz2")]
             {
-                use std::io::Read;
-                let mut out = Vec::new();
-                let mut decoder = xz2::read::XzDecoder::new(decoded_data);
-                decoder.read_to_end(&mut out)?;
-                Ok(out)
+                decompress::<xz2::read::XzDecoder<&'a [u8]>>(
+                    [num_blocks, nu, np],
+                    &compressed_block_offsets,
+                    decoded_data,
+                )
             }
         }
         _ => {
@@ -2614,6 +2706,7 @@ pub enum ValidationError {
     Deserialize(de::DeError),
     #[cfg(feature = "lz4")]
     LZ4DecompressError(lz4::block::DecompressError),
+    DecompressError,
     Unsupported,
 }
 
@@ -2723,8 +2816,9 @@ impl std::fmt::Display for ValidationError {
             }
             #[cfg(feature = "lz4")]
             ValidationError::LZ4DecompressError(source) => {
-                write!(f, "LZ4 deompression error: {}", source)
+                write!(f, "LZ4 decompression error: {}", source)
             }
+            ValidationError::DecompressError => write!(f, "Decompression error"),
             ValidationError::Unsupported => write!(f, "Unsupported data set format"),
         }
     }
@@ -3187,9 +3281,14 @@ impl model::Vtk {
     /// ```
     pub fn try_into_xml_format(
         self,
-        compressor: Compressor,
+        mut compressor: Compressor,
         compression_level: u32,
     ) -> Result<VTKFile> {
+        // Override compressor if level is set to 0 to avoid problems during reads.
+        if compression_level == 0 {
+            compressor = Compressor::None;
+        }
+
         let model::Vtk {
             version,
             byte_order,
@@ -3233,11 +3332,11 @@ impl model::Vtk {
                             point_data: AttributeData::from_model_attributes(
                                 data.point,
                                 encoding_info,
-                            ),
+                            )?,
                             cell_data: AttributeData::from_model_attributes(
                                 data.cell,
                                 encoding_info,
-                            ),
+                            )?,
                             ..Default::default()
                         })
                     })
@@ -3261,15 +3360,15 @@ impl model::Vtk {
                         } = piece_data;
                         Ok(Piece {
                             extent: Some(extent.into()),
-                            points: Some(Points::from_io_buffer(points, encoding_info)),
+                            points: Some(Points::from_io_buffer(points, encoding_info)?),
                             point_data: AttributeData::from_model_attributes(
                                 data.point,
                                 encoding_info,
-                            ),
+                            )?,
                             cell_data: AttributeData::from_model_attributes(
                                 data.cell,
                                 encoding_info,
-                            ),
+                            )?,
                             ..Default::default()
                         })
                     })
@@ -3296,15 +3395,15 @@ impl model::Vtk {
                             coordinates: Some(Coordinates::from_model_coords(
                                 coords,
                                 encoding_info,
-                            )),
+                            )?),
                             point_data: AttributeData::from_model_attributes(
                                 data.point,
                                 encoding_info,
-                            ),
+                            )?,
                             cell_data: AttributeData::from_model_attributes(
                                 data.cell,
                                 encoding_info,
-                            ),
+                            )?,
                             ..Default::default()
                         })
                     })
@@ -3328,16 +3427,16 @@ impl model::Vtk {
                         Ok(Piece {
                             number_of_points: u32::try_from(num_points).unwrap(),
                             number_of_cells: u32::try_from(cells.num_cells()).unwrap(),
-                            points: Some(Points::from_io_buffer(points, encoding_info)),
-                            cells: Some(Cells::from_model_cells(cells, encoding_info)),
+                            points: Some(Points::from_io_buffer(points, encoding_info)?),
+                            cells: Some(Cells::from_model_cells(cells, encoding_info)?),
                             point_data: AttributeData::from_model_attributes(
                                 data.point,
                                 encoding_info,
-                            ),
+                            )?,
                             cell_data: AttributeData::from_model_attributes(
                                 data.cell,
                                 encoding_info,
-                            ),
+                            )?,
                             ..Default::default()
                         })
                     })
@@ -3366,10 +3465,18 @@ impl model::Vtk {
                             data,
                         } = piece_data;
 
-                        let verts = verts.map(|topo| Topo::from_model_topo(topo, encoding_info));
-                        let lines = lines.map(|topo| Topo::from_model_topo(topo, encoding_info));
-                        let polys = polys.map(|topo| Topo::from_model_topo(topo, encoding_info));
-                        let strips = strips.map(|topo| Topo::from_model_topo(topo, encoding_info));
+                        let verts = verts
+                            .map(|topo| Topo::from_model_topo(topo, encoding_info))
+                            .transpose()?;
+                        let lines = lines
+                            .map(|topo| Topo::from_model_topo(topo, encoding_info))
+                            .transpose()?;
+                        let polys = polys
+                            .map(|topo| Topo::from_model_topo(topo, encoding_info))
+                            .transpose()?;
+                        let strips = strips
+                            .map(|topo| Topo::from_model_topo(topo, encoding_info))
+                            .transpose()?;
 
                         Ok(Piece {
                             number_of_points: u32::try_from(num_points).unwrap(),
@@ -3377,7 +3484,7 @@ impl model::Vtk {
                             number_of_verts: u32::try_from(number_of_verts).unwrap(),
                             number_of_polys: u32::try_from(number_of_polys).unwrap(),
                             number_of_strips: u32::try_from(number_of_strips).unwrap(),
-                            points: Some(Points::from_io_buffer(points, encoding_info)),
+                            points: Some(Points::from_io_buffer(points, encoding_info)?),
                             verts,
                             lines,
                             polys,
@@ -3385,11 +3492,11 @@ impl model::Vtk {
                             point_data: AttributeData::from_model_attributes(
                                 data.point,
                                 encoding_info,
-                            ),
+                            )?,
                             cell_data: AttributeData::from_model_attributes(
                                 data.cell,
                                 encoding_info,
-                            ),
+                            )?,
                             ..Default::default()
                         })
                     })
@@ -3407,15 +3514,20 @@ impl model::Vtk {
                     spacing: [1.0; 3],
                     pieces: data_array
                         .into_iter()
-                        .map(|data| Piece {
-                            extent: Some(Extent([0, data.len() as i32, 0, 0, 0, 0])),
-                            cell_data: AttributeData {
-                                data_array: vec![DataArray::from_field_array(data, encoding_info)],
+                        .map(|data| {
+                            Ok(Piece {
+                                extent: Some(Extent([0, data.len() as i32, 0, 0, 0, 0])),
+                                cell_data: AttributeData {
+                                    data_array: vec![DataArray::from_field_array(
+                                        data,
+                                        encoding_info,
+                                    )?],
+                                    ..Default::default()
+                                },
                                 ..Default::default()
-                            },
-                            ..Default::default()
+                            })
                         })
-                        .collect(),
+                        .collect::<Result<Vec<_>>>()?,
                 })
             }
         };
@@ -3450,45 +3562,43 @@ impl TryFrom<model::Vtk> for VTKFile {
 }
 
 /// Import an XML VTK file from the specified path.
-pub(crate) fn import(file_path: impl AsRef<Path>) -> Result<VTKFile> {
-    let f = std::fs::File::open(file_path)?;
-    parse(std::io::BufReader::new(f))
-}
-
-fn de_from_reader(reader: impl BufRead) -> Result<VTKFile> {
-    let mut reader = quick_xml::Reader::from_reader(reader);
-    reader
-        .expand_empty_elements(true)
-        .check_end_names(true)
-        .trim_text(true)
-        .trim_text_end(false);
-    let mut de = de::Deserializer::from_custom_reader(reader);
-    Ok(VTKFile::deserialize(&mut de)?)
-}
-
-/// Parse an XML VTK file from the given reader.
-pub(crate) fn parse(reader: impl BufRead) -> Result<VTKFile> {
-    de_from_reader(reader)
-}
-
-/// Import an XML VTK file from the specified path.
 #[cfg(feature = "async_blocked")]
 pub(crate) async fn import_async(file_path: impl AsRef<Path>) -> Result<VTKFile> {
     let f = tokio::fs::File::open(file_path).await?;
     // Blocked on async support from quick-xml (e.g. https://github.com/tafia/quick-xml/pull/233)
-    Ok(de_from_reader(std::io::BufReader::new(f))?)
+    Ok(VTKFile::parse(std::io::BufReader::new(f))?)
 }
 
-/// Export an XML VTK file to the specified path.
-pub(crate) fn export(vtk: &VTKFile, file_path: impl AsRef<Path>) -> Result<()> {
-    let f = std::fs::File::create(file_path)?;
-    write(vtk, std::io::BufWriter::new(f))
-}
+impl VTKFile {
+    /// Import an XML VTK file from the specified path.
+    pub fn import(file_path: impl AsRef<Path>) -> Result<VTKFile> {
+        let f = std::fs::File::open(file_path)?;
+        Self::parse(std::io::BufReader::new(f))
+    }
 
-/// Write an XML VTK file to the specified writer.
-pub(crate) fn write(vtk: &VTKFile, writer: impl quick_xml::se::Write) -> Result<()> {
-    se::to_writer(writer, &vtk)?;
-    Ok(())
+    /// Parse an XML VTK file from the given reader.
+    pub fn parse(reader: impl BufRead) -> Result<VTKFile> {
+        let mut reader = quick_xml::Reader::from_reader(reader);
+        reader
+            .expand_empty_elements(true)
+            .check_end_names(true)
+            .trim_text(true)
+            .trim_text_end(false);
+        let mut de = de::Deserializer::from_custom_reader(reader);
+        Ok(VTKFile::deserialize(&mut de)?)
+    }
+
+    /// Export an XML VTK file to the specified path.
+    pub fn export(&self, file_path: impl AsRef<Path>) -> Result<()> {
+        let f = std::fs::File::create(file_path)?;
+        self.write(std::io::BufWriter::new(f))
+    }
+
+    /// Write an XML VTK file to the specified writer.
+    pub fn write(&self, writer: impl quick_xml::se::Write) -> Result<()> {
+        se::to_writer(writer, self)?;
+        Ok(())
+    }
 }
 
 impl std::fmt::Display for VTKFile {
@@ -3678,7 +3788,7 @@ mod tests {
 
     #[test]
     fn rectilinear_grid_ascii() -> Result<()> {
-        let vtk = import("assets/RectilinearGrid_ascii.vtr")?;
+        let vtk = VTKFile::import("assets/RectilinearGrid_ascii.vtr")?;
         //eprintln!("{:#?}", &vtk);
         let as_str = se::to_string(&vtk).unwrap();
         //eprintln!("{}", &as_str);
@@ -3712,7 +3822,7 @@ mod tests {
 
     #[test]
     fn rectilinear_grid_compressed() -> Result<()> {
-        let vtk = import("assets/RectilinearGridCompressed.vtr")?;
+        let vtk = VTKFile::import("assets/RectilinearGridCompressed.vtr")?;
         //eprintln!("{:#?}", &vtk);
         let as_str = se::to_string(&vtk).unwrap();
         //eprintln!("{}", &as_str);
@@ -3723,42 +3833,42 @@ mod tests {
 
     #[test]
     fn rectilinear_grid_appended_base64() -> Result<()> {
-        let vtk = import("assets/RectilinearGridAppendedBase64.vtr")?;
+        let vtk = VTKFile::import("assets/RectilinearGridAppendedBase64.vtr")?;
         //eprintln!("{:#?}", &vtk);
         let as_bytes = se::to_bytes(&vtk)?;
         //eprintln!("{:?}", &as_bytes);
-        let vtk_roundtrip = de_from_reader(as_bytes.as_slice()).unwrap();
+        let vtk_roundtrip = VTKFile::parse(as_bytes.as_slice()).unwrap();
         assert_eq!(vtk, vtk_roundtrip);
         Ok(())
     }
 
     #[test]
     fn rectilinear_grid_appended_raw_binary() -> Result<()> {
-        let vtk = import("assets/RectilinearGridRawBinary.vtr")?;
+        let vtk = VTKFile::import("assets/RectilinearGridRawBinary.vtr")?;
         //eprintln!("{:#?}", &vtk);
         let as_bytes = se::to_bytes(&vtk)?;
         //eprintln!("{:?}", &as_bytes);
-        let vtk_roundtrip = de_from_reader(as_bytes.as_slice()).unwrap();
+        let vtk_roundtrip = VTKFile::parse(as_bytes.as_slice()).unwrap();
         assert_eq!(vtk, vtk_roundtrip);
         Ok(())
     }
 
     #[test]
     fn rectilinear_grid_inline_binary() -> Result<()> {
-        let vtk = import("assets/RectilinearGridInlineBinary.vtr")?;
+        let vtk = VTKFile::import("assets/RectilinearGridInlineBinary.vtr")?;
         //eprintln!("{:#?}", &vtk);
         let as_bytes = se::to_bytes(&vtk)?;
         //eprintln!("{:?}", &as_bytes);
-        let vtk_roundtrip = de_from_reader(as_bytes.as_slice()).unwrap();
+        let vtk_roundtrip = VTKFile::parse(as_bytes.as_slice()).unwrap();
         assert_eq!(vtk, vtk_roundtrip);
         Ok(())
     }
 
     #[test]
     fn single_point() -> Result<()> {
-        let inline_raw = import("assets/point.vtp")?;
+        let inline_raw = VTKFile::import("assets/point.vtp")?;
         let vtk_inline_raw: model::Vtk = inline_raw.try_into()?;
-        let vtk_ascii: model::Vtk = import("assets/point_ascii.vtp")?.try_into()?;
+        let vtk_ascii: model::Vtk = VTKFile::import("assets/point_ascii.vtp")?.try_into()?;
         assert_eq!(&vtk_inline_raw, &vtk_ascii);
         Ok(())
     }
@@ -3766,13 +3876,14 @@ mod tests {
     // Ensure that all binary formats produce identical (lossless) instances.
     #[test]
     fn rectilinear_grid_binary_all() -> Result<()> {
-        let inline_raw = import("assets/RectilinearGridInlineBinary.vtr")?;
+        let inline_raw = VTKFile::import("assets/RectilinearGridInlineBinary.vtr")?;
         let vtk_inline_raw: model::Vtk = inline_raw.try_into()?;
-        let vtk_app_raw: model::Vtk = import("assets/RectilinearGridRawBinary.vtr")?.try_into()?;
+        let vtk_app_raw: model::Vtk =
+            VTKFile::import("assets/RectilinearGridRawBinary.vtr")?.try_into()?;
         let vtk_app_base64: model::Vtk =
-            import("assets/RectilinearGridAppendedBase64.vtr")?.try_into()?;
-        //let vtk = import("assets/RectilinearGridCompressed.vtr")?;
-        //let vtk = import("assets/RectilinearGrid.pvtr")?;
+            VTKFile::import("assets/RectilinearGridAppendedBase64.vtr")?.try_into()?;
+        //let vtk = VTKFile::import("assets/RectilinearGridCompressed.vtr")?;
+        //let vtk = VTKFile::import("assets/RectilinearGrid.pvtr")?;
         assert_eq!(&vtk_inline_raw, &vtk_app_raw);
         assert_eq!(&vtk_inline_raw, &vtk_app_base64);
         Ok(())
@@ -3780,7 +3891,7 @@ mod tests {
 
     #[test]
     fn parallel_rectilinear_grid() -> Result<()> {
-        let vtk = import("assets/RectilinearGrid.pvtr")?;
+        let vtk = VTKFile::import("assets/RectilinearGrid.pvtr")?;
         //eprintln!("{:#?}", &vtk);
         let as_str = se::to_string(&vtk).unwrap();
         //eprintln!("{}", &as_str);
@@ -3791,7 +3902,7 @@ mod tests {
 
     #[test]
     fn poly_cube() -> Result<()> {
-        let vtk = import("assets/polyEx0.vtp")?;
+        let vtk = VTKFile::import("assets/polyEx0.vtp")?;
         //eprintln!("{:#?}", &vtk);
         let as_str = se::to_string(&vtk).unwrap();
         //eprintln!("{}", &as_str);
@@ -3802,7 +3913,7 @@ mod tests {
 
     #[test]
     fn parallel_cube() -> Result<()> {
-        let vtk = import("assets/cube.pvtp")?;
+        let vtk = VTKFile::import("assets/cube.pvtp")?;
         //eprintln!("{:#?}", &vtk);
         let as_str = se::to_string(&vtk).unwrap();
         //eprintln!("{}", &as_str);
@@ -3813,7 +3924,7 @@ mod tests {
 
     #[test]
     fn hexahedron_appended() -> Result<()> {
-        let vtk = import("assets/hexahedron.vtu")?;
+        let vtk = VTKFile::import("assets/hexahedron.vtu")?;
         //eprintln!("{:#?}", &vtk);
         let as_str = se::to_string(&vtk).unwrap();
         //eprintln!("{}", &as_str);
@@ -3824,7 +3935,7 @@ mod tests {
 
     #[test]
     fn hexahedron_ascii() -> Result<()> {
-        let vtk = import("assets/hexahedron_ascii.vtu")?;
+        let vtk = VTKFile::import("assets/hexahedron_ascii.vtu")?;
         //eprintln!("{:#?}", &vtk);
         let as_str = se::to_string(&vtk).unwrap();
         //eprintln!("{}", &as_str);
@@ -3835,13 +3946,13 @@ mod tests {
 
     #[test]
     fn hexahedron_inline_binary() -> Result<()> {
-        let vtk = import("assets/hexahedron_inline_binary.vtu")?;
+        let vtk = VTKFile::import("assets/hexahedron_inline_binary.vtu")?;
         //eprintln!("{:#?}", &vtk);
         let as_str = se::to_string(&vtk).unwrap();
         //eprintln!("{}", &as_str);
         let vtk_roundtrip = de::from_str(&as_str).unwrap();
         assert_eq!(vtk, vtk_roundtrip);
-        let vtk_ascii = import("assets/hexahedron_ascii.vtu")?;
+        let vtk_ascii = VTKFile::import("assets/hexahedron_ascii.vtu")?;
         //eprintln!("{:#?}", &vtk_ascii);
         // Verify that the ascii cube is the same as the inline binary cube.
         let vtk_ascii = model::Vtk::try_from(vtk_ascii.clone())?;
@@ -3939,7 +4050,7 @@ mod tests {
     #[test]
     fn xml_to_vtk_conversion() -> Result<()> {
         use model::*;
-        let xml = import("assets/RectilinearGrid_ascii.vtr")?;
+        let xml = VTKFile::import("assets/RectilinearGrid_ascii.vtr")?;
         let vtk: Vtk = xml.clone().try_into()?;
         assert_eq!(
             vtk,
@@ -3975,7 +4086,7 @@ mod tests {
     #[test]
     fn vtk_xml_conversion_round_trip() -> Result<()> {
         use model::*;
-        let xml = import("assets/RectilinearGrid_ascii.vtr")?;
+        let xml = VTKFile::import("assets/RectilinearGrid_ascii.vtr")?;
         let vtk: Vtk = xml.clone().try_into()?;
         let xml_round_trip: VTKFile = vtk.clone().try_into()?;
         let vtk_round_trip: Vtk = xml_round_trip.clone().try_into()?;

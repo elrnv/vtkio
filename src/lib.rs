@@ -388,7 +388,7 @@ impl Vtk {
         // There is no extension to check with the data is provided directly.
         // Luckily the xml file contains all the data necessary to determine which data is
         // being parsed.
-        let vtk_file = xml::parse(reader)?;
+        let vtk_file = xml::VTKFile::parse(reader)?;
         Ok(vtk_file.try_into()?)
     }
 
@@ -404,7 +404,7 @@ impl Vtk {
         let mut file = File::open(file_path).await?;
         let mut buf = Vec::new();
         file.read_to_end(&mut buf).await?;
-        match parse(&buf) {
+        match VTKFile::parse(&buf) {
             IResult::Done(_, vtk) => Ok(vtk),
             IResult::Error(e) => Err(Error::Parse(e.into_error_kind())),
             IResult::Incomplete(_) => Err(Error::Unknown),
@@ -458,7 +458,7 @@ impl Vtk {
             ext => {
                 let ft = xml::FileType::try_from_ext(ext)
                     .ok_or(Error::UnknownFileExtension(Some(ext.to_string())))?;
-                let vtk_file = xml::import(path)?;
+                let vtk_file = xml::VTKFile::import(path)?;
                 let exp_ft = xml::FileType::from(vtk_file.data_set_type);
                 if ft != exp_ft {
                     Err(Error::XML(xml::Error::TypeExtensionMismatch))
@@ -649,7 +649,7 @@ impl Vtk {
                 if ft != exp_ft {
                     Err(Error::XML(xml::Error::TypeExtensionMismatch))
                 } else {
-                    xml::export(&vtk_file, path)?;
+                    vtk_file.export(path)?;
                     Ok(())
                 }
             }
@@ -776,15 +776,15 @@ impl Vtk {
     ///   <PolyData>\
     ///     <Piece NumberOfPoints=\"3\" NumberOfPolys=\"1\">\
     ///       <Points>\
-    ///         <DataArray type=\"Float32\" NumberOfComponents=\"3\" format=\"binary\">\
+    ///         <DataArray type=\"Float32\" Name=\"Points\" NumberOfComponents=\"3\" format=\"binary\" RangeMin=\"-1\" RangeMax=\"1\">\
     ///           AAAAAAAAACQAAAAAAAAAAAAAAAA/gAAAAAAAAAAAAAAAAAAAAAAAAL+AAAA=\
     ///         </DataArray>\
     ///       </Points>\
     ///       <Polys>\
-    ///         <DataArray type=\"UInt64\" Name=\"connectivity\" format=\"binary\">\
+    ///         <DataArray type=\"UInt64\" Name=\"connectivity\" format=\"binary\" RangeMin=\"0\" RangeMax=\"2\">\
     ///           AAAAAAAAABgAAAAAAAAAAAAAAAAAAAABAAAAAAAAAAI=\
     ///         </DataArray>\
-    ///         <DataArray type=\"UInt64\" Name=\"offsets\" format=\"binary\">\
+    ///         <DataArray type=\"UInt64\" Name=\"offsets\" format=\"binary\" RangeMin=\"3\" RangeMax=\"3\">\
     ///           AAAAAAAAAAgAAAAAAAAAAw==\
     ///         </DataArray>\
     ///       </Polys>\
@@ -795,7 +795,7 @@ impl Vtk {
     #[cfg(feature = "xml")]
     pub fn write_xml(self, writer: impl Write) -> Result<(), Error> {
         let vtk_file = xml::VTKFile::try_from(self)?;
-        xml::write(&vtk_file, writer)?;
+        vtk_file.write(writer)?;
         Ok(())
     }
 
