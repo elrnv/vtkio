@@ -1,5 +1,5 @@
 //! Import and export library for Visualization Toolkit (VTK)
-//! [files](https://lorensen.github.io/VTKExamples/site/VTKFileFormats/).
+//! [files](https://kitware.github.io/vtk-examples/site/VTKFileFormats/).
 //!
 //! Legacy `.vtk` files as well as modern XML formats are supported.
 //! Both "serial" and "parallel" XML files are supported with facilities for lazily loading.
@@ -414,7 +414,7 @@ impl Vtk {
     /// Import a VTK file at the specified path.
     ///
     /// This function determines the vtk file type from the extension as prescribed by the [VTK
-    /// file formats documentation](https://lorensen.github.io/VTKExamples/site/VTKFileFormats/):
+    /// file formats documentation](https://kitware.github.io/vtk-examples/site/VTKFileFormats/):
     ///
     ///  - Legacy (`.vtk`) -- Simple legacy file format (Non-XML)
     ///  - Image data (`.vti`) -- Serial vtkImageData (structured)
@@ -478,7 +478,7 @@ impl Vtk {
     /// This is the async version of [`import`](Vtk::import).
     ///
     /// This function determines the vtk file type from the extension as prescribed by the [VTK
-    /// file formats documentation](https://lorensen.github.io/VTKExamples/site/VTKFileFormats/):
+    /// file formats documentation](https://kitware.github.io/vtk-examples/site/VTKFileFormats/):
     ///
     ///  - Legacy (`.vtk`) -- Simple legacy file format (Non-XML)
     ///  - Image data (`.vti`) -- Serial vtkImageData (structured)

@@ -2,7 +2,7 @@
 //! Internal APIs for dealing with XML VTK file types.
 //!
 //! See [VTK XML Format
-//! Reference](https://lorensen.github.io/VTKExamples/site/VTKFileFormats/#xml-file-formats) for
+//! Reference](https://kitware.github.io/vtk-examples/site/VTKFileFormats/#xml-file-formats) for
 //! details on the xml format.
 //!
 
