@@ -81,7 +81,6 @@ pub enum CompressionError {
     LZ4(lz4::frame::Error),
     #[cfg(feature = "flate2")]
     ZLib(flate2::CompressError),
-    #[cfg(feature = "xz2")]
     LZMA(std::io::Error),
     None,
 }
@@ -93,7 +92,6 @@ impl std::fmt::Display for CompressionError {
             CompressionError::LZ4(source) => write!(f, "LZ4: {}", source),
             #[cfg(feature = "flate2")]
             CompressionError::ZLib(source) => write!(f, "ZLib: {}", source),
-            #[cfg(feature = "xz2")]
             CompressionError::LZMA(source) => write!(f, "LZMA: {}", source),
             _ => write!(f, "Unknown"),
         }
@@ -107,7 +105,6 @@ impl std::error::Error for CompressionError {
             CompressionError::LZ4(source) => Some(source),
             #[cfg(feature = "flate2")]
             CompressionError::ZLib(source) => Some(source),
-            #[cfg(feature = "xz2")]
             CompressionError::LZMA(source) => Some(source),
             _ => None,
         }
@@ -128,7 +125,6 @@ impl From<flate2::CompressError> for CompressionError {
     }
 }
 
-#[cfg(feature = "xz2")]
 impl From<std::io::Error> for CompressionError {
     fn from(e: std::io::Error) -> CompressionError {
         CompressionError::LZMA(e)

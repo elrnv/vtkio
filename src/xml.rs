@@ -2208,6 +2208,7 @@ trait DecoderKit<'a> {
     fn make(input: &'a [u8]) -> Self;
 }
 
+#[cfg(feature = "flate2")]
 impl<'a> DecoderKit<'a> for flate2::bufread::ZlibDecoder<&'a [u8]> {
     fn read(&mut self, out: &mut [u8]) -> std::result::Result<usize, ValidationError> {
         Ok(std::io::Read::read(self, out)?)
@@ -2217,6 +2218,7 @@ impl<'a> DecoderKit<'a> for flate2::bufread::ZlibDecoder<&'a [u8]> {
     }
 }
 
+#[cfg(feature = "xz2")]
 impl<'a> DecoderKit<'a> for xz2::read::XzDecoder<&'a [u8]> {
     fn read(&mut self, out: &mut [u8]) -> std::result::Result<usize, ValidationError> {
         Ok(std::io::Read::read(self, out)?)
@@ -2226,8 +2228,10 @@ impl<'a> DecoderKit<'a> for xz2::read::XzDecoder<&'a [u8]> {
     }
 }
 
+#[cfg(feature = "lz4")]
 struct Lz4Decoder<'a>(&'a [u8]);
 
+#[cfg(feature = "lz4")]
 impl<'a> DecoderKit<'a> for Lz4Decoder<'a> {
     fn read(&mut self, out: &mut [u8]) -> std::result::Result<usize, ValidationError> {
         Ok(lz4::block::decompress_into(self.0, out)?)
