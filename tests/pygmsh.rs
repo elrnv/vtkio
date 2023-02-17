@@ -52,7 +52,7 @@ fn le(vtk: &Vtk) -> Vtk {
 
 fn make_test_file(leading_zero_offset: bool) -> Vtk {
     Vtk {
-        version: Version::new((5, 1)),
+        version: Version::new_legacy(5, 1),
         byte_order: ByteOrder::BigEndian,
         title: String::from("written by meshio v5.3.0"),
         file_path: None,
@@ -230,8 +230,8 @@ fn compare_points_in_float_and_overwrite(vtu: &mut Vtk, expected: &Vtk) {
 #[cfg(feature = "xml")]
 fn assert_and_fix_xml_vtu(vtu: &mut Vtk) {
     vtu.file_path = None; // Reset file path to satisfy comparison
-    assert_eq!(vtu.version, Version::new((0, 1))); // XML file version is ignored.
-    vtu.version = (5, 1).into(); // Explicitly set version to satisfy comparison.
+    assert_eq!(vtu.version, Version::new_xml(0, 1)); // XML file version is ignored.
+    vtu.version = Version::new_legacy(5, 1); // Explicitly set version to satisfy comparison.
     assert_eq!(vtu.title, String::new()); // Default empty title
     vtu.title = "written by meshio v5.3.0".into(); // Match test file
     vtu.byte_order = ByteOrder::BigEndian; // Match test file

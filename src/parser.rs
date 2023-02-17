@@ -26,8 +26,8 @@ fn version(input: &[u8]) -> IResult<&[u8], Version> {
         sp(tag_no_case("Version")),
     ))(input)?;
     sp(map(
-        separated_pair(parse_u8, tag("."), parse_u8),
-        Version::new,
+        separated_pair(parse_u32, tag("."), parse_u32),
+        |(major, minor)| Version::new_legacy(major, minor),
     ))(input)
 }
 
@@ -744,7 +744,7 @@ mod tests {
     #[test]
     fn version_test() {
         let f = version("# vtk DataFile Version 2.0  \ntitle\n".as_bytes());
-        assert_eq!(f, Ok(("\ntitle\n".as_bytes(), Version::new((2, 0)))));
+        assert_eq!(f, Ok(("\ntitle\n".as_bytes(), Version::new_legacy(2, 0))));
     }
     #[test]
     fn title_test() {
@@ -759,7 +759,7 @@ mod tests {
             Ok((
                 "".as_bytes(),
                 (
-                    Version::new((2, 0)),
+                    Version::new_legacy(2, 0),
                     "This is a title".to_string(),
                     FileType::Binary
                 )

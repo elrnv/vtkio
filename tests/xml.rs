@@ -11,7 +11,7 @@ fn init() {
 
 fn make_box_vtu() -> Vtk {
     Vtk {
-        version: Version { major: 4, minor: 2 },
+        version: Version::new_xml(4, 2),
         title: String::new(),
         byte_order: ByteOrder::BigEndian,
         file_path: None,
@@ -106,7 +106,7 @@ fn box_import() -> Result {
 
 fn make_box_para_vtu() -> Vtk {
     Vtk {
-        version: Version { major: 1, minor: 0 },
+        version: Version::new_xml(1, 0),
         title: String::new(),
         byte_order: ByteOrder::LittleEndian,
         file_path: None,
@@ -185,7 +185,7 @@ fn box_para_parse_xml() -> Result {
 
 fn make_hexahedron_vtu() -> Vtk {
     Vtk {
-        version: Version { major: 1, minor: 0 },
+        version: Version::new_xml(1, 0),
         title: String::new(),
         byte_order: ByteOrder::LittleEndian,
         file_path: None,
@@ -341,7 +341,7 @@ fn hexahedron_binary() -> Result {
 
 fn make_tet_vtu() -> Vtk {
     Vtk {
-        version: Version { major: 1, minor: 0 },
+        version: Version::new_xml(1, 0),
         title: String::new(),
         byte_order: ByteOrder::LittleEndian,
         file_path: None,

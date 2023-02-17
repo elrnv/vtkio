@@ -435,8 +435,9 @@ mod write_vtk_impl {
             &mut self,
             vtk: Vtk,
         ) -> std::result::Result<&mut Self, Error> {
+            let version = vtk.version.to_legacy();
             let source_path = vtk.file_path.as_ref().map(|p| p.as_ref());
-            writeln!(self, "# vtk DataFile Version {}", vtk.version)
+            writeln!(self, "# vtk DataFile Version {}.{}", version.0, version.1)
                 .map_err(|_| Error::Header(Header::Version))?;
             writeln!(self, "{}", vtk.title).map_err(|_| Error::Header(Header::Version))?;
             self.write_file_type()?;
@@ -578,7 +579,7 @@ mod write_vtk_impl {
                         let num_cells = cells.cell_verts.num_cells();
 
                         // Write CELLS structure.
-                        if vtk.version.major >= 5 {
+                        if version.0 >= 5 {
                             // From version 5 and on the cells are written as an offsets and connectivity pair.
                             let (connectivity, offsets) = cells.cell_verts.into_xml();
 
@@ -666,7 +667,7 @@ mod write_vtk_impl {
                                 Error::DataSet(DataSetError::StructuredPoints(DataSetPart::Origin))
                             })?;
 
-                        if vtk.version.major < 2 {
+                        if version.0 < 2 {
                             write!(self, "ASPECT_RATIO")
                         } else {
                             write!(self, "SPACING")

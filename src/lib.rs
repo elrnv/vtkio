@@ -21,7 +21,7 @@
 //! let mut vtk_file = Vtk::import(&file_path)
 //!     .expect(&format!("Failed to load file: {:?}", file_path));
 //!
-//! vtk_file.version = Version::new((4,2)); // arbitrary change
+//! vtk_file.version = Version::new_legacy(4,2); // arbitrary change
 //!
 //! vtk_file.export_ascii(&file_path)
 //!     .expect(&format!("Failed to save file: {:?}", file_path));
@@ -36,7 +36,7 @@
 //!
 //! let mut vtk_file = Vtk::parse_legacy_be(data).expect(&format!("Failed to parse file"));
 //!
-//! vtk_file.version = Version::new((4,2)); // arbitrary change
+//! vtk_file.version = Version::new_legacy(4,2); // arbitrary change
 //!
 //! let mut output = String::new();
 //! Vtk::write_legacy_ascii(vtk_file, &mut output).expect(&format!("Failed to write file"));
@@ -251,7 +251,7 @@ impl Vtk {
     /// let vtk = Vtk::parse_legacy_be(vtk_ascii).expect("Failed to parse vtk file");
     ///
     /// assert_eq!(vtk, Vtk {
-    ///     version: Version::new((2,0)),
+    ///     version: Version::new_legacy(2,0),
     ///     byte_order: ByteOrder::BigEndian,
     ///     title: String::from("Triangle example"),
     ///     file_path: None,
@@ -299,7 +299,7 @@ impl Vtk {
     /// let vtk = Vtk::parse_legacy_le(vtk_ascii).expect("Failed to parse vtk file");
     ///
     /// assert_eq!(vtk, Vtk {
-    ///     version: Version::new((2,0)),
+    ///     version: Version::new_legacy(2,0),
     ///     byte_order: ByteOrder::LittleEndian,
     ///     title: String::from("Triangle example"),
     ///     file_path: None,
@@ -368,7 +368,7 @@ impl Vtk {
     /// let vtk = Vtk::parse_xml(input).expect("Failed to parse XML VTK file");
     ///
     /// assert_eq!(vtk, Vtk {
-    ///     version: Version::new((2,0)),
+    ///     version: Version::new_xml(2,0),
     ///     byte_order: ByteOrder::BigEndian, // This is default
     ///     title: String::new(),
     ///     file_path: None,
@@ -603,7 +603,7 @@ impl Vtk {
     /// use vtkio::model::*;
     /// use std::path::PathBuf;
     /// let vtk = Vtk {
-    ///     version: Version::new((4,1)),
+    ///     version: Version::new_legacy(4,1),
     ///     byte_order: ByteOrder::BigEndian,
     ///     title: String::from("Tetrahedron"),
     ///     file_path: Some(PathBuf::from("./test.vtk")),
@@ -671,7 +671,7 @@ impl Vtk {
     /// let mut vtk_bytes = Vec::<u8>::new();
     ///
     /// Vtk {
-    ///     version: Version::new((2,0)),
+    ///     version: Version::new_legacy(2,0),
     ///     byte_order: ByteOrder::BigEndian,
     ///     title: String::from("Triangle example"),
     ///     file_path: None,
@@ -705,7 +705,7 @@ impl Vtk {
     /// let mut vtk_string = String::new();
     ///
     /// Vtk {
-    ///     version: Version::new((2,0)),
+    ///     version: Version::new_legacy(2,0),
     ///     byte_order: ByteOrder::BigEndian, // Ignored
     ///     title: String::from("Triangle example"),
     ///     file_path: None,
@@ -756,7 +756,7 @@ impl Vtk {
     /// let mut vtk_bytes = Vec::<u8>::new();
     ///
     /// Vtk {
-    ///     version: Version::new((2,0)),
+    ///     version: Version::new_xml(2,0),
     ///     byte_order: ByteOrder::BigEndian,
     ///     title: String::from("Triangle example"),
     ///     file_path: None,
@@ -829,7 +829,7 @@ impl Vtk {
     /// use vtkio::model::*;
     /// use std::path::PathBuf;
     /// let vtk = Vtk {
-    ///     version: Version::new((4,1)),
+    ///     version: Version::new_legacy(4,1),
     ///     title: String::from("Tetrahedron"),
     ///     byte_order: ByteOrder::BigEndian,
     ///     file_path: Some(PathBuf::from("./test.vtk")),

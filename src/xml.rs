@@ -304,7 +304,7 @@ mod version {
                 elem.parse()
                     .map_err(|e| de::Error::custom(format!("failed to parse version: {}", e)))
             };
-            Ok(Version::new((advance(&mut iter)?, advance(&mut iter)?)))
+            Ok(Version::new_xml(advance(&mut iter)?, advance(&mut iter)?))
         }
     }
 
@@ -313,7 +313,7 @@ mod version {
         where
             S: Serializer,
         {
-            let Version { major, minor } = self;
+            let (major, minor) = self.to_xml();
             s.collect_str(&format_args!("{}.{}", major, minor))
         }
     }
@@ -965,7 +965,7 @@ mod vtkfile {
         {
             let mut vtk = VTKFile {
                 data_set_type: DataSetType::UnstructuredGrid,
-                version: model::Version::new((1, 0)),
+                version: model::Version::new_xml(0, 1),
                 byte_order: model::ByteOrder::BigEndian,
                 header_type: None,
                 compressor: Compressor::None,
@@ -1077,7 +1077,7 @@ impl Default for VTKFile {
     fn default() -> VTKFile {
         VTKFile {
             data_set_type: DataSetType::ImageData,
-            version: model::Version::new((0, 1)),
+            version: model::Version::new_xml(0, 1),
             byte_order: model::ByteOrder::BigEndian,
             header_type: None,
             compressor: Compressor::None,
@@ -4059,7 +4059,7 @@ mod tests {
         assert_eq!(
             vtk,
             Vtk {
-                version: Version::new((1, 0)),
+                version: Version::new_xml(1, 0),
                 byte_order: ByteOrder::LittleEndian,
                 title: String::new(),
                 data: DataSet::inline(RectilinearGridPiece {

@@ -69,7 +69,7 @@ fn para_tet_test() -> Result {
     let in1 = include_bytes!("../assets/para_tet.vtk");
     let in2 = include_str!("../assets/para_tet_ascii.vtk").as_bytes();
     let out1 = Vtk {
-        version: Version::new((4, 2)),
+        version: Version::new_legacy(4, 2),
         byte_order: ByteOrder::BigEndian,
         title: String::from("vtk output"),
         file_path: None,
@@ -107,7 +107,7 @@ fn para_tets_test() -> Result {
     let in1 = include_bytes!("../assets/para_test.vtk");
     let in2 = include_str!("../assets/para_test_ascii.vtk").as_bytes();
     let out1 = Vtk {
-        version: Version::new((4, 2)),
+        version: Version::new_legacy(4, 2),
         byte_order: ByteOrder::BigEndian,
         title: String::from("vtk output"),
         file_path: None,
@@ -180,7 +180,7 @@ fn tet_test() -> Result {
     let in2 = include_bytes!("../assets/tet_test.vtk");
     let in3 = include_bytes!("../assets/tet_test_binary.vtk");
     let out1 = Vtk {
-        version: Version::new((4, 2)),
+        version: Version::new_legacy(4, 2),
         byte_order: ByteOrder::BigEndian,
         title: String::from("Tetrahedron example"),
         file_path: None,
@@ -213,7 +213,7 @@ fn tet_test() -> Result {
 fn tri_test() -> Result {
     let in1 = include_str!("../assets/tri.vtk");
     let out1 = Vtk {
-        version: Version::new((2, 0)),
+        version: Version::new_legacy(2, 0),
         byte_order: ByteOrder::BigEndian,
         title: String::from("Triangle example"),
         file_path: None,
@@ -239,7 +239,7 @@ fn tri_test() -> Result {
 fn tri_attrib_ascii_test() -> Result {
     let in1 = include_str!("../assets/tri_attrib.vtk");
     let out1 = Vtk {
-        version: Version::new((2, 0)),
+        version: Version::new_legacy(2, 0),
         byte_order: ByteOrder::BigEndian,
         title: String::from("Triangle example"),
         file_path: None,
@@ -283,7 +283,7 @@ fn tri_attrib_ascii_test() -> Result {
 fn tri_attrib_binary_test() -> Result {
     let in1 = include_bytes!("../assets/tri_attrib_binary.vtk");
     let out1 = Vtk {
-        version: Version::new((4, 2)),
+        version: Version::new_legacy(4, 2),
         byte_order: ByteOrder::BigEndian,
         title: String::from("Triangle example"),
         file_path: None,
@@ -327,7 +327,7 @@ fn tri_attrib_binary_test() -> Result {
 fn square_test() -> Result {
     let in1 = include_str!("../assets/square.vtk");
     let out1 = Vtk {
-        version: Version::new((2, 0)),
+        version: Version::new_legacy(2, 0),
         byte_order: ByteOrder::BigEndian,
         title: String::from("Square example"),
         file_path: None,
@@ -356,7 +356,7 @@ fn square_test() -> Result {
 fn cube_test() -> Result {
     let in1 = include_str!("../assets/cube.vtk");
     let out1 = Vtk {
-        version: Version::new((4, 2)),
+        version: Version::new_legacy(4, 2),
         byte_order: ByteOrder::BigEndian,
         title: String::from("Cube example"),
         file_path: None,
@@ -389,7 +389,7 @@ fn cube_test() -> Result {
 fn structured_grid_test() -> Result {
     let in1 = include_str!("../assets/structured_grid.vtk");
     let out1 = Vtk {
-        version: Version::new((3, 0)),
+        version: Version::new_legacy(3, 0),
         byte_order: ByteOrder::BigEndian,
         title: String::from("vtk output"),
         file_path: None,
@@ -447,7 +447,7 @@ fn structured_grid_test() -> Result {
 fn rectilinear_grid_test() -> Result {
     let in1 = include_bytes!("../assets/rectilinear_grid.vtk");
     let out1 = Vtk {
-        version: Version::new((3, 0)),
+        version: Version::new_legacy(3, 0),
         byte_order: ByteOrder::BigEndian,
         title: String::from("vtk output"),
         file_path: None,
@@ -480,7 +480,7 @@ fn rectilinear_grid_test() -> Result {
     // Same thing should work in binary
     let in1 = include_bytes!("../assets/rectilinear_grid_binary.vtk");
     let out2 = Vtk {
-        version: Version::new((4, 2)),
+        version: Version::new_legacy(4, 2),
         byte_order: ByteOrder::BigEndian,
         ..out1
     };
@@ -492,7 +492,7 @@ fn rectilinear_grid_test() -> Result {
 fn field_test() -> Result {
     let in1 = include_bytes!("../assets/field.vtk");
     let out1 = Vtk {
-        version: Version::new((2, 0)),
+        version: Version::new_legacy(2, 0),
         byte_order: ByteOrder::BigEndian,
         title: String::from("field example"),
         file_path: None,
@@ -593,7 +593,7 @@ fn cube_complex_test() -> Result {
 
     let in1 = include_str!("../assets/cube_complex.vtk");
     let out1 = Vtk {
-        version: Version::new((2, 0)),
+        version: Version::new_legacy(2, 0),
         byte_order: ByteOrder::BigEndian,
         title: String::from("Cube example"),
         file_path: None,
@@ -677,7 +677,7 @@ fn cube_complex_test() -> Result {
 fn unstructured_grid_complex_test() -> Result {
     let in1 = include_str!("../assets/unstructured_grid_complex.vtk");
     let out1 = Vtk {
-        version: Version::new((2, 0)),
+        version: Version::new_legacy(2, 0),
         byte_order: ByteOrder::BigEndian,
         title: String::from("Unstructured Grid Example"),
         file_path: None,
@@ -759,7 +759,7 @@ fn unstructured_grid_complex_test() -> Result {
 fn volume_complex_test() -> Result {
     let in1 = include_str!("../assets/volume_complex.vtk");
     let out1 = Vtk {
-        version: Version::new((2, 0)),
+        version: Version::new_legacy(2, 0),
         byte_order: ByteOrder::BigEndian,
         title: String::from("Volume example"),
         file_path: None,
@@ -796,7 +796,7 @@ fn volume_complex_test() -> Result {
 fn dodecagon_test() -> Result {
     let in1 = include_bytes!("../assets/dodecagon_ascii_simple.vtk");
     let out1 = Vtk {
-        version: Version::new((4, 2)),
+        version: Version::new_legacy(4, 2),
         byte_order: ByteOrder::BigEndian,
         title: String::from("Dodecagon example"),
         file_path: None,
@@ -863,7 +863,7 @@ fn dodecagon_test() -> Result {
 fn dodecagon_with_meta_test() {
     let in1 = include_bytes!("../assets/dodecagon_ascii.vtk");
     let out1 = Vtk {
-        version: Version::new((4, 2)),
+        version: Version::new_legacy(4, 2),
         byte_order: ByteOrder::BigEndian,
         title: String::from("Dodecagon example"),
         file_path: None,
@@ -994,7 +994,7 @@ fn dodecagon_with_meta_line_endings_test() {
 fn binary_dodecagon_test() {
     let in1 = include_bytes!("../assets/dodecagon_simple.vtk");
     let out1 = Vtk {
-        version: Version::new((4, 2)),
+        version: Version::new_legacy(4, 2),
         byte_order: ByteOrder::BigEndian,
         title: String::from("Dodecagon example"),
         file_path: None,

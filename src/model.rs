@@ -231,31 +231,54 @@ impl Vtk {
     }
 }
 
-/// Version number (e.g. `4.1 => Version { major: 4, minor: 1 }`)
+/// Version number enum
+///
+/// Legacy and XML versions are distinct, and this enum splits the two into distinct variants.
+/// New files can use the `Auto` variant, which will default to the minimum version supporting the latest features in `vtkio`.
 #[derive(Copy, Clone, PartialEq, Debug)]
-pub struct Version {
-    pub major: u8,
-    pub minor: u8,
+pub enum Version {
+    /// Automatically handle versioning on write for both Legacy and XML formats.
+    Auto,
+    /// Loaded Legacy format with this version. Writing in XML format is handled as with the `Auto` variant.
+    Legacy { major: u32, minor: u32 },
+    /// Loaded XML format with this version. Writing in Legacy is handled as with the `Auto` variant.
+    XML { major: u32, minor: u32 },
 }
 
 impl Version {
-    pub fn new(pair: (u8, u8)) -> Self {
-        Version {
-            major: pair.0,
-            minor: pair.1,
+    pub fn new() -> Self {
+        Version::Auto
+    }
+    pub fn new_legacy(major: u32, minor: u32) -> Self {
+        Version::Legacy { major, minor }
+    }
+    pub fn new_xml(major: u32, minor: u32) -> Self {
+        Version::XML { major, minor }
+    }
+    pub fn to_xml(self) -> (u32, u32) {
+        match self {
+            Version::XML { major, minor } => (major, minor),
+            Version::Auto | Version::Legacy { .. } => {
+                // This is a conservative estimate.
+                // It is not established what the actual minimum version we write.
+                // Presumably this would only be a problem when working with very old versions of VTK.
+                (1, 0)
+            }
         }
     }
-}
-
-impl From<(u8, u8)> for Version {
-    fn from(pair: (u8, u8)) -> Self {
-        Version::new(pair)
+    pub fn to_legacy(self) -> (u32, u32) {
+        match self {
+            Version::Legacy { major, minor } => (major, minor),
+            Version::Auto | Version::XML { .. } => (2, 0),
+        }
     }
-}
-
-impl fmt::Display for Version {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}.{}", self.major, self.minor)
+    pub fn fmt_as_xml(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let (major, minor) = self.to_xml();
+        write!(f, "{}.{}", major, minor)
+    }
+    pub fn fmt_as_legacy(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let (major, minor) = self.to_legacy();
+        write!(f, "{}.{}", major, minor)
     }
 }
 
