@@ -92,6 +92,9 @@
 #[macro_use]
 extern crate nom;
 
+#[doc = include_str!("examples/vertex.rs")]
+mod examples;
+
 #[macro_use]
 pub mod basic;
 
