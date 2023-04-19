@@ -39,7 +39,7 @@ named!(file_type<&[u8], FileType>,
 
 named!(title<&[u8], &str>, map_res!(
   do_parse!(
-      ttl: take_until!("\n") >>
+      ttl: take_until_either!("\n\r") >>
       eol >>
       (ttl)),
       str::from_utf8 )
@@ -73,7 +73,7 @@ named!(pub u32_b<&[u8], u32>, call!(integer) );
 named!(pub u8_b<&[u8], u8>, call!(integer) );
 named!(pub f32_b<&[u8], f32>, call!(real::<f32>) );
 
-named!(name, take_till!(|x: u8| b" \t\n\r".contains(&x)));
+named!(name, take_until_either!(" \t\n\r"));
 
 enum Axis {
     X,
@@ -104,7 +104,7 @@ impl<BO: ByteOrder + 'static> VtkParser<BO> {
                 >> vec: switch!(
                        do_parse!(
                            dt: sp!( data_type ) >>
-                           tag!("\n") >>
+                           eol >>
                            (dt) ),
                                 ScalarType::F32 => call!( parse_data_buffer::<f32, BO>, 3*n as usize, ft ) |
                                 ScalarType::F64 => call!( parse_data_buffer::<f64, BO>, 3*n as usize, ft ) )
@@ -165,8 +165,8 @@ impl<BO: ByteOrder + 'static> VtkParser<BO> {
         do_parse!(
             input,
             ws!(tag_no_case!(tag))
-                >> take_until!("\n") // Skip data type, parse everything as u64
-                >> tag!("\n")
+                >> take_until_either!("\n\r") // Skip data type, parse everything as u64
+                >> eol
                 >> data: call!(parse_data_vec::<u64, BO>, n as usize, ft)
                 >> (data)
         )
@@ -187,7 +187,7 @@ impl<BO: ByteOrder + 'static> VtkParser<BO> {
             input,
             n: ws!(do_parse!(tag_no_case!(tag) >> n: u32_b >> (n)))
                 >> size: sp!(u32_b)
-                >> tag!("\n")
+                >> eol
                 >> vertex_numbers:
                     alt!(
                         call!(Self::modern_cell_topo, n, size, ft)
@@ -210,7 +210,7 @@ impl<BO: ByteOrder + 'static> VtkParser<BO> {
                 >> vec: switch!(
                        do_parse!(
                            dt: sp!( data_type ) >>
-                           tag!("\n") >>
+                           eol >>
                            (dt) ),
                                 ScalarType::F32 => call!( parse_data_buffer::<f32, BO>, n as usize, ft ) |
                                 ScalarType::F64 => call!( parse_data_buffer::<f64, BO>, n as usize, ft ) )
@@ -218,12 +218,12 @@ impl<BO: ByteOrder + 'static> VtkParser<BO> {
         )
     }
 
-    /// Recognize and throw away `METADATA` block. Metadata is spearated by an empty line.
+    /// Recognize and throw away `METADATA` block. Metadata is separated by an empty line.
     fn meta(input: &[u8]) -> IResult<&[u8], ()> {
         complete!(
             input,
             ws!(do_parse!(
-                tag_no_case!("METADATA") >> take_until!("\n\n") >> ()
+                tag_no_case!("METADATA") >> alt!(take_until!("\n\n") | take_until!("\r\n\r\n")) >> ()
             ))
         )
     }
@@ -695,7 +695,7 @@ impl<BO: ByteOrder + 'static> VtkParser<BO> {
             input,
             ws!(tag_no_case!("CELL_TYPES"))
                 >> n: sp!(usize_b)
-                >> tag!("\n")
+                >> eol
                 >> data: dbg!(call!(Self::cell_type_data, n, ft))
                 >> (data)
         )
@@ -1052,6 +1052,23 @@ mod tests {
     fn dataset_test() {
         let in1 = "DATASET UNSTRUCTURED_GRID\nPOINTS 3 float\n2 45 2 3 4 1 46 2 0\
                    CELLS 0 0\nCELL_TYPES 0\n";
+        let out1 = DataSet::inline(UnstructuredGridPiece {
+            points: vec![2.0f32, 45., 2., 3., 4., 1., 46., 2., 0.].into(),
+            cells: Cells {
+                cell_verts: VertexNumbers::Legacy {
+                    num_cells: 0,
+                    vertices: vec![],
+                },
+                types: vec![],
+            },
+            data: Attributes::new(),
+        });
+        test!(dataset(in1, FileType::ASCII) => out1);
+    }
+    #[test]
+    fn dataset_crlf_test() {
+        let in1 = "DATASET UNSTRUCTURED_GRID\r\nPOINTS 3 float\r\n2 45 2 3 4 1 46 2 0\
+                   CELLS 0 0\r\nCELL_TYPES 0\r\n";
         let out1 = DataSet::inline(UnstructuredGridPiece {
             points: vec![2.0f32, 45., 2., 3., 4., 1., 46., 2., 0.].into(),
             cells: Cells {
