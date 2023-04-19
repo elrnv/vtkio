@@ -922,6 +922,75 @@ fn dodecagon_with_meta_test() {
 }
 
 #[test]
+fn dodecagon_with_meta_line_endings_test() {
+    let in1 = include_str!("../assets/dodecagon_ascii.vtk");
+    // Make sure that all line-endings are LF endings (in case the file was checked out with git
+    // configured to use CRLF endings)
+    let in1_lf = in1.replace("\r\n", "\n");
+    // Create input using CRLF endings instead of LF endings
+    let in1_crlf = in1_lf.replace("\n", "\r\n");
+
+    let out1 = Vtk {
+        version: Version::new((4, 2)),
+        byte_order: ByteOrder::BigEndian,
+        title: String::from("Dodecagon example"),
+        file_path: None,
+        data: DataSet::inline(UnstructuredGridPiece {
+            points: vec![
+                0.5f32,
+                0.,
+                0.,
+                0.433013,
+                0.,
+                -0.25,
+                0.25,
+                0.,
+                -0.433013,
+                3.06162e-17,
+                0.,
+                -0.5,
+                -0.25,
+                0.,
+                -0.433013,
+                -0.433013,
+                0.,
+                -0.25,
+                -0.5,
+                0.,
+                -6.12323e-17,
+                -0.433013,
+                0.,
+                0.25,
+                -0.25,
+                0.,
+                0.433013,
+                -9.18485e-17,
+                0.,
+                0.5,
+                0.25,
+                0.,
+                0.433013,
+                0.433013,
+                0.,
+                0.25,
+            ]
+                .into(),
+            cells: Cells {
+                cell_verts: VertexNumbers::Legacy {
+                    num_cells: 1,
+                    vertices: vec![12, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
+                },
+                types: vec![CellType::Polygon],
+            },
+            data: Attributes::new(),
+        }),
+    };
+
+    test_b!(parse_ne(in1_lf.as_bytes()) => ne(&out1));
+    test_b!(parse_ne(in1_crlf.as_bytes()) => ne(&out1));
+}
+
+#[test]
 fn binary_dodecagon_test() {
     let in1 = include_bytes!("../assets/dodecagon_simple.vtk");
     let out1 = Vtk {
