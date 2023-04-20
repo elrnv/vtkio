@@ -6,10 +6,10 @@ use vtkio::Error;
 
 macro_rules! test {
     ($fn:ident ($in:expr, $($args:expr),*) => ($rem:expr, $out:expr)) => {
-        assert_eq!($fn($in.as_bytes(), $($args),*), IResult::Done($rem.as_bytes(), $out.clone()));
+        assert_eq!($fn($in.as_bytes(), $($args),*), IResult::Ok(($rem.as_bytes(), $out.clone())));
     };
     ($fn:ident ($in:expr) => ($rem:expr, $out:expr)) => {
-        assert_eq!($fn($in.as_bytes()), IResult::Done($rem.as_bytes(), $out.clone()));
+        assert_eq!($fn($in.as_bytes()), IResult::Ok(($rem.as_bytes(), $out.clone())));
     };
     ($fn:ident ($in:expr, $($args:expr),*) => $out:expr) => {
         test!($fn($in, $($args),*) => ("", $out));
@@ -21,10 +21,10 @@ macro_rules! test {
 
 macro_rules! test_b {
     ($fn:ident ($in:expr, $($args:expr),*) => $out:expr) => {
-        assert_eq!($fn($in, $($args),*), IResult::Done("".as_bytes(), $out.clone()));
+        assert_eq!($fn($in, $($args),*), IResult::Ok(("".as_bytes(), $out.clone())));
     };
     ($fn:ident ($in:expr) => $out:expr) => {
-        assert_eq!($fn($in), IResult::Done("".as_bytes(), $out.clone()));
+        assert_eq!($fn($in), IResult::Ok(("".as_bytes(), $out.clone())));
     };
 }
 
@@ -32,14 +32,14 @@ macro_rules! test_ignore_rem {
     ($fn:ident ($in:expr, $($args:expr),*) => $out:expr) => {
         {
             let result = $fn($in, $($args),*);
-            assert!(result.is_done());
+            assert!(result.is_ok());
             assert_eq!(result.unwrap().1, $out.clone());
         }
     };
     ($fn:ident ($in:expr) => $out:expr) => {
         {
             let result = $fn($in);
-            assert!(result.is_done());
+            assert!(result.is_ok());
             assert_eq!(result.unwrap().1, $out.clone());
         }
     };
