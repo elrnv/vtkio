@@ -7,18 +7,16 @@ use std::marker::PhantomData;
 use byteorder::{BigEndian, ByteOrder, LittleEndian, NativeEndian};
 use nom::branch::alt;
 use nom::bytes::streaming::{is_not, tag, tag_no_case};
-use nom::character::streaming::{u8};
-use nom::combinator::{complete, fail, map, map_res};
+use nom::character::streaming::{u32, u8};
+use nom::combinator::{complete, cut, fail, map, map_res, opt};
 use nom::error::dbg_dmp;
-use nom::sequence::{separated_pair, tuple};
+use nom::sequence::{preceded, separated_pair, tuple};
 use nom::IResult;
-use nom::Parser;
 
 pub use crate::basic::parsers::*;
 pub use crate::basic::*;
-use crate::model::*;
-
 use crate::model::ByteOrder as ByteOrderTag;
+use crate::model::*;
 
 /*
 enum Axis {
@@ -33,7 +31,6 @@ enum Axis {
  */
 pub struct VtkParser<BO: ByteOrder>(PhantomData<BO>);
 
-/*
 /// Helper struct for parsing polygon topology sections.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 enum PolyDataTopology {
@@ -42,7 +39,21 @@ enum PolyDataTopology {
     Polys,
     Strips,
 }
- */
+
+fn data_type(input: &[u8]) -> IResult<&[u8], ScalarType> {
+    alt((
+        map(tag_no_case("bit"), |_| ScalarType::Bit),
+        map(tag_no_case("int"), |_| ScalarType::I32),
+        map(tag_no_case("char"), |_| ScalarType::I8),
+        map(tag_no_case("long"), |_| ScalarType::I64),
+        map(tag_no_case("short"), |_| ScalarType::I16),
+        map(tag_no_case("float"), |_| ScalarType::F32),
+        map(tag_no_case("double"), |_| ScalarType::F64),
+        map(tag_no_case("unsigned_int"), |_| ScalarType::U32),
+        map(tag_no_case("unsigned_char"), |_| ScalarType::U8),
+        map(tag_no_case("unsigned_long"), |_| ScalarType::U64),
+    ))(input)
+}
 
 impl<BO: ByteOrder + 'static> VtkParser<BO> {
     fn version(input: &[u8]) -> IResult<&[u8], Version> {
@@ -74,8 +85,142 @@ impl<BO: ByteOrder + 'static> VtkParser<BO> {
         ))(input)
     }
 
-    fn dataset(input: &[u8], _file_type: FileType) -> IResult<&[u8], DataSet> {
+    fn points(input: &[u8], ft: FileType) -> IResult<&[u8], IOBuffer> {
+        let (input, (n, d_t)) = line(tuple((
+            preceded(sp(tag_no_case("POINTS")), sp(u32)),
+            sp(data_type),
+        )))(input)?;
+
+        match d_t {
+            ScalarType::F32 => parse_data_buffer::<f32, BO>(input, 3 * n as usize, ft),
+            ScalarType::F64 => parse_data_buffer::<f64, BO>(input, 3 * n as usize, ft),
+            _ => Err(nom::Err::Error(nom::error::make_error(
+                input,
+                nom::error::ErrorKind::Switch,
+            ))),
+        }
+    }
+
+    /// Recognize and throw away `METADATA` block. Metadata is separated by an empty line.
+    fn meta(input: &[u8], ft: FileType) -> IResult<&[u8], ()> {
         fail(input)
+    }
+
+    /// Parse PolyData topology
+    fn poly_data_topo(
+        input: &[u8],
+        _ft: FileType,
+    ) -> IResult<&[u8], (PolyDataTopology, VertexNumbers)> {
+        fail(input)
+    }
+
+    /// Parse DataSet attributes
+    fn attributes(input: &[u8], _ft: FileType) -> IResult<&[u8], Attributes> {
+        fail(input)
+    }
+
+    fn poly_data(input: &[u8], ft: FileType) -> IResult<&[u8], DataSet> {
+        let (input, _) = line(sp(tag_no_case("POLYDATA")))(input)?;
+        cut(|input| {
+            let (input, points) = Self::points(input, ft)?;
+            let (input, _) = opt(|i| Self::meta(i, ft))(input)?;
+            let (input, topo1) = opt(|i| Self::poly_data_topo(i, ft))(input)?;
+            let (input, topo2) = opt(|i| Self::poly_data_topo(i, ft))(input)?;
+            let (input, topo3) = opt(|i| Self::poly_data_topo(i, ft))(input)?;
+            let (input, topo4) = opt(|i| Self::poly_data_topo(i, ft))(input)?;
+            let (input, data) = Self::attributes(input, ft)?;
+
+            // The following algorithm is just to avoid unnecessary cloning.
+            // There may be a simpler way to do this.
+            let mut topos = [topo1, topo2, topo3, topo4];
+            let vertsi = topos
+                .iter()
+                .position(|x| x.as_ref().map(|x| x.0) == Some(PolyDataTopology::Verts));
+            let linesi = topos
+                .iter()
+                .position(|x| x.as_ref().map(|x| x.0) == Some(PolyDataTopology::Lines));
+            let polysi = topos
+                .iter()
+                .position(|x| x.as_ref().map(|x| x.0) == Some(PolyDataTopology::Polys));
+            let stripsi = topos
+                .iter()
+                .position(|x| x.as_ref().map(|x| x.0) == Some(PolyDataTopology::Strips));
+            let mut indices = [0, 1, 2, 3];
+
+            vertsi.map(|i| {
+                indices.swap(i, 0);
+                topos.swap(i, 0)
+            });
+            linesi.map(|i| {
+                let i = indices[i];
+                indices.swap(i, 1);
+                topos.swap(i, 1)
+            });
+            polysi.map(|i| {
+                let i = indices[i];
+                indices.swap(i, 2);
+                topos.swap(i, 2)
+            });
+            stripsi.map(|i| {
+                let i = indices[i];
+                indices.swap(i, 3);
+                topos.swap(i, 3)
+            });
+
+            let [verts, lines, polys, strips] = topos;
+
+            Ok((
+                input,
+                DataSet::inline(PolyDataPiece {
+                    points,
+                    verts: verts.map(|x| x.1),
+                    lines: lines.map(|x| x.1),
+                    polys: polys.map(|x| x.1),
+                    strips: strips.map(|x| x.1),
+                    data,
+                }),
+            ))
+        })(input)
+    }
+
+    fn structured_grid(input: &[u8], _ft: FileType) -> IResult<&[u8], DataSet> {
+        let (input, _) = line(sp(tag_no_case("STRUCTURED_GRID")))(input)?;
+        cut(fail)(input)
+    }
+
+    fn rectilinear_grid(input: &[u8], _ft: FileType) -> IResult<&[u8], DataSet> {
+        let (input, _) = line(sp(tag_no_case("RECTILINEAR_GRID")))(input)?;
+        cut(fail)(input)
+    }
+
+    fn structured_points(input: &[u8], _ft: FileType) -> IResult<&[u8], DataSet> {
+        let (input, _) = line(sp(tag_no_case("STRUCTURED_POINTS")))(input)?;
+        cut(fail)(input)
+    }
+
+    fn unstructured_grid(input: &[u8], _ft: FileType) -> IResult<&[u8], DataSet> {
+        let (input, _) = line(sp(tag_no_case("UNSTRUCTURED_GRID")))(input)?;
+        cut(fail)(input)
+    }
+
+    fn field_data(input: &[u8], _ft: FileType) -> IResult<&[u8], DataSet> {
+        cut(fail)(input)
+    }
+
+    fn dataset(input: &[u8], ft: FileType) -> IResult<&[u8], DataSet> {
+        alt((
+            preceded(
+                sp(tag_no_case("DATASET")),
+                cut(alt((
+                    |i| Self::poly_data(i, ft),
+                    |i| Self::structured_grid(i, ft),
+                    |i| Self::rectilinear_grid(i, ft),
+                    |i| Self::structured_points(i, ft),
+                    |i| Self::unstructured_grid(i, ft),
+                ))),
+            ),
+            |i| Self::field_data(i, ft),
+        ))(input)
     }
 
     /// Parse the entire vtk file
@@ -100,8 +245,8 @@ impl<BO: ByteOrder + 'static> VtkParser<BO> {
 
         complete(p)(input).map_err(|e| {
             //p(input).map_err(|e| {
-            if let nom::Err::Error(e) = &e {
-                dbg!(std::str::from_utf8(e.input));
+            if let nom::Err::Error(e) | nom::Err::Failure(e) = &e {
+                dbg!(String::from_utf8_lossy(e.input));
             };
             return e;
         })
