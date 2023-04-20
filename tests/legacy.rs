@@ -974,7 +974,7 @@ fn dodecagon_with_meta_line_endings_test() {
                 0.,
                 0.25,
             ]
-                .into(),
+            .into(),
             cells: Cells {
                 cell_verts: VertexNumbers::Legacy {
                     num_cells: 1,

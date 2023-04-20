@@ -5,10 +5,20 @@
 use std::marker::PhantomData;
 
 use byteorder::{BigEndian, ByteOrder, LittleEndian, NativeEndian};
+use nom::branch::alt;
+use nom::bytes::streaming::{is_not, tag, tag_no_case};
+use nom::character::streaming::{u8};
+use nom::combinator::{complete, fail, map, map_res};
+use nom::error::dbg_dmp;
+use nom::sequence::{separated_pair, tuple};
 use nom::IResult;
+use nom::Parser;
 
+pub use crate::basic::parsers::*;
 pub use crate::basic::*;
 use crate::model::*;
+
+use crate::model::ByteOrder as ByteOrderTag;
 
 /*
 enum Axis {
@@ -35,9 +45,66 @@ enum PolyDataTopology {
  */
 
 impl<BO: ByteOrder + 'static> VtkParser<BO> {
+    fn version(input: &[u8]) -> IResult<&[u8], Version> {
+        let (input, _) = tuple((
+            sp(tag("#")),
+            sp(tag_no_case("vtk")),
+            sp(tag_no_case("DataFile")),
+            sp(tag_no_case("Version")),
+        ))(input)?;
+        sp(map(separated_pair(u8, tag("."), u8), Version::new))(input)
+    }
+
+    fn title(input: &[u8]) -> IResult<&[u8], &str> {
+        map_res(is_not("\r\n"), std::str::from_utf8)(input)
+    }
+
+    fn file_type(input: &[u8]) -> IResult<&[u8], FileType> {
+        alt((
+            map(sp(tag_no_case("ASCII")), |_| FileType::ASCII),
+            map(sp(tag_no_case("BINARY")), |_| FileType::Binary),
+        ))(input)
+    }
+
+    fn header(input: &[u8]) -> IResult<&[u8], (Version, String, FileType)> {
+        tuple((
+            line(Self::version),
+            line(map(Self::title, String::from)),
+            line(Self::file_type),
+        ))(input)
+    }
+
+    fn dataset(input: &[u8], _file_type: FileType) -> IResult<&[u8], DataSet> {
+        fail(input)
+    }
+
     /// Parse the entire vtk file
     fn vtk(input: &[u8]) -> IResult<&[u8], Vtk> {
-        Err(nom::Err::Error(nom::error::Error::new(input, nom::error::ErrorKind::Fail)))
+        let p = |input| {
+            let (input, h) = Self::header(input)?;
+            dbg!(&h);
+            let (input, d) = Self::dataset(input, h.2)?;
+
+            Ok((
+                input,
+                Vtk {
+                    version: h.0,
+                    // This is ignored in Legacy formats
+                    byte_order: ByteOrderTag::new::<BO>(),
+                    title: h.1,
+                    data: d,
+                    file_path: None,
+                },
+            ))
+        };
+
+        complete(p)(input).map_err(|e| {
+            //p(input).map_err(|e| {
+            if let nom::Err::Error(e) = &e {
+                dbg!(std::str::from_utf8(e.input));
+            };
+            return e;
+        })
     }
 }
 

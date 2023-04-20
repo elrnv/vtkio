@@ -89,7 +89,6 @@
 //!
 //! assert_eq!(data.as_slice(), &[0.0]);
 //! ```
-#[macro_use]
 extern crate nom;
 
 #[macro_use]
@@ -214,7 +213,7 @@ impl Vtk {
             Ok((_, vtk)) => Ok(vtk),
             Err(e) => match e {
                 nom::Err::Incomplete(_) => Err(Error::Unknown),
-                nom::Err::Error(e) | nom::Err::Failure(e) => Err(Error::Parse(e.code))
+                nom::Err::Error(e) | nom::Err::Failure(e) => Err(Error::Parse(e.code)),
             },
         }
     }

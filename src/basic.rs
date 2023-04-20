@@ -10,6 +10,37 @@ pub enum FileType {
     ASCII,
 }
 
+pub(crate) mod parsers {
+    use nom::character::complete::line_ending;
+    use nom::character::streaming::space0;
+    use nom::error::ParseError;
+    use nom::sequence::delimited;
+    use nom::sequence::terminated;
+    use nom::IResult;
+
+    /// A combinator that takes a parser `inner` and produces a parser that also consumes both leading and
+    /// trailing space characters (" " & "\n"), returning the output of `inner`.
+    pub fn sp<'a, F, O, E: ParseError<&'a [u8]>>(
+        inner: F,
+    ) -> impl FnMut(&'a [u8]) -> IResult<&'a [u8], O, E>
+    where
+        F: FnMut(&'a [u8]) -> IResult<&'a [u8], O, E>,
+    {
+        delimited(space0, inner, space0)
+    }
+
+    /// A combinator that takes a parser `inner` and produces a parser that also consumes trailing
+    /// line endings ("\r\n" & "\n"), returning the output of `inner`.
+    pub fn line<'a, F, O, E: ParseError<&'a [u8]>>(
+        inner: F,
+    ) -> impl FnMut(&'a [u8]) -> IResult<&'a [u8], O, E>
+    where
+        F: FnMut(&'a [u8]) -> IResult<&'a [u8], O, E>,
+    {
+        terminated(inner, line_ending)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     /*
