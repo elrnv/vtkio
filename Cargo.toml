@@ -17,10 +17,7 @@ keywords = ["vtk", "parser", "writer", "io", "mesh"]
 travis-ci = { repository = "elrnv/vtkio", branch = "master" }
 
 [dependencies]
-# need verbose errors because of feature leak in dependencies:
-# https://github.com/rust-lang/cargo/issues/1796
-# remove this feature after the above issue is resolved
-nom = { version = "3", features = ["verbose-errors"] }
+nom = "7"
 num-traits = "0.2"
 num-derive = "0.3"
 byteorder = "1.3"

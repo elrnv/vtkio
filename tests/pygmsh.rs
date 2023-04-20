@@ -8,10 +8,10 @@ use vtkio::Error;
 
 macro_rules! test_b {
     ($fn:ident ($in:expr, $($args:expr),*) => $out:expr) => {
-        assert_eq!($fn($in, $($args),*), IResult::Done("".as_bytes(), $out.clone()));
+        assert_eq!($fn($in, $($args),*), IResult::Ok(("".as_bytes(), $out.clone())));
     };
     ($fn:ident ($in:expr) => $out:expr) => {
-        assert_eq!($fn($in), IResult::Done("".as_bytes(), $out.clone()));
+        assert_eq!($fn($in), IResult::Ok(("".as_bytes(), $out.clone())));
     };
 }
 
@@ -19,14 +19,14 @@ macro_rules! test_ignore_rem {
     ($fn:ident ($in:expr, $($args:expr),*) => $out:expr) => {
         {
             let result = $fn($in, $($args),*);
-            assert!(result.is_done());
+            assert!(result.is_ok());
             assert_eq!(result.unwrap().1, $out.clone());
         }
     };
     ($fn:ident ($in:expr) => $out:expr) => {
         {
             let result = $fn($in);
-            assert!(result.is_done());
+            assert!(result.is_ok());
             assert_eq!(result.unwrap().1, $out.clone());
         }
     };
@@ -156,7 +156,7 @@ fn make_test_file(leading_zero_offset: bool) -> Vtk {
 fn legacy_ascii() -> Result {
     let input = include_str!("../assets/pygmsh/ascii.vtk").as_bytes();
     let out1 = make_test_file(true);
-    assert!(parse_be(input).is_done());
+    assert!(parse_be(input).is_ok());
     test_ignore_rem!(parse_be(input) => out1);
     let mut outtest = String::new();
     outtest.write_vtk_ne(out1.clone())?;
@@ -172,7 +172,7 @@ fn legacy_ascii() -> Result {
 fn legacy_binary() -> Result {
     let input = include_bytes!("../assets/pygmsh/binary.vtk");
     let out1 = make_test_file(true);
-    assert!(parse_be(input).is_done());
+    assert!(parse_be(input).is_ok());
     test_ignore_rem!(parse_be(input) => out1);
     let mut outtest = String::new();
     outtest.write_vtk_ne(out1.clone())?;

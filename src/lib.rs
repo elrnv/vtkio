@@ -122,7 +122,7 @@ pub use model::Vtk;
 pub enum Error {
     IO(io::Error),
     Write(writer::Error),
-    Parse(nom::ErrorKind<u32>),
+    Parse(nom::error::ErrorKind),
     #[cfg(feature = "xml")]
     XML(xml::Error),
     UnknownFileExtension(Option<String>),
@@ -209,12 +209,13 @@ impl Vtk {
     where
         F: Fn(&[u8]) -> nom::IResult<&[u8], Vtk>,
     {
-        use nom::IResult;
         reader.read_to_end(buf)?;
         match parse(buf) {
-            IResult::Done(_, vtk) => Ok(vtk),
-            IResult::Error(e) => Err(Error::Parse(e.into_error_kind())),
-            IResult::Incomplete(_) => Err(Error::Unknown),
+            Ok((_, vtk)) => Ok(vtk),
+            Err(e) => match e {
+                nom::Err::Incomplete(_) => Err(Error::Unknown),
+                nom::Err::Error(e) | nom::Err::Failure(e) => Err(Error::Parse(e.code))
+            },
         }
     }
 
