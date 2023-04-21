@@ -6,11 +6,12 @@ use std::marker::PhantomData;
 
 use byteorder::{BigEndian, ByteOrder, LittleEndian, NativeEndian};
 use nom::branch::alt;
-use nom::bytes::streaming::{is_not, tag, tag_no_case};
-use nom::character::complete::{line_ending, multispace0, u32, u8};
-use nom::combinator::{complete, cut, eof, fail, map, map_res, opt};
+use nom::bytes::complete::{is_not, tag, tag_no_case};
+use nom::character::complete::{line_ending, multispace0, u32 as parse_u32, u8 as parse_u8};
+use nom::combinator::{complete, cut, eof, fail, flat_map, map, map_res, opt};
 use nom::error::dbg_dmp;
-use nom::sequence::{preceded, separated_pair, tuple};
+use nom::multi::many0;
+use nom::sequence::{preceded, separated_pair, terminated, tuple};
 use nom::IResult;
 
 pub use crate::basic::parsers::*;
@@ -62,7 +63,10 @@ fn version(input: &[u8]) -> IResult<&[u8], Version> {
         sp(tag_no_case("DataFile")),
         sp(tag_no_case("Version")),
     ))(input)?;
-    sp(map(separated_pair(u8, tag("."), u8), Version::new))(input)
+    sp(map(
+        separated_pair(parse_u8, tag("."), parse_u8),
+        Version::new,
+    ))(input)
 }
 
 fn title(input: &[u8]) -> IResult<&[u8], &str> {
@@ -78,11 +82,14 @@ fn file_type(input: &[u8]) -> IResult<&[u8], FileType> {
 
 fn header(input: &[u8]) -> IResult<&[u8], (Version, String, FileType)> {
     let (input, _) = multispace0(input)?;
-    tuple((
-        line(version),
-        line(map(title, String::from)),
-        line(file_type),
-    ))(input)
+    terminated(
+        tuple((
+            line(version),
+            line(map(title, String::from)),
+            line(file_type),
+        )),
+        multispace0,
+    )(input)
 }
 
 /// Recognize and throw away `METADATA` block. Metadata is separated by an empty line.
@@ -112,7 +119,7 @@ fn meta(input: &[u8]) -> IResult<&[u8], ()> {
 impl<BO: ByteOrder + 'static> VtkParser<BO> {
     fn points(input: &[u8], ft: FileType) -> IResult<&[u8], IOBuffer> {
         let (input, (n, d_t)) = line(tuple((
-            preceded(sp(tag_no_case("POINTS")), sp(u32)),
+            preceded(sp(tag_no_case("POINTS")), sp(parse_u32)),
             sp(data_type),
         )))(input)?;
 
@@ -126,17 +133,118 @@ impl<BO: ByteOrder + 'static> VtkParser<BO> {
         }
     }
 
-    /// Parse PolyData topology
-    fn poly_data_topo(
+    /// Parse cell topology indices in the legacy way.
+    ///
+    /// Cells are stored as a single contiguous array with the format `n v0 v1 ... vn` for each cell.
+    fn legacy_cell_topo(
         input: &[u8],
-        _ft: FileType,
-    ) -> IResult<&[u8], (PolyDataTopology, VertexNumbers)> {
+        n: u32,
+        size: u32,
+        ft: FileType,
+    ) -> IResult<&[u8], VertexNumbers> {
+        map(
+            |i| {
+                dbg!(String::from_utf8_lossy(i));
+                parse_data_vec::<u32, BO>(i, size as usize, ft)
+            },
+            |data| VertexNumbers::Legacy {
+                num_cells: n,
+                vertices: data,
+            },
+        )(input)
+    }
+
+    /// Parse cell topology indices in modern way using offsets and connectivity arras.
+    ///
+    /// Cells are stored as two arrays: OFFSETS and CONNECTIVITY, which are specified separately.
+    fn modern_cell_topo(
+        input: &[u8],
+        n: u32,
+        size: u32,
+        ft: FileType,
+    ) -> IResult<&[u8], VertexNumbers> {
         fail(input)
     }
 
+    fn cell_verts<'a>(
+        input: &'a [u8],
+        tag: &'static str,
+        ft: FileType,
+    ) -> IResult<&'a [u8], VertexNumbers> {
+        let (input, _) = sp(tag_no_case(tag))(input)?;
+        cut(|input| {
+            let (input, (n, size)) = line(tuple((sp(parse_u32), sp(parse_u32))))(input)?;
+            alt((
+                move |i| Self::modern_cell_topo(i, n, size, ft),
+                move |i| Self::legacy_cell_topo(i, n, size, ft),
+            ))(input)
+        })(input)
+    }
+
+    /// Parse PolyData topology
+    fn poly_data_topo(
+        input: &[u8],
+        ft: FileType,
+    ) -> IResult<&[u8], (PolyDataTopology, VertexNumbers)> {
+        alt((
+            map(
+                |i| Self::cell_verts(i, "LINES", ft),
+                |x| (PolyDataTopology::Lines, x),
+            ),
+            map(
+                |i| Self::cell_verts(i, "POLYGONS", ft),
+                |x| (PolyDataTopology::Polys, x),
+            ),
+            map(
+                |i| Self::cell_verts(i, "VERTICES", ft),
+                |x| (PolyDataTopology::Verts, x),
+            ),
+            map(
+                |i| Self::cell_verts(i, "TRIANGLE_STRIPS", ft),
+                |x| (PolyDataTopology::Strips, x),
+            ),
+        ))(input)
+    }
+
+    fn attribute(input: &[u8], num_elements: usize, ft: FileType) -> IResult<&[u8], Attribute> {
+        dbg!(num_elements);
+        ws(fail)(input)
+    }
+
+    fn attribute_data<'a>(
+        input: &'a [u8],
+        tag: &'static str,
+        ft: FileType,
+    ) -> IResult<&'a [u8], Vec<Attribute>> {
+        dbg!((tag, String::from_utf8_lossy(input)));
+        alt((
+            preceded(
+                sp(tag_no_case(tag)),
+                cut(flat_map(sp(parse_u32), |n| {
+                    many0(move |i| Self::attribute(i, n as usize, ft))
+                })),
+            ),
+            map(ws(eof), |_| Vec::new()),
+        ))(input)
+    }
+
     /// Parse DataSet attributes
-    fn attributes(input: &[u8], _ft: FileType) -> IResult<&[u8], Attributes> {
-        fail(input)
+    fn attributes(input: &[u8], ft: FileType) -> IResult<&[u8], Attributes> {
+        map(
+            tuple((
+                opt(|i| Self::attribute_data(i, "CELL_DATA", ft)),
+                opt(|i| Self::attribute_data(i, "POINT_DATA", ft)),
+                opt(|i| Self::attribute_data(i, "CELL_DATA", ft)),
+            )),
+            |(c1, p, c2)| Attributes {
+                point: p.unwrap_or_default(),
+                cell: if let Some(c) = c1 {
+                    c
+                } else {
+                    c2.unwrap_or_default()
+                },
+            },
+        )(input)
     }
 
     fn poly_data(input: &[u8], ft: FileType) -> IResult<&[u8], DataSet> {
@@ -144,11 +252,14 @@ impl<BO: ByteOrder + 'static> VtkParser<BO> {
         cut(|input| {
             let (input, points) = Self::points(input, ft)?;
             let (input, _) = opt(|i| meta(i))(input)?;
+            dbg!("after meta");
             let (input, topo1) = opt(|i| Self::poly_data_topo(i, ft))(input)?;
             let (input, topo2) = opt(|i| Self::poly_data_topo(i, ft))(input)?;
             let (input, topo3) = opt(|i| Self::poly_data_topo(i, ft))(input)?;
             let (input, topo4) = opt(|i| Self::poly_data_topo(i, ft))(input)?;
+            dbg!("after topo");
             let (input, data) = Self::attributes(input, ft)?;
+            dbg!("after attrs");
 
             // The following algorithm is just to avoid unnecessary cloning.
             // There may be a simpler way to do this.
@@ -249,6 +360,7 @@ impl<BO: ByteOrder + 'static> VtkParser<BO> {
             let (input, h) = header(input)?;
             dbg!(&h);
             let (input, d) = Self::dataset(input, h.2)?;
+            let (input, _) = multispace0(input)?;
 
             Ok((
                 input,
@@ -263,13 +375,17 @@ impl<BO: ByteOrder + 'static> VtkParser<BO> {
             ))
         };
 
-        complete(p)(input).map_err(|e| {
+        let r = complete(p)(input).map_err(|e| {
             //p(input).map_err(|e| {
             if let nom::Err::Error(e) | nom::Err::Failure(e) = &e {
                 dbg!(String::from_utf8_lossy(e.input));
             };
             return e;
-        })
+        });
+        if let Ok((i, _)) = &r {
+            dbg!(String::from_utf8_lossy(i));
+        }
+        r
     }
 }
 
