@@ -6,10 +6,9 @@ use std::marker::PhantomData;
 
 use byteorder::{BigEndian, ByteOrder, LittleEndian, NativeEndian};
 use nom::branch::alt;
-use nom::bytes::complete::{take_until, take_while};
 use nom::bytes::streaming::{is_not, tag, tag_no_case};
-use nom::character::complete::{multispace0, u32, u8};
-use nom::combinator::{complete, cut, fail, map, map_res, opt};
+use nom::character::complete::{line_ending, multispace0, u32, u8};
+use nom::combinator::{complete, cut, eof, fail, map, map_res, opt};
 use nom::error::dbg_dmp;
 use nom::sequence::{preceded, separated_pair, tuple};
 use nom::IResult;
@@ -86,6 +85,30 @@ fn header(input: &[u8]) -> IResult<&[u8], (Version, String, FileType)> {
     ))(input)
 }
 
+/// Recognize and throw away `METADATA` block. Metadata is separated by an empty line.
+fn meta(input: &[u8]) -> IResult<&[u8], ()> {
+    let (input, _) = sp(tag_no_case("METADATA"))(input)?;
+    map(
+        alt((
+            eof,
+            complete(|mut input| {
+                // Loop until an empty line or eof is found (should be more efficient than
+                // `alt(take_until(), take_until()))`
+                loop {
+                    // Consume everything until and including the next line ending
+                    (input, _) = preceded(opt(is_not("\n\r")), line_ending)(input)?;
+                    match alt((eof, line_ending))(input) {
+                        k @ Ok(_) => return k,
+                        e @ Err(nom::Err::Failure(_) | nom::Err::Incomplete(_)) => drop(e?),
+                        _ => {}
+                    };
+                }
+            }),
+        )),
+        |_| (),
+    )(input)
+}
+
 impl<BO: ByteOrder + 'static> VtkParser<BO> {
     fn points(input: &[u8], ft: FileType) -> IResult<&[u8], IOBuffer> {
         let (input, (n, d_t)) = line(tuple((
@@ -101,11 +124,6 @@ impl<BO: ByteOrder + 'static> VtkParser<BO> {
                 nom::error::ErrorKind::Switch,
             ))),
         }
-    }
-
-    /// Recognize and throw away `METADATA` block. Metadata is separated by an empty line.
-    fn meta(input: &[u8], ft: FileType) -> IResult<&[u8], ()> {
-        fail(input)
     }
 
     /// Parse PolyData topology
@@ -125,7 +143,7 @@ impl<BO: ByteOrder + 'static> VtkParser<BO> {
         let (input, _) = line(sp(tag_no_case("POLYDATA")))(input)?;
         cut(|input| {
             let (input, points) = Self::points(input, ft)?;
-            let (input, _) = opt(|i| Self::meta(i, ft))(input)?;
+            let (input, _) = opt(|i| meta(i))(input)?;
             let (input, topo1) = opt(|i| Self::poly_data_topo(i, ft))(input)?;
             let (input, topo2) = opt(|i| Self::poly_data_topo(i, ft))(input)?;
             let (input, topo3) = opt(|i| Self::poly_data_topo(i, ft))(input)?;
@@ -308,6 +326,25 @@ mod tests {
                     FileType::Binary
                 )
             ))
+        );
+    }
+    #[test]
+    fn meta_test() {
+        assert_eq!(meta("METADATA".as_bytes()), Ok(("".as_bytes(), ())));
+        assert_eq!(meta(" \tMETADATA".as_bytes()), Ok(("".as_bytes(), ())));
+        assert_eq!(meta("METADATA\n".as_bytes()), Ok(("".as_bytes(), ())));
+        assert_eq!(meta("METADATA\n\n".as_bytes()), Ok(("".as_bytes(), ())));
+        assert_eq!(
+            meta("METADATA\n\nPOLYGONS 1 4".as_bytes()),
+            Ok(("POLYGONS 1 4".as_bytes(), ()))
+        );
+        assert_eq!(
+            meta("METADATA\nINFORMATION 2\nNAME L2_NORM_RANGE LOCATION vtkDataArray\nDATA 2 0.865742 1.73177\n".as_bytes()),
+            Ok(("".as_bytes(), ()))
+        );
+        assert_eq!(
+            meta("METADATA\nINFORMATION 2\nNAME L2_NORM_RANGE LOCATION vtkDataArray\nDATA 2 0.865742 1.73177\n\nPOLYGONS 1 4".as_bytes()),
+            Ok(("POLYGONS 1 4".as_bytes(), ()))
         );
     }
     #[test]

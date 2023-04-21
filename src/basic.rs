@@ -21,7 +21,7 @@ pub(crate) mod parsers {
     use nom::branch::alt;
     use nom::bytes::streaming::tag;
     use nom::character::complete::{digit1, line_ending, multispace0, space0};
-    use nom::combinator::{complete, map, map_opt, map_res, opt, recognize};
+    use nom::combinator::{complete, eof, map, map_opt, map_res, opt, recognize};
     use nom::error::ParseError;
     use nom::multi::many_m_n;
     use nom::sequence::{delimited, terminated, tuple};
@@ -52,6 +52,12 @@ pub(crate) mod parsers {
         delimited(space0, inner, space0)
     }
 
+    /// Recognizes a line ending or an eof.
+    pub fn eol_or_eof<'a, E: ParseError<&'a [u8]>>(
+    ) -> impl FnMut(&'a [u8]) -> IResult<&'a [u8], &'a [u8], E> {
+        alt((line_ending, eof))
+    }
+
     /// A combinator that takes a parser `inner` and produces a parser that also consumes trailing
     /// line endings ("\r\n" & "\n"), returning the output of `inner`.
     pub fn line<'a, F, O, E: ParseError<&'a [u8]>>(
@@ -60,7 +66,7 @@ pub(crate) mod parsers {
     where
         F: FnMut(&'a [u8]) -> IResult<&'a [u8], O, E>,
     {
-        terminated(inner, line_ending)
+        terminated(inner, eol_or_eof())
     }
 
     /// Parse a number in binary form from a byte array.
