@@ -6,8 +6,9 @@ use std::marker::PhantomData;
 
 use byteorder::{BigEndian, ByteOrder, LittleEndian, NativeEndian};
 use nom::branch::alt;
+use nom::bytes::complete::{take_until, take_while};
 use nom::bytes::streaming::{is_not, tag, tag_no_case};
-use nom::character::streaming::{u32, u8};
+use nom::character::complete::{multispace0, u32, u8};
 use nom::combinator::{complete, cut, fail, map, map_res, opt};
 use nom::error::dbg_dmp;
 use nom::sequence::{preceded, separated_pair, tuple};
@@ -55,36 +56,37 @@ fn data_type(input: &[u8]) -> IResult<&[u8], ScalarType> {
     ))(input)
 }
 
+fn version(input: &[u8]) -> IResult<&[u8], Version> {
+    let (input, _) = tuple((
+        sp(tag("#")),
+        sp(tag_no_case("vtk")),
+        sp(tag_no_case("DataFile")),
+        sp(tag_no_case("Version")),
+    ))(input)?;
+    sp(map(separated_pair(u8, tag("."), u8), Version::new))(input)
+}
+
+fn title(input: &[u8]) -> IResult<&[u8], &str> {
+    map_res(is_not("\r\n"), std::str::from_utf8)(input)
+}
+
+fn file_type(input: &[u8]) -> IResult<&[u8], FileType> {
+    alt((
+        map(sp(tag_no_case("ASCII")), |_| FileType::ASCII),
+        map(sp(tag_no_case("BINARY")), |_| FileType::Binary),
+    ))(input)
+}
+
+fn header(input: &[u8]) -> IResult<&[u8], (Version, String, FileType)> {
+    let (input, _) = multispace0(input)?;
+    tuple((
+        line(version),
+        line(map(title, String::from)),
+        line(file_type),
+    ))(input)
+}
+
 impl<BO: ByteOrder + 'static> VtkParser<BO> {
-    fn version(input: &[u8]) -> IResult<&[u8], Version> {
-        let (input, _) = tuple((
-            sp(tag("#")),
-            sp(tag_no_case("vtk")),
-            sp(tag_no_case("DataFile")),
-            sp(tag_no_case("Version")),
-        ))(input)?;
-        sp(map(separated_pair(u8, tag("."), u8), Version::new))(input)
-    }
-
-    fn title(input: &[u8]) -> IResult<&[u8], &str> {
-        map_res(is_not("\r\n"), std::str::from_utf8)(input)
-    }
-
-    fn file_type(input: &[u8]) -> IResult<&[u8], FileType> {
-        alt((
-            map(sp(tag_no_case("ASCII")), |_| FileType::ASCII),
-            map(sp(tag_no_case("BINARY")), |_| FileType::Binary),
-        ))(input)
-    }
-
-    fn header(input: &[u8]) -> IResult<&[u8], (Version, String, FileType)> {
-        tuple((
-            line(Self::version),
-            line(map(Self::title, String::from)),
-            line(Self::file_type),
-        ))(input)
-    }
-
     fn points(input: &[u8], ft: FileType) -> IResult<&[u8], IOBuffer> {
         let (input, (n, d_t)) = line(tuple((
             preceded(sp(tag_no_case("POINTS")), sp(u32)),
@@ -226,7 +228,7 @@ impl<BO: ByteOrder + 'static> VtkParser<BO> {
     /// Parse the entire vtk file
     fn vtk(input: &[u8]) -> IResult<&[u8], Vtk> {
         let p = |input| {
-            let (input, h) = Self::header(input)?;
+            let (input, h) = header(input)?;
             dbg!(&h);
             let (input, d) = Self::dataset(input, h.2)?;
 
@@ -273,42 +275,57 @@ pub fn parse_be(input: &[u8]) -> IResult<&[u8], Vtk> {
 
 #[cfg(test)]
 mod tests {
-    /*
     use super::*;
     use nom::IResult;
 
     #[test]
     fn file_type_test() {
         let f = file_type("BINARY".as_bytes());
-        assert_eq!(f, IResult::Done(&b""[..], FileType::Binary));
+        assert_eq!(f, Ok((&b""[..], FileType::Binary)));
         let f = file_type("ASCII".as_bytes());
-        assert_eq!(f, IResult::Done(&b""[..], FileType::ASCII));
+        assert_eq!(f, Ok((&b""[..], FileType::ASCII)));
     }
     #[test]
     fn version_test() {
-        let f = version("\n\t# vtk DataFile Version 2.0  \ntitle\n".as_bytes());
-        assert_eq!(f, IResult::Done("title\n".as_bytes(), Version::new((2, 0))));
+        let f = version("# vtk DataFile Version 2.0  \ntitle\n".as_bytes());
+        assert_eq!(f, Ok(("\ntitle\n".as_bytes(), Version::new((2, 0)))));
     }
     #[test]
     fn title_test() {
         let f = title("This is a title\nBINARY".as_bytes());
-        assert_eq!(f, IResult::Done("BINARY".as_bytes(), "This is a title"));
+        assert_eq!(f, Ok(("\nBINARY".as_bytes(), "This is a title")));
+    }
+    #[test]
+    fn header_test() {
+        let f = header(" \t\n# vtk DataFile Version 2.0  \nThis is a title\nBINARY\n".as_bytes());
+        assert_eq!(
+            f,
+            Ok((
+                "".as_bytes(),
+                (
+                    Version::new((2, 0)),
+                    "This is a title".to_string(),
+                    FileType::Binary
+                )
+            ))
+        );
     }
     #[test]
     fn points_test() {
         let in1 = "POINTS 0 float\n";
         let in2 = "POINTS 3 float\n2 45 2 3 4 1 46 2 0\nother";
         let f = VtkParser::<NativeEndian>::points(in1.as_bytes(), FileType::ASCII);
-        assert_eq!(f, IResult::Done("".as_bytes(), Vec::<f32>::new().into()));
+        assert_eq!(f, Ok(("".as_bytes(), Vec::<f32>::new().into())));
         let f = VtkParser::<NativeEndian>::points(in2.as_bytes(), FileType::ASCII);
         assert_eq!(
             f,
-            IResult::Done(
+            Ok((
                 "other".as_bytes(),
                 vec![2.0f32, 45., 2., 3., 4., 1., 46., 2., 0.].into()
-            )
+            ))
         );
     }
+    /*
     #[test]
     fn cells_test() {
         let in1 = "CELLS 0 0\n";
@@ -317,40 +334,41 @@ mod tests {
         let f = VtkParser::<NativeEndian>::cell_verts(in1.as_bytes(), "CELLS", FileType::ASCII);
         assert_eq!(
             f,
-            IResult::Done(
+            Ok((
                 "".as_bytes(),
                 VertexNumbers::Legacy {
                     num_cells: 0,
                     vertices: vec![]
                 }
-            )
+            ))
         );
         let f = VtkParser::<NativeEndian>::cell_verts(in2.as_bytes(), "CELLS", FileType::ASCII);
         assert_eq!(
             f,
-            IResult::Done(
+            Ok((
                 "other".as_bytes(),
                 VertexNumbers::Legacy {
                     num_cells: 1,
                     vertices: vec![2, 1, 2]
                 }
-            )
+            ))
         );
     }
     #[test]
     fn cell_type_test() {
         let f = VtkParser::<NativeEndian>::cell_type("2".as_bytes());
-        assert_eq!(f, IResult::Done("".as_bytes(), CellType::PolyVertex));
+        assert_eq!(f, Ok(("".as_bytes(), CellType::PolyVertex)));
         let f = VtkParser::<NativeEndian>::cell_type("10".as_bytes());
-        assert_eq!(f, IResult::Done("".as_bytes(), CellType::Tetra));
+        assert_eq!(f, Ok(("".as_bytes(), CellType::Tetra)));
     }
+    */
 
     macro_rules! test {
         ($fn:ident ($in:expr, $($args:expr),*) => ($rem:expr, $out:expr)) => {
-            assert_eq!(VtkParser::<NativeEndian>::$fn($in.as_bytes(), $($args),*), IResult::Done($rem.as_bytes(), $out.clone()));
+            assert_eq!(VtkParser::<NativeEndian>::$fn($in.as_bytes(), $($args),*), Ok(($rem.as_bytes(), $out.clone())));
         };
         ($fn:ident ($in:expr) => ($rem:expr, $out:expr)) => {
-            assert_eq!(VtkParser::<NativeEndian>::$fn($in.as_bytes()), IResult::Done($rem.as_bytes(), $out.clone()));
+            assert_eq!(VtkParser::<NativeEndian>::$fn($in.as_bytes()), Ok(($rem.as_bytes(), $out.clone())));
         };
         ($fn:ident ($in:expr, $($args:expr),*) => $out:expr) => {
             test!($fn($in, $($args),*) => ("", $out));
@@ -360,6 +378,7 @@ mod tests {
         }
     }
 
+    /*
     #[test]
     fn cell_types_test() {
         let in1 = "CELL_TYPES 0\nother";
@@ -369,6 +388,7 @@ mod tests {
         test!(cell_types(in1, FileType::ASCII) => ("other", out1));
         test!(cell_types(in2, FileType::ASCII) => ("other", out2));
     }
+    */
 
     #[test]
     fn unstructured_grid_test() {
@@ -389,6 +409,7 @@ mod tests {
 
         test!(unstructured_grid(in1, FileType::ASCII) => ("other", out1));
     }
+    /*
     #[test]
     fn attribute_test() {
         // scalar attribute
@@ -443,6 +464,7 @@ mod tests {
         };
         test!(attributes(in2, FileType::ASCII) => out2);
     }
+    */
     #[test]
     fn dataset_simple_test() {
         let in1 = "DATASET UNSTRUCTURED_GRID\nPOINTS 0 float\nCELLS 0 0\nCELL_TYPES 0\n";
@@ -493,5 +515,4 @@ mod tests {
         });
         test!(dataset(in1, FileType::ASCII) => out1);
     }
-    */
 }
