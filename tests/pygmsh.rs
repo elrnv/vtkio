@@ -186,6 +186,7 @@ fn legacy_binary() -> Result {
 
 /// Ensures that points from the two given vtk files are equivalent up to floating point error, and then overwrites
 /// the first input to match exactly to the points in the second input, so the can be compared using `PartialEq` later.
+#[cfg(feature = "xml")]
 fn compare_points_in_float_and_overwrite(vtu: &mut Vtk, expected: &Vtk) {
     let expected_points = if let DataSet::UnstructuredGrid { ref pieces, .. } = expected.data {
         pieces[0]
@@ -226,6 +227,7 @@ fn compare_points_in_float_and_overwrite(vtu: &mut Vtk, expected: &Vtk) {
 
 /// Ensures the given xml based vtk file has the right values and overwrites them to match
 /// the asset returned by make_test_file.
+#[cfg(feature = "xml")]
 fn assert_and_fix_xml_vtu(vtu: &mut Vtk) {
     vtu.file_path = None; // Reset file path to satisfy comparison
     assert_eq!(vtu.version, Version::new((0, 1))); // XML file version is ignored.
@@ -236,6 +238,7 @@ fn assert_and_fix_xml_vtu(vtu: &mut Vtk) {
 }
 
 #[test]
+#[cfg(feature = "xml")]
 fn xml_ascii() -> Result {
     let mut vtu = Vtk::import("./assets/pygmsh/ascii.vtu")?;
     assert_and_fix_xml_vtu(&mut vtu);
@@ -247,6 +250,7 @@ fn xml_ascii() -> Result {
 
 #[test]
 #[ignore]
+#[cfg(feature = "xml")]
 #[cfg(feature = "xz2")]
 fn xml_lzma() -> Result {
     let mut vtu = Vtk::import("./assets/pygmsh/lzma.vtu")?;
@@ -258,6 +262,7 @@ fn xml_lzma() -> Result {
 }
 
 #[test]
+#[cfg(feature = "xml")]
 fn xml_no_compression() -> Result {
     let mut vtu = Vtk::import("./assets/pygmsh/no-compression.vtu")?;
     assert_and_fix_xml_vtu(&mut vtu);
@@ -269,6 +274,7 @@ fn xml_no_compression() -> Result {
 
 #[test]
 #[ignore]
+#[cfg(feature = "xml")]
 #[cfg(feature = "flate2")]
 fn xml_zlib() -> Result {
     let mut vtu = Vtk::import("./assets/pygmsh/zlib.vtu")?;
