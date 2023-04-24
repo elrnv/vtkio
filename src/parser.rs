@@ -8,16 +8,20 @@ use byteorder::{BigEndian, ByteOrder, LittleEndian, NativeEndian};
 use nom::branch::alt;
 use nom::bytes::complete::{is_not, tag, tag_no_case};
 use nom::character::complete::{line_ending, multispace0, u32 as parse_u32, u8 as parse_u8};
-use nom::combinator::{complete, cut, eof, fail, flat_map, map, map_res, opt};
-use nom::error::dbg_dmp;
-use nom::multi::many0;
+use nom::combinator::{complete, cut, eof, fail, flat_map, map, map_opt, map_res, opt};
+use nom::multi::{many0, many_m_n};
 use nom::sequence::{preceded, separated_pair, terminated, tuple};
 use nom::IResult;
+use num_traits::FromPrimitive;
 
 pub use crate::basic::parsers::*;
 pub use crate::basic::*;
 use crate::model::ByteOrder as ByteOrderTag;
 use crate::model::*;
+
+// TODO: Reorder file according to old file
+// TODO: Replace `as usize` with TryFrom and expect?
+// TODO: Make `basic` pub(crate), except for enum if needed?
 
 /*
 enum Axis {
@@ -143,10 +147,7 @@ impl<BO: ByteOrder + 'static> VtkParser<BO> {
         ft: FileType,
     ) -> IResult<&[u8], VertexNumbers> {
         map(
-            |i| {
-                dbg!(String::from_utf8_lossy(i));
-                parse_data_vec::<u32, BO>(i, size as usize, ft)
-            },
+            |i| parse_data_vec::<u32, BO>(i, size as usize, ft),
             |data| VertexNumbers::Legacy {
                 num_cells: n,
                 vertices: data,
@@ -181,7 +182,7 @@ impl<BO: ByteOrder + 'static> VtkParser<BO> {
         })(input)
     }
 
-    /// Parse PolyData topology
+    /// Parse PolyData topology.
     fn poly_data_topo(
         input: &[u8],
         ft: FileType,
@@ -207,7 +208,7 @@ impl<BO: ByteOrder + 'static> VtkParser<BO> {
     }
 
     fn attribute(input: &[u8], num_elements: usize, ft: FileType) -> IResult<&[u8], Attribute> {
-        dbg!(num_elements);
+        dbg!("attribute!");
         ws(fail)(input)
     }
 
@@ -216,10 +217,9 @@ impl<BO: ByteOrder + 'static> VtkParser<BO> {
         tag: &'static str,
         ft: FileType,
     ) -> IResult<&'a [u8], Vec<Attribute>> {
-        dbg!((tag, String::from_utf8_lossy(input)));
         alt((
             preceded(
-                sp(tag_no_case(tag)),
+                ws(tag_no_case(tag)),
                 cut(flat_map(sp(parse_u32), |n| {
                     many0(move |i| Self::attribute(i, n as usize, ft))
                 })),
@@ -247,19 +247,17 @@ impl<BO: ByteOrder + 'static> VtkParser<BO> {
         )(input)
     }
 
+    /// Parse POLYDATA type dataset
     fn poly_data(input: &[u8], ft: FileType) -> IResult<&[u8], DataSet> {
         let (input, _) = line(sp(tag_no_case("POLYDATA")))(input)?;
         cut(|input| {
             let (input, points) = Self::points(input, ft)?;
             let (input, _) = opt(|i| meta(i))(input)?;
-            dbg!("after meta");
             let (input, topo1) = opt(|i| Self::poly_data_topo(i, ft))(input)?;
             let (input, topo2) = opt(|i| Self::poly_data_topo(i, ft))(input)?;
             let (input, topo3) = opt(|i| Self::poly_data_topo(i, ft))(input)?;
             let (input, topo4) = opt(|i| Self::poly_data_topo(i, ft))(input)?;
-            dbg!("after topo");
             let (input, data) = Self::attributes(input, ft)?;
-            dbg!("after attrs");
 
             // The following algorithm is just to avoid unnecessary cloning.
             // There may be a simpler way to do this.
@@ -314,24 +312,67 @@ impl<BO: ByteOrder + 'static> VtkParser<BO> {
         })(input)
     }
 
+    /// Parse structured grid dataset.
     fn structured_grid(input: &[u8], _ft: FileType) -> IResult<&[u8], DataSet> {
         let (input, _) = line(sp(tag_no_case("STRUCTURED_GRID")))(input)?;
         cut(fail)(input)
     }
 
+    /// Parse rectilinear grid dataset.
     fn rectilinear_grid(input: &[u8], _ft: FileType) -> IResult<&[u8], DataSet> {
         let (input, _) = line(sp(tag_no_case("RECTILINEAR_GRID")))(input)?;
         cut(fail)(input)
     }
 
+    /// Parse structured points dataset.
     fn structured_points(input: &[u8], _ft: FileType) -> IResult<&[u8], DataSet> {
         let (input, _) = line(sp(tag_no_case("STRUCTURED_POINTS")))(input)?;
         cut(fail)(input)
     }
 
-    fn unstructured_grid(input: &[u8], _ft: FileType) -> IResult<&[u8], DataSet> {
+    /// Parse a single ASCII cell type value. Essentially a byte converted to `CellType` enum.
+    fn cell_type(input: &[u8]) -> IResult<&[u8], CellType> {
+        map_opt(parse_u8, |x| CellType::from_u8(x))(input)
+    }
+
+    /// Parse a single binary cell type value. Essentially a byte converted to `CellType` enum.
+    fn cell_type_binary(input: &[u8]) -> IResult<&[u8], CellType> {
+        map_opt(i32::from_binary::<BO>, |x| CellType::from_u8(x as u8))(input)
+    }
+
+    fn cell_type_data(input: &[u8], n: usize, ft: FileType) -> IResult<&[u8], Vec<CellType>> {
+        match ft {
+            FileType::ASCII => many_m_n(n, n, ws(Self::cell_type))(input),
+            FileType::Binary => many_m_n(n, n, ws(Self::cell_type_binary))(input),
+        }
+    }
+
+    /// Parse cell types for unstructured grids
+    fn cell_types(input: &[u8], ft: FileType) -> IResult<&[u8], Vec<CellType>> {
+        let (input, n) = line(preceded(sp(tag_no_case("CELL_TYPES")), sp(parse_u32)))(input)?;
+        Self::cell_type_data(input, n as usize, ft)
+    }
+
+    /// Parse UNSTRUCTURED_GRID type dataset
+    fn unstructured_grid(input: &[u8], ft: FileType) -> IResult<&[u8], DataSet> {
         let (input, _) = line(sp(tag_no_case("UNSTRUCTURED_GRID")))(input)?;
-        cut(fail)(input)
+
+        cut(|input| {
+            let (input, p) = Self::points(input, ft)?;
+            let (input, _) = opt(|i| meta(i))(input)?;
+            let (input, cell_verts) = Self::cell_verts(input, "CELLS", ft)?;
+            let (input, types) = Self::cell_types(input, ft)?;
+            let (input, data) = Self::attributes(input, ft)?;
+
+            Ok((
+                input,
+                DataSet::inline(UnstructuredGridPiece {
+                    points: p,
+                    cells: Cells { cell_verts, types },
+                    data,
+                }),
+            ))
+        })(input)
     }
 
     fn field_data(input: &[u8], _ft: FileType) -> IResult<&[u8], DataSet> {
@@ -358,7 +399,6 @@ impl<BO: ByteOrder + 'static> VtkParser<BO> {
     fn vtk(input: &[u8]) -> IResult<&[u8], Vtk> {
         let p = |input| {
             let (input, h) = header(input)?;
-            dbg!(&h);
             let (input, d) = Self::dataset(input, h.2)?;
             let (input, _) = multispace0(input)?;
 
