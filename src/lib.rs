@@ -91,9 +91,7 @@
 //! ```
 extern crate nom;
 
-#[macro_use]
-pub mod basic;
-
+pub(crate) mod basic;
 #[macro_use]
 pub mod model;
 pub mod parser;
