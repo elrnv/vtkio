@@ -8,7 +8,7 @@ use byteorder::{BigEndian, ByteOrder, LittleEndian, NativeEndian};
 use nom::branch::{alt, permutation};
 use nom::bytes::complete::{is_not, tag, tag_no_case};
 use nom::character::complete::{line_ending, multispace0, u32 as parse_u32, u8 as parse_u8};
-use nom::combinator::{complete, cut, eof, fail, flat_map, map, map_opt, map_res, opt};
+use nom::combinator::{complete, cut, eof, flat_map, map, map_opt, map_res, opt};
 use nom::multi::{many0, many_m_n};
 use nom::sequence::{pair, preceded, separated_pair, terminated, tuple};
 use nom::IResult;
@@ -634,6 +634,17 @@ impl<BO: ByteOrder + 'static> VtkParser<BO> {
         })(input)
     }
 
+    /// Parse field dataset.
+    fn field_data(input: &[u8], ft: FileType) -> IResult<&[u8], DataSet> {
+        Self::attribute_field(input, ft).map(|(input, field)| {
+            if let Attribute::Field { name, data_array } = field {
+                (input, DataSet::Field { name, data_array })
+            } else {
+                unreachable!("attribute_field should always return an Attribute::Field");
+            }
+        })
+    }
+
     /// Parse structured points dataset.
     fn structured_points(input: &[u8], ft: FileType) -> IResult<&[u8], DataSet> {
         tagged_block(tag_no_case_line("STRUCTURED_POINTS"), |input| {
@@ -705,10 +716,6 @@ impl<BO: ByteOrder + 'static> VtkParser<BO> {
         })(input)
     }
 
-    fn field_data(input: &[u8], _ft: FileType) -> IResult<&[u8], DataSet> {
-        cut(fail)(input)
-    }
-
     fn dataset(input: &[u8], ft: FileType) -> IResult<&[u8], DataSet> {
         alt((
             tagged_block(
@@ -727,7 +734,7 @@ impl<BO: ByteOrder + 'static> VtkParser<BO> {
 
     /// Parse the entire vtk file
     fn vtk(input: &[u8]) -> IResult<&[u8], Vtk> {
-        let p = |input| {
+        let res = complete(|input| {
             let (input, h) = header(input)?;
             let (input, d) = Self::dataset(input, h.2)?;
             // Ignore all trailing spaces and newlines
@@ -744,10 +751,10 @@ impl<BO: ByteOrder + 'static> VtkParser<BO> {
                     file_path: None,
                 },
             ))
-        };
+        })(input);
 
+        /*
         let r = complete(p)(input).map_err(|e| {
-            //p(input).map_err(|e| {
             if let nom::Err::Error(e) | nom::Err::Failure(e) = &e {
                 dbg!(String::from_utf8_lossy(e.input));
             };
@@ -757,6 +764,9 @@ impl<BO: ByteOrder + 'static> VtkParser<BO> {
             dbg!(String::from_utf8_lossy(i));
         }
         r
+        */
+
+        res
     }
 }
 
