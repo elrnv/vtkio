@@ -319,7 +319,6 @@ pub(crate) mod parsers {
     mod tests {
         use super::*;
         use byteorder::BigEndian;
-        use nom::IResult;
 
         #[test]
         fn can_parse_float() {
