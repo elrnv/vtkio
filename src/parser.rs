@@ -5,7 +5,7 @@
 use std::marker::PhantomData;
 
 use byteorder::{BigEndian, ByteOrder, LittleEndian, NativeEndian};
-use nom::branch::alt;
+use nom::branch::{alt, permutation};
 use nom::bytes::complete::{is_not, tag, tag_no_case};
 use nom::character::complete::{line_ending, multispace0, u32 as parse_u32, u8 as parse_u8};
 use nom::combinator::{complete, cut, eof, fail, flat_map, map, map_opt, map_res, opt};
@@ -100,6 +100,18 @@ fn name(input: &[u8]) -> IResult<&[u8], &str> {
 
 fn lookup_table(input: &[u8]) -> IResult<&[u8], &str> {
     preceded(sp(tag_no_case("LOOKUP_TABLE")), sp(name))(input)
+}
+
+fn array3<'a, T: FromAscii>(
+    tag: &'static str,
+) -> impl FnMut(&'a [u8]) -> IResult<&'a [u8], [T; 3]> {
+    preceded(
+        sp(tag_no_case(tag)),
+        cut(map(
+            tuple((sp(T::from_ascii), sp(T::from_ascii), sp(T::from_ascii))),
+            |(nx, ny, nz)| [nx, ny, nz],
+        )),
+    )
 }
 
 /// Recognize and throw away `METADATA` block. Metadata is separated by an empty line.
@@ -583,10 +595,7 @@ impl<BO: ByteOrder + 'static> VtkParser<BO> {
     /// Parse structured grid dataset.
     fn structured_grid(input: &[u8], ft: FileType) -> IResult<&[u8], DataSet> {
         tagged_block(tag_no_case_line("STRUCTURED_GRID"), |input| {
-            let (input, (nx, ny, nz)) = line(preceded(
-                sp(tag_no_case("DIMENSIONS")),
-                tuple((sp(parse_u32), sp(parse_u32), sp(parse_u32))),
-            ))(input)?;
+            let (input, dims) = line(array3("DIMENSIONS"))(input)?;
             let (input, points) = Self::points(input, ft)?;
             let (input, _) = opt(meta)(input)?;
             let (input, data) = Self::attributes(input, ft)?;
@@ -594,7 +603,7 @@ impl<BO: ByteOrder + 'static> VtkParser<BO> {
             Ok((
                 input,
                 DataSet::inline(StructuredGridPiece {
-                    extent: Extent::Dims([nx, ny, nz]),
+                    extent: Extent::Dims(dims),
                     points,
                     data,
                 }),
@@ -605,10 +614,7 @@ impl<BO: ByteOrder + 'static> VtkParser<BO> {
     /// Parse rectilinear grid dataset.
     fn rectilinear_grid(input: &[u8], ft: FileType) -> IResult<&[u8], DataSet> {
         tagged_block(tag_no_case_line("RECTILINEAR_GRID"), |input| {
-            let (input, (nx, ny, nz)) = line(preceded(
-                sp(tag_no_case("DIMENSIONS")),
-                tuple((sp(parse_u32), sp(parse_u32), sp(parse_u32))),
-            ))(input)?;
+            let (input, dims) = line(array3("DIMENSIONS"))(input)?;
             let (input, (x, y, z)) = tuple((
                 |i| Self::coordinates(i, Axis::X, ft),
                 |i| Self::coordinates(i, Axis::Y, ft),
@@ -620,7 +626,7 @@ impl<BO: ByteOrder + 'static> VtkParser<BO> {
             Ok((
                 input,
                 DataSet::inline(RectilinearGridPiece {
-                    extent: Extent::Dims([nx, ny, nz]),
+                    extent: Extent::Dims(dims),
                     coords: Coordinates { x, y, z },
                     data,
                 }),
@@ -629,8 +635,29 @@ impl<BO: ByteOrder + 'static> VtkParser<BO> {
     }
 
     /// Parse structured points dataset.
-    fn structured_points(input: &[u8], _ft: FileType) -> IResult<&[u8], DataSet> {
-        tagged_block(tag_no_case_line("STRUCTURED_POINTS"), |input| fail(input))(input)
+    fn structured_points(input: &[u8], ft: FileType) -> IResult<&[u8], DataSet> {
+        tagged_block(tag_no_case_line("STRUCTURED_POINTS"), |input| {
+            let (input, parms) = permutation((
+                line(array3("DIMENSIONS")),
+                line(array3("ORIGIN")),
+                line(alt((array3("SPACING"), array3("ASPECT_RATIO")))),
+            ))(input)?;
+
+            let (input, data) = Self::attributes(input, ft)?;
+            Ok((
+                input,
+                DataSet::ImageData {
+                    extent: Extent::Dims(parms.0),
+                    origin: parms.1,
+                    spacing: parms.2,
+                    meta: None,
+                    pieces: vec![Piece::Inline(Box::new(ImageDataPiece {
+                        extent: Extent::Dims(parms.0),
+                        data,
+                    }))],
+                },
+            ))
+        })(input)
     }
 
     /// Parse a single ASCII cell type value. Essentially a byte converted to `CellType` enum.
@@ -754,7 +781,6 @@ pub fn parse_be(input: &[u8]) -> IResult<&[u8], Vtk> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use nom::IResult;
 
     #[test]
     fn file_type_test() {
