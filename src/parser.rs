@@ -23,13 +23,11 @@ use crate::model::*;
 // TODO: Replace `as usize` with TryFrom and expect?
 // TODO: Make `basic` pub(crate), except for enum if needed?
 
-/*
 enum Axis {
     X,
     Y,
     Z,
 }
-*/
 
 /**
  * Mesh data parsing.
@@ -209,6 +207,26 @@ impl<BO: ByteOrder + 'static> VtkParser<BO> {
                 move |i| Self::modern_cell_topo(i, n, size, ft),
                 move |i| Self::legacy_cell_topo(i, n, size, ft),
             ))(input)
+        })(input)
+    }
+
+    fn coordinates(input: &[u8], axis: Axis, ft: FileType) -> IResult<&[u8], IOBuffer> {
+        let tag = match axis {
+            Axis::X => "X_COORDINATES",
+            Axis::Y => "Y_COORDINATES",
+            Axis::Z => "Z_COORDINATES",
+        };
+
+        tagged_block(tag_no_case(tag), |input| {
+            let (input, (n, dt)) = line(pair(sp(parse_u32), sp(data_type)))(input)?;
+            match dt {
+                ScalarType::F32 => parse_data_buffer::<f32, BO>(input, n as usize, ft),
+                ScalarType::F64 => parse_data_buffer::<f64, BO>(input, n as usize, ft),
+                _ => Err(nom::Err::Error(nom::error::make_error(
+                    input,
+                    nom::error::ErrorKind::Switch,
+                ))),
+            }
         })(input)
     }
 
@@ -563,13 +581,51 @@ impl<BO: ByteOrder + 'static> VtkParser<BO> {
     }
 
     /// Parse structured grid dataset.
-    fn structured_grid(input: &[u8], _ft: FileType) -> IResult<&[u8], DataSet> {
-        tagged_block(tag_no_case_line("STRUCTURED_GRID"), |input| fail(input))(input)
+    fn structured_grid(input: &[u8], ft: FileType) -> IResult<&[u8], DataSet> {
+        tagged_block(tag_no_case_line("STRUCTURED_GRID"), |input| {
+            let (input, (nx, ny, nz)) = line(preceded(
+                sp(tag_no_case("DIMENSIONS")),
+                tuple((sp(parse_u32), sp(parse_u32), sp(parse_u32))),
+            ))(input)?;
+            let (input, points) = Self::points(input, ft)?;
+            let (input, _) = opt(meta)(input)?;
+            let (input, data) = Self::attributes(input, ft)?;
+
+            Ok((
+                input,
+                DataSet::inline(StructuredGridPiece {
+                    extent: Extent::Dims([nx, ny, nz]),
+                    points,
+                    data,
+                }),
+            ))
+        })(input)
     }
 
     /// Parse rectilinear grid dataset.
-    fn rectilinear_grid(input: &[u8], _ft: FileType) -> IResult<&[u8], DataSet> {
-        tagged_block(tag_no_case_line("RECTILINEAR_GRID"), |input| fail(input))(input)
+    fn rectilinear_grid(input: &[u8], ft: FileType) -> IResult<&[u8], DataSet> {
+        tagged_block(tag_no_case_line("RECTILINEAR_GRID"), |input| {
+            let (input, (nx, ny, nz)) = line(preceded(
+                sp(tag_no_case("DIMENSIONS")),
+                tuple((sp(parse_u32), sp(parse_u32), sp(parse_u32))),
+            ))(input)?;
+            let (input, (x, y, z)) = tuple((
+                |i| Self::coordinates(i, Axis::X, ft),
+                |i| Self::coordinates(i, Axis::Y, ft),
+                |i| Self::coordinates(i, Axis::Z, ft),
+            ))(input)?;
+            let (input, data) = Self::attributes(input, ft)?;
+            let (input, _) = opt(meta)(input)?;
+
+            Ok((
+                input,
+                DataSet::inline(RectilinearGridPiece {
+                    extent: Extent::Dims([nx, ny, nz]),
+                    coords: Coordinates { x, y, z },
+                    data,
+                }),
+            ))
+        })(input)
     }
 
     /// Parse structured points dataset.
