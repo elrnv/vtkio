@@ -106,25 +106,27 @@ fn lookup_table(input: &[u8]) -> IResult<&[u8], &str> {
 
 /// Recognize and throw away `METADATA` block. Metadata is separated by an empty line.
 fn meta(input: &[u8]) -> IResult<&[u8], ()> {
-    let (input, _) = sp(tag_no_case("METADATA"))(input)?;
-    map(
-        alt((
-            eof,
-            complete(|mut input| {
-                // Loop until an empty line or eof is found (should be more efficient than
-                // `alt(take_until(), take_until()))`
-                loop {
-                    // Consume everything until and including the next line ending
-                    (input, _) = preceded(opt(is_not("\n\r")), line_ending)(input)?;
-                    match alt((eof, line_ending))(input) {
-                        k @ Ok(_) => return k,
-                        e @ Err(nom::Err::Failure(_) | nom::Err::Incomplete(_)) => drop(e?),
-                        _ => {}
-                    };
-                }
-            }),
-        )),
-        |_| (),
+    tagged_block(
+        tag_no_case("METADATA"),
+        map(
+            alt((
+                eof,
+                complete(|mut input| {
+                    // Loop until an empty line or eof is found (should be more efficient than
+                    // `alt(take_until(), take_until()))`
+                    loop {
+                        // Consume everything until and including the next line ending
+                        (input, _) = preceded(opt(is_not("\n\r")), line_ending)(input)?;
+                        match alt((eof, line_ending))(input) {
+                            k @ Ok(_) => return k,
+                            e @ Err(nom::Err::Failure(_) | nom::Err::Incomplete(_)) => drop(e?),
+                            _ => {}
+                        };
+                    }
+                }),
+            )),
+            |_| (),
+        ),
     )(input)
 }
 
@@ -414,12 +416,10 @@ impl<BO: ByteOrder + 'static> VtkParser<BO> {
     }
 
     fn attribute_field_array(input: &[u8], ft: FileType) -> IResult<&[u8], FieldArray> {
-        let (input, (name, num_comp, num_tuples, dt)) = line(tuple((
-            sp(name),
-            sp(parse_u32),
-            sp(parse_u32),
-            sp(data_type),
-        )))(input)?;
+        let (input, (name, num_comp, num_tuples, dt)) = line(preceded(
+            multispace0,
+            tuple((sp(name), sp(parse_u32), sp(parse_u32), sp(data_type))),
+        ))(input)?;
         let (input, data) =
             Self::attribute_data(input, (num_comp as usize) * (num_tuples as usize), dt, ft)?;
         let (input, _) = opt(meta)(input)?;
@@ -590,7 +590,7 @@ impl<BO: ByteOrder + 'static> VtkParser<BO> {
     fn cell_type_data(input: &[u8], n: usize, ft: FileType) -> IResult<&[u8], Vec<CellType>> {
         match ft {
             FileType::ASCII => many_m_n(n, n, ws(Self::cell_type))(input),
-            FileType::Binary => many_m_n(n, n, ws(Self::cell_type_binary))(input),
+            FileType::Binary => many_m_n(n, n, Self::cell_type_binary)(input),
         }
     }
 
