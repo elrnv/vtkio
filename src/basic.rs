@@ -246,7 +246,7 @@ pub(crate) mod parsers {
     {
         match ft {
             FileType::ASCII => many_m_n(n, n, ws(T::from_ascii))(input),
-            FileType::Binary => many_m_n(n, n, ws(T::from_binary::<BO>))(input),
+            FileType::Binary => many_m_n(n, n, T::from_binary::<BO>)(input),
         }
     }
 
