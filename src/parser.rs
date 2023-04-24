@@ -96,6 +96,14 @@ fn header(input: &[u8]) -> IResult<&[u8], (Version, String, FileType)> {
     )(input)
 }
 
+fn name(input: &[u8]) -> IResult<&[u8], &str> {
+    map_res(is_not(" \t\r\n"), std::str::from_utf8)(input)
+}
+
+fn lookup_table(input: &[u8]) -> IResult<&[u8], &str> {
+    preceded(sp(tag_no_case("LOOKUP_TABLE")), sp(name))(input)
+}
+
 /// Recognize and throw away `METADATA` block. Metadata is separated by an empty line.
 fn meta(input: &[u8]) -> IResult<&[u8], ()> {
     let (input, _) = sp(tag_no_case("METADATA"))(input)?;
@@ -252,20 +260,55 @@ impl<BO: ByteOrder + 'static> VtkParser<BO> {
         }
     }
 
-    fn lookup_table(input: &[u8]) -> IResult<&[u8], &[u8]> {
-        fail(input)
-    }
-
     fn attribute_scalars(
         input: &[u8],
         num_elements: usize,
         ft: FileType,
     ) -> IResult<&[u8], Attribute> {
-        fail(input)
+        tagged_block(tag_no_case("SCALARS"), |input| {
+            let (input, (name, dt, num_comp)) =
+                line(tuple((sp(name), sp(data_type), opt(parse_u32))))(input)?;
+            let (input, lookup_tbl_name) = opt(line(lookup_table))(input)?;
+            let (input, data) =
+                Self::attribute_data(input, num_comp.unwrap_or(1) as usize * num_elements, dt, ft)?;
+            let (input, _) = opt(meta)(input)?;
+
+            Ok((
+                input,
+                Attribute::DataArray(DataArray {
+                    name: String::from(name),
+                    elem: ElementType::Scalars {
+                        num_comp: num_comp.unwrap_or(1),
+                        lookup_table: lookup_tbl_name.and_then(|x| {
+                            if x == "default" {
+                                None
+                            } else {
+                                Some(String::from(x))
+                            }
+                        }),
+                    },
+                    data,
+                }),
+            ))
+        })(input)
     }
 
     fn attribute_lookup_table(input: &[u8], ft: FileType) -> IResult<&[u8], Attribute> {
-        fail(input)
+        tagged_block(tag_no_case("LOOKUP_TABLE"), |input| {
+            let (input, (name, num_elements)) = line(tuple((sp(name), sp(parse_u32))))(input)?;
+            let (input, data) =
+                Self::attribute_data(input, 4 * num_elements as usize, ScalarType::F32, ft)?;
+            let (input, _) = opt(meta)(input)?;
+
+            Ok((
+                input,
+                Attribute::DataArray(DataArray {
+                    name: String::from(name),
+                    elem: ElementType::LookupTable,
+                    data,
+                }),
+            ))
+        })(input)
     }
 
     /// Helper to `attribute_color_scalars`. This function calls the appropriate data parser for color
@@ -286,7 +329,43 @@ impl<BO: ByteOrder + 'static> VtkParser<BO> {
         num_elements: usize,
         ft: FileType,
     ) -> IResult<&[u8], Attribute> {
-        fail(input)
+        tagged_block(tag_no_case("COLOR_SCALARS"), |input| {
+            let (input, (name, num_comp)) = line(tuple((sp(name), sp(parse_u32))))(input)?;
+            let (input, data) =
+                Self::attribute_color_scalars_data(input, num_comp as usize * num_elements, ft)?;
+            let (input, _) = opt(meta)(input)?;
+            Ok((
+                input,
+                Attribute::DataArray(DataArray {
+                    name: String::from(name),
+                    elem: ElementType::ColorScalars(num_comp),
+                    data,
+                }),
+            ))
+        })(input)
+    }
+
+    fn attribute_fixed_dim<'a>(
+        input: &'a [u8],
+        tag: &'static str,
+        dim: usize,
+        elem: ElementType,
+        num_elements: usize,
+        ft: FileType,
+    ) -> IResult<&'a [u8], Attribute> {
+        tagged_block(tag_no_case(tag), |input| {
+            let (input, (name, dt)) = line(tuple((sp(name), sp(data_type))))(input)?;
+            let (input, data) = Self::attribute_data(input, dim * num_elements, dt, ft)?;
+            let (input, _) = opt(meta)(input)?;
+            Ok((
+                input,
+                Attribute::DataArray(DataArray {
+                    name: String::from(name),
+                    elem: elem.clone(),
+                    data,
+                }),
+            ))
+        })(input)
     }
 
     fn attribute_vectors(
@@ -294,7 +373,7 @@ impl<BO: ByteOrder + 'static> VtkParser<BO> {
         num_elements: usize,
         ft: FileType,
     ) -> IResult<&[u8], Attribute> {
-        fail(input)
+        Self::attribute_fixed_dim(input, "VECTORS", 3, ElementType::Vectors, num_elements, ft)
     }
 
     fn attribute_normals(
@@ -302,7 +381,7 @@ impl<BO: ByteOrder + 'static> VtkParser<BO> {
         num_elements: usize,
         ft: FileType,
     ) -> IResult<&[u8], Attribute> {
-        fail(input)
+        Self::attribute_fixed_dim(input, "NORMALS", 3, ElementType::Normals, num_elements, ft)
     }
 
     fn attribute_tex_coords(
@@ -310,7 +389,20 @@ impl<BO: ByteOrder + 'static> VtkParser<BO> {
         num_elements: usize,
         ft: FileType,
     ) -> IResult<&[u8], Attribute> {
-        fail(input)
+        tagged_block(tag_no_case("TEXTURE_COORDINATES"), |input| {
+            let (input, (name, dim, dt)) =
+                line(tuple((sp(name), sp(parse_u32), sp(data_type))))(input)?;
+            let (input, data) = Self::attribute_data(input, dim as usize * num_elements, dt, ft)?;
+            let (input, _) = opt(meta)(input)?;
+            Ok((
+                input,
+                Attribute::DataArray(DataArray {
+                    name: String::from(name),
+                    elem: ElementType::TCoords(dim),
+                    data,
+                }),
+            ))
+        })(input)
     }
 
     fn attribute_tensors(
@@ -318,15 +410,44 @@ impl<BO: ByteOrder + 'static> VtkParser<BO> {
         num_elements: usize,
         ft: FileType,
     ) -> IResult<&[u8], Attribute> {
-        fail(input)
+        Self::attribute_fixed_dim(input, "TENSORS", 9, ElementType::Tensors, num_elements, ft)
     }
 
     fn attribute_field_array(input: &[u8], ft: FileType) -> IResult<&[u8], FieldArray> {
-        fail(input)
+        let (input, (name, num_comp, num_tuples, dt)) = line(tuple((
+            sp(name),
+            sp(parse_u32),
+            sp(parse_u32),
+            sp(data_type),
+        )))(input)?;
+        let (input, data) =
+            Self::attribute_data(input, (num_comp as usize) * (num_tuples as usize), dt, ft)?;
+        let (input, _) = opt(meta)(input)?;
+        Ok((
+            input,
+            FieldArray {
+                name: String::from(name),
+                elem: num_comp,
+                data,
+            },
+        ))
     }
 
     fn attribute_field(input: &[u8], ft: FileType) -> IResult<&[u8], Attribute> {
-        fail(input)
+        tagged_block(tag_no_case("FIELD"), |input| {
+            let (input, (name, n)) = line(tuple((sp(name), sp(parse_u32))))(input)?;
+            let (input, data_array) = many_m_n(n as usize, n as usize, |i| {
+                Self::attribute_field_array(i, ft)
+            })(input)?;
+
+            Ok((
+                input,
+                (Attribute::Field {
+                    name: String::from(name),
+                    data_array,
+                }),
+            ))
+        })(input)
     }
 
     fn attribute(input: &[u8], num_elements: usize, ft: FileType) -> IResult<&[u8], Attribute> {
@@ -725,7 +846,6 @@ mod tests {
 
         test!(unstructured_grid(in1, FileType::ASCII) => ("other", out1));
     }
-    /*
     #[test]
     fn attribute_test() {
         // scalar attribute
@@ -743,9 +863,9 @@ mod tests {
     #[test]
     fn attributes_test() {
         // empty cell attributes
-        test!(cell_attributes("\n", FileType::ASCII) => Vec::new());
+        test!(point_or_cell_attributes("\n", "CELL_DATA", FileType::ASCII) => Vec::new());
         // empty point attributes
-        test!(point_attributes("", FileType::ASCII) => Vec::new());
+        test!(point_or_cell_attributes("", "POINT_DATA", FileType::ASCII) => Vec::new());
         // empty
         test!(attributes("\n", FileType::ASCII) => Attributes::new());
         // scalar cell attribute
@@ -762,7 +882,7 @@ mod tests {
             name: String::from("cell_scalars"),
             ..scalar_data.clone()
         })];
-        test!(cell_attributes(in1, FileType::ASCII) => out1);
+        test!(point_or_cell_attributes(in1, "CELL_DATA", FileType::ASCII) => out1);
         // scalar point and cell attributes
         let in2 = "POINT_DATA 6\n SCALARS point_scalars int 1\n0 1 2 3 4 5\n
                    CELL_DATA 6\n SCALARS cell_scalars int 1\n0 1 2 3 4 5";
@@ -780,7 +900,6 @@ mod tests {
         };
         test!(attributes(in2, FileType::ASCII) => out2);
     }
-    */
     #[test]
     fn dataset_simple_test() {
         let in1 = "DATASET UNSTRUCTURED_GRID\nPOINTS 0 float\nCELLS 0 0\nCELL_TYPES 0\n";
