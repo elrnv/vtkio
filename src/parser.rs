@@ -1,7 +1,3 @@
-// TODO: migrating to a newer version of nom could reduce the detected "cognitive complexity"
-// caused by macros.
-#![allow(clippy::cognitive_complexity)]
-
 use std::marker::PhantomData;
 
 use byteorder::{BigEndian, ByteOrder, LittleEndian, NativeEndian};
@@ -92,7 +88,7 @@ fn meta(input: &[u8]) -> IResult<&[u8], ()> {
                         (input, _) = preceded(opt(is_not("\n\r")), line_ending)(input)?;
                         match alt((eof, line_ending))(input) {
                             k @ Ok(_) => return k,
-                            e @ Err(nom::Err::Failure(_) | nom::Err::Incomplete(_)) => drop(e?),
+                            e @ Err(nom::Err::Failure(_) | nom::Err::Incomplete(_)) => _ = e?,
                             _ => {}
                         };
                     }
@@ -575,7 +571,7 @@ impl<BO: ByteOrder + 'static> VtkParser<BO> {
 
     /// Parse a single ASCII cell type value. Essentially a byte converted to `CellType` enum.
     fn cell_type(input: &[u8]) -> IResult<&[u8], CellType> {
-        map_opt(parse_u8, |x| CellType::from_u8(x))(input)
+        map_opt(parse_u8, CellType::from_u8)(input)
     }
 
     /// Parse a single binary cell type value. Essentially a byte converted to `CellType` enum.
