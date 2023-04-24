@@ -10,7 +10,7 @@ use nom::bytes::complete::{is_not, tag, tag_no_case};
 use nom::character::complete::{line_ending, multispace0, u32 as parse_u32, u8 as parse_u8};
 use nom::combinator::{complete, cut, eof, fail, flat_map, map, map_opt, map_res, opt};
 use nom::multi::{many0, many_m_n};
-use nom::sequence::{preceded, separated_pair, terminated, tuple};
+use nom::sequence::{pair, preceded, separated_pair, terminated, tuple};
 use nom::IResult;
 use num_traits::FromPrimitive;
 
@@ -122,10 +122,8 @@ fn meta(input: &[u8]) -> IResult<&[u8], ()> {
 
 impl<BO: ByteOrder + 'static> VtkParser<BO> {
     fn points(input: &[u8], ft: FileType) -> IResult<&[u8], IOBuffer> {
-        let (input, (n, d_t)) = line(tuple((
-            preceded(sp(tag_no_case("POINTS")), sp(parse_u32)),
-            sp(data_type),
-        )))(input)?;
+        let (input, _) = preceded(multispace0, tag_no_case("POINTS"))(input)?;
+        let (input, (n, d_t)) = line(tuple((sp(parse_u32), sp(data_type))))(input)?;
 
         match d_t {
             ScalarType::F32 => parse_data_buffer::<f32, BO>(input, 3 * n as usize, ft),
@@ -164,7 +162,32 @@ impl<BO: ByteOrder + 'static> VtkParser<BO> {
         size: u32,
         ft: FileType,
     ) -> IResult<&[u8], VertexNumbers> {
-        fail(input)
+        map(
+            tuple((
+                |i| Self::topo(i, "OFFSETS", n, ft),
+                |i| Self::topo(i, "CONNECTIVITY", size, ft),
+            )),
+            |(offsets, connectivity)| VertexNumbers::XML {
+                offsets,
+                connectivity,
+            },
+        )(input)
+    }
+
+    /// Parse either a CONNECTIVITY or OFFSETS array for modern topology.
+    fn topo<'a>(
+        input: &'a [u8],
+        tag: &'static str,
+        n: u32,
+        ft: FileType,
+    ) -> IResult<&'a [u8], Vec<u64>> {
+        dbg!(tag);
+        dbg!(String::from_utf8_lossy(input));
+        let (input, _) = preceded(
+            multispace0,
+            line(pair(ws(tag_no_case(tag)), sp(tag_no_case("vtktypeint64")))),
+        )(input)?;
+        parse_data_vec::<u64, BO>(input, n as usize, ft)
     }
 
     fn cell_verts<'a>(
@@ -172,7 +195,7 @@ impl<BO: ByteOrder + 'static> VtkParser<BO> {
         tag: &'static str,
         ft: FileType,
     ) -> IResult<&'a [u8], VertexNumbers> {
-        let (input, _) = sp(tag_no_case(tag))(input)?;
+        let (input, _) = preceded(multispace0, tag_no_case(tag))(input)?;
         cut(|input| {
             let (input, (n, size)) = line(tuple((sp(parse_u32), sp(parse_u32))))(input)?;
             alt((
@@ -219,7 +242,7 @@ impl<BO: ByteOrder + 'static> VtkParser<BO> {
     ) -> IResult<&'a [u8], Vec<Attribute>> {
         alt((
             preceded(
-                ws(tag_no_case(tag)),
+                preceded(multispace0, tag_no_case(tag)),
                 cut(flat_map(sp(parse_u32), |n| {
                     many0(move |i| Self::attribute(i, n as usize, ft))
                 })),
@@ -349,7 +372,8 @@ impl<BO: ByteOrder + 'static> VtkParser<BO> {
 
     /// Parse cell types for unstructured grids
     fn cell_types(input: &[u8], ft: FileType) -> IResult<&[u8], Vec<CellType>> {
-        let (input, n) = line(preceded(sp(tag_no_case("CELL_TYPES")), sp(parse_u32)))(input)?;
+        let (input, _) = preceded(multispace0, tag_no_case("CELL_TYPES"))(input)?;
+        let (input, n) = line(sp(parse_u32))(input)?;
         Self::cell_type_data(input, n as usize, ft)
     }
 
