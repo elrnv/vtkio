@@ -122,17 +122,18 @@ fn meta(input: &[u8]) -> IResult<&[u8], ()> {
 
 impl<BO: ByteOrder + 'static> VtkParser<BO> {
     fn points(input: &[u8], ft: FileType) -> IResult<&[u8], IOBuffer> {
-        let (input, _) = preceded(multispace0, tag_no_case("POINTS"))(input)?;
-        let (input, (n, d_t)) = line(tuple((sp(parse_u32), sp(data_type))))(input)?;
+        tagged_block(tag_no_case("POINTS"), |input| {
+            let (input, (n, d_t)) = line(tuple((sp(parse_u32), sp(data_type))))(input)?;
 
-        match d_t {
-            ScalarType::F32 => parse_data_buffer::<f32, BO>(input, 3 * n as usize, ft),
-            ScalarType::F64 => parse_data_buffer::<f64, BO>(input, 3 * n as usize, ft),
-            _ => Err(nom::Err::Error(nom::error::make_error(
-                input,
-                nom::error::ErrorKind::Switch,
-            ))),
-        }
+            match d_t {
+                ScalarType::F32 => parse_data_buffer::<f32, BO>(input, 3 * n as usize, ft),
+                ScalarType::F64 => parse_data_buffer::<f64, BO>(input, 3 * n as usize, ft),
+                _ => Err(nom::Err::Error(nom::error::make_error(
+                    input,
+                    nom::error::ErrorKind::Switch,
+                ))),
+            }
+        })(input)
     }
 
     /// Parse cell topology indices in the legacy way.
@@ -181,13 +182,10 @@ impl<BO: ByteOrder + 'static> VtkParser<BO> {
         n: u32,
         ft: FileType,
     ) -> IResult<&'a [u8], Vec<u64>> {
-        dbg!(tag);
-        dbg!(String::from_utf8_lossy(input));
-        let (input, _) = preceded(
-            multispace0,
-            line(pair(ws(tag_no_case(tag)), sp(tag_no_case("vtktypeint64")))),
-        )(input)?;
-        parse_data_vec::<u64, BO>(input, n as usize, ft)
+        tagged_block(
+            line(pair(tag_no_case(tag), sp(tag_no_case("vtktypeint64")))),
+            |input| parse_data_vec::<u64, BO>(input, n as usize, ft),
+        )(input)
     }
 
     fn cell_verts<'a>(
@@ -195,8 +193,7 @@ impl<BO: ByteOrder + 'static> VtkParser<BO> {
         tag: &'static str,
         ft: FileType,
     ) -> IResult<&'a [u8], VertexNumbers> {
-        let (input, _) = preceded(multispace0, tag_no_case(tag))(input)?;
-        cut(|input| {
+        tagged_block(tag_no_case(tag), |input| {
             let (input, (n, size)) = line(tuple((sp(parse_u32), sp(parse_u32))))(input)?;
             alt((
                 move |i| Self::modern_cell_topo(i, n, size, ft),
@@ -230,22 +227,132 @@ impl<BO: ByteOrder + 'static> VtkParser<BO> {
         ))(input)
     }
 
-    fn attribute(input: &[u8], num_elements: usize, ft: FileType) -> IResult<&[u8], Attribute> {
-        dbg!("attribute!");
-        ws(fail)(input)
+    /**
+     * Attribute Parsing
+     */
+
+    fn attribute_data(
+        input: &[u8],
+        n: usize,
+        data_type: ScalarType,
+        ft: FileType,
+    ) -> IResult<&[u8], IOBuffer> {
+        match data_type {
+            ScalarType::Bit => parse_data_bit_buffer(input, n, ft),
+            ScalarType::U8 => parse_data_buffer_u8(input, n, ft),
+            ScalarType::I8 => parse_data_buffer_i8(input, n, ft),
+            ScalarType::U16 => parse_data_buffer::<u16, BO>(input, n, ft),
+            ScalarType::I16 => parse_data_buffer::<i16, BO>(input, n, ft),
+            ScalarType::U32 => parse_data_buffer::<u32, BO>(input, n, ft),
+            ScalarType::I32 => parse_data_buffer::<i32, BO>(input, n, ft),
+            ScalarType::U64 => parse_data_buffer::<u64, BO>(input, n, ft),
+            ScalarType::I64 => parse_data_buffer::<i64, BO>(input, n, ft),
+            ScalarType::F32 => parse_data_buffer::<f32, BO>(input, n, ft),
+            ScalarType::F64 => parse_data_buffer::<f64, BO>(input, n, ft),
+        }
     }
 
-    fn attribute_data<'a>(
+    fn lookup_table(input: &[u8]) -> IResult<&[u8], &[u8]> {
+        fail(input)
+    }
+
+    fn attribute_scalars(
+        input: &[u8],
+        num_elements: usize,
+        ft: FileType,
+    ) -> IResult<&[u8], Attribute> {
+        fail(input)
+    }
+
+    fn attribute_lookup_table(input: &[u8], ft: FileType) -> IResult<&[u8], Attribute> {
+        fail(input)
+    }
+
+    /// Helper to `attribute_color_scalars`. This function calls the appropriate data parser for color
+    /// scalars.
+    fn attribute_color_scalars_data(
+        input: &[u8],
+        n: usize,
+        ft: FileType,
+    ) -> IResult<&[u8], IOBuffer> {
+        match ft {
+            FileType::ASCII => Self::attribute_data(input, n, ScalarType::F32, ft),
+            FileType::Binary => Self::attribute_data(input, n, ScalarType::U8, ft),
+        }
+    }
+
+    fn attribute_color_scalars(
+        input: &[u8],
+        num_elements: usize,
+        ft: FileType,
+    ) -> IResult<&[u8], Attribute> {
+        fail(input)
+    }
+
+    fn attribute_vectors(
+        input: &[u8],
+        num_elements: usize,
+        ft: FileType,
+    ) -> IResult<&[u8], Attribute> {
+        fail(input)
+    }
+
+    fn attribute_normals(
+        input: &[u8],
+        num_elements: usize,
+        ft: FileType,
+    ) -> IResult<&[u8], Attribute> {
+        fail(input)
+    }
+
+    fn attribute_tex_coords(
+        input: &[u8],
+        num_elements: usize,
+        ft: FileType,
+    ) -> IResult<&[u8], Attribute> {
+        fail(input)
+    }
+
+    fn attribute_tensors(
+        input: &[u8],
+        num_elements: usize,
+        ft: FileType,
+    ) -> IResult<&[u8], Attribute> {
+        fail(input)
+    }
+
+    fn attribute_field_array(input: &[u8], ft: FileType) -> IResult<&[u8], FieldArray> {
+        fail(input)
+    }
+
+    fn attribute_field(input: &[u8], ft: FileType) -> IResult<&[u8], Attribute> {
+        fail(input)
+    }
+
+    fn attribute(input: &[u8], num_elements: usize, ft: FileType) -> IResult<&[u8], Attribute> {
+        alt((
+            |i| Self::attribute_scalars(i, num_elements, ft),
+            |i| Self::attribute_color_scalars(i, num_elements, ft),
+            |i| Self::attribute_lookup_table(i, ft),
+            |i| Self::attribute_vectors(i, num_elements, ft),
+            |i| Self::attribute_normals(i, num_elements, ft),
+            |i| Self::attribute_tex_coords(i, num_elements, ft),
+            |i| Self::attribute_tensors(i, num_elements, ft),
+            |i| Self::attribute_field(i, ft),
+        ))(input)
+    }
+
+    fn point_or_cell_attributes<'a>(
         input: &'a [u8],
         tag: &'static str,
         ft: FileType,
     ) -> IResult<&'a [u8], Vec<Attribute>> {
         alt((
-            preceded(
-                preceded(multispace0, tag_no_case(tag)),
-                cut(flat_map(sp(parse_u32), |n| {
+            tagged_block(
+                tag_no_case(tag),
+                flat_map(sp(parse_u32), |n| {
                     many0(move |i| Self::attribute(i, n as usize, ft))
-                })),
+                }),
             ),
             map(ws(eof), |_| Vec::new()),
         ))(input)
@@ -255,9 +362,9 @@ impl<BO: ByteOrder + 'static> VtkParser<BO> {
     fn attributes(input: &[u8], ft: FileType) -> IResult<&[u8], Attributes> {
         map(
             tuple((
-                opt(|i| Self::attribute_data(i, "CELL_DATA", ft)),
-                opt(|i| Self::attribute_data(i, "POINT_DATA", ft)),
-                opt(|i| Self::attribute_data(i, "CELL_DATA", ft)),
+                opt(|i| Self::point_or_cell_attributes(i, "CELL_DATA", ft)),
+                opt(|i| Self::point_or_cell_attributes(i, "POINT_DATA", ft)),
+                opt(|i| Self::point_or_cell_attributes(i, "CELL_DATA", ft)),
             )),
             |(c1, p, c2)| Attributes {
                 point: p.unwrap_or_default(),
@@ -272,8 +379,7 @@ impl<BO: ByteOrder + 'static> VtkParser<BO> {
 
     /// Parse POLYDATA type dataset
     fn poly_data(input: &[u8], ft: FileType) -> IResult<&[u8], DataSet> {
-        let (input, _) = line(sp(tag_no_case("POLYDATA")))(input)?;
-        cut(|input| {
+        tagged_block(tag_no_case_line("POLYDATA"), |input| {
             let (input, points) = Self::points(input, ft)?;
             let (input, _) = opt(|i| meta(i))(input)?;
             let (input, topo1) = opt(|i| Self::poly_data_topo(i, ft))(input)?;
@@ -337,20 +443,17 @@ impl<BO: ByteOrder + 'static> VtkParser<BO> {
 
     /// Parse structured grid dataset.
     fn structured_grid(input: &[u8], _ft: FileType) -> IResult<&[u8], DataSet> {
-        let (input, _) = line(sp(tag_no_case("STRUCTURED_GRID")))(input)?;
-        cut(fail)(input)
+        tagged_block(tag_no_case_line("STRUCTURED_GRID"), |input| fail(input))(input)
     }
 
     /// Parse rectilinear grid dataset.
     fn rectilinear_grid(input: &[u8], _ft: FileType) -> IResult<&[u8], DataSet> {
-        let (input, _) = line(sp(tag_no_case("RECTILINEAR_GRID")))(input)?;
-        cut(fail)(input)
+        tagged_block(tag_no_case_line("RECTILINEAR_GRID"), |input| fail(input))(input)
     }
 
     /// Parse structured points dataset.
     fn structured_points(input: &[u8], _ft: FileType) -> IResult<&[u8], DataSet> {
-        let (input, _) = line(sp(tag_no_case("STRUCTURED_POINTS")))(input)?;
-        cut(fail)(input)
+        tagged_block(tag_no_case_line("STRUCTURED_POINTS"), |input| fail(input))(input)
     }
 
     /// Parse a single ASCII cell type value. Essentially a byte converted to `CellType` enum.
@@ -372,16 +475,15 @@ impl<BO: ByteOrder + 'static> VtkParser<BO> {
 
     /// Parse cell types for unstructured grids
     fn cell_types(input: &[u8], ft: FileType) -> IResult<&[u8], Vec<CellType>> {
-        let (input, _) = preceded(multispace0, tag_no_case("CELL_TYPES"))(input)?;
-        let (input, n) = line(sp(parse_u32))(input)?;
-        Self::cell_type_data(input, n as usize, ft)
+        tagged_block(tag_no_case("CELL_TYPES"), |input| {
+            let (input, n) = line(sp(parse_u32))(input)?;
+            Self::cell_type_data(input, n as usize, ft)
+        })(input)
     }
 
     /// Parse UNSTRUCTURED_GRID type dataset
     fn unstructured_grid(input: &[u8], ft: FileType) -> IResult<&[u8], DataSet> {
-        let (input, _) = line(sp(tag_no_case("UNSTRUCTURED_GRID")))(input)?;
-
-        cut(|input| {
+        tagged_block(tag_no_case_line("UNSTRUCTURED_GRID"), |input| {
             let (input, p) = Self::points(input, ft)?;
             let (input, _) = opt(|i| meta(i))(input)?;
             let (input, cell_verts) = Self::cell_verts(input, "CELLS", ft)?;
@@ -405,15 +507,15 @@ impl<BO: ByteOrder + 'static> VtkParser<BO> {
 
     fn dataset(input: &[u8], ft: FileType) -> IResult<&[u8], DataSet> {
         alt((
-            preceded(
-                sp(tag_no_case("DATASET")),
-                cut(alt((
+            tagged_block(
+                tag_no_case("DATASET"),
+                alt((
                     |i| Self::poly_data(i, ft),
                     |i| Self::structured_grid(i, ft),
                     |i| Self::rectilinear_grid(i, ft),
                     |i| Self::structured_points(i, ft),
                     |i| Self::unstructured_grid(i, ft),
-                ))),
+                )),
             ),
             |i| Self::field_data(i, ft),
         ))(input)
@@ -424,6 +526,7 @@ impl<BO: ByteOrder + 'static> VtkParser<BO> {
         let p = |input| {
             let (input, h) = header(input)?;
             let (input, d) = Self::dataset(input, h.2)?;
+            // Ignore all trailing spaces and newlines
             let (input, _) = multispace0(input)?;
 
             Ok((
@@ -542,7 +645,6 @@ mod tests {
             ))
         );
     }
-    /*
     #[test]
     fn cells_test() {
         let in1 = "CELLS 0 0\n";
@@ -578,7 +680,6 @@ mod tests {
         let f = VtkParser::<NativeEndian>::cell_type("10".as_bytes());
         assert_eq!(f, Ok(("".as_bytes(), CellType::Tetra)));
     }
-    */
 
     macro_rules! test {
         ($fn:ident ($in:expr, $($args:expr),*) => ($rem:expr, $out:expr)) => {
@@ -595,7 +696,6 @@ mod tests {
         }
     }
 
-    /*
     #[test]
     fn cell_types_test() {
         let in1 = "CELL_TYPES 0\nother";
@@ -605,7 +705,6 @@ mod tests {
         test!(cell_types(in1, FileType::ASCII) => ("other", out1));
         test!(cell_types(in2, FileType::ASCII) => ("other", out2));
     }
-    */
 
     #[test]
     fn unstructured_grid_test() {

@@ -19,13 +19,13 @@ pub(crate) mod parsers {
     use num_traits::Zero;
 
     use nom::branch::alt;
-    use nom::bytes::streaming::tag;
+    use nom::bytes::streaming::{tag, tag_no_case};
     use nom::character::complete::{digit1, line_ending, multispace0, space0};
-    use nom::combinator::{complete, eof, map, map_opt, map_res, opt, recognize};
+    use nom::combinator::{complete, cut, eof, map, map_opt, map_res, opt, recognize};
     use nom::error::ParseError;
     use nom::multi::many_m_n;
-    use nom::sequence::{delimited, terminated, tuple};
-    use nom::{IResult, Needed, ParseTo};
+    use nom::sequence::{delimited, preceded, terminated, tuple};
+    use nom::{IResult, Needed, ParseTo, Parser};
 
     use crate::basic::FileType;
     use crate::IOBuffer;
@@ -54,8 +54,9 @@ pub(crate) mod parsers {
 
     /// Recognizes a line ending or an eof.
     pub fn eol_or_eof<'a, E: ParseError<&'a [u8]>>(
-    ) -> impl FnMut(&'a [u8]) -> IResult<&'a [u8], &'a [u8], E> {
-        alt((line_ending, eof))
+        input: &'a [u8],
+    ) -> IResult<&'a [u8], &'a [u8], E> {
+        alt((line_ending, eof))(input)
     }
 
     /// A combinator that takes a parser `inner` and produces a parser that also consumes trailing
@@ -66,8 +67,49 @@ pub(crate) mod parsers {
     where
         F: FnMut(&'a [u8]) -> IResult<&'a [u8], O, E>,
     {
-        terminated(inner, eol_or_eof())
+        terminated(inner, eol_or_eof)
     }
+
+    pub fn tag_no_case_line<'a, E: ParseError<&'a [u8]>>(
+        tag: &'static str,
+    ) -> impl FnMut(&'a [u8]) -> IResult<&'a [u8], &'a [u8], E> {
+        line(sp(tag_no_case(tag)))
+    }
+
+    pub fn tagged_block<'a, O1, O2, E: ParseError<&'a [u8]>, F, G>(
+        block_tag: F,
+        body: G,
+    ) -> impl FnMut(&'a [u8]) -> IResult<&'a [u8], O2, E>
+    where
+        F: Parser<&'a [u8], O1, E>,
+        G: Parser<&'a [u8], O2, E>,
+    {
+        preceded(
+            preceded(multispace0, block_tag),
+            // Add cut around block body in case the block is used in an `alt` as we don't want to
+            // try other alternatives if the block_tag matched.
+            cut(body),
+        )
+    }
+
+    /*
+    pub fn tagged_block_args<'a, O1, O2, O3, E: ParseError<&'a [u8]>, F, G, H, K>(
+        mut block_tag: F,
+        mut args: G,
+        mut inner: K,
+    ) -> impl FnMut(&'a [u8]) -> IResult<&'a [u8], O3, E>
+    where
+        F: Parser<&'a [u8], O1, E>,
+        G: Parser<&'a [u8], O2, E>,
+        H: Parser<&'a [u8], O3, E>,
+        K: FnMut(O2) -> H,
+    {
+        preceded(
+            preceded(multispace0, block_tag),
+            flat_map(terminated(args, eol_or_eof()), move |o2| cut(inner(o2))),
+        )
+    }
+     */
 
     /// Parse a number in binary form from a byte array.
     pub trait FromBinary
