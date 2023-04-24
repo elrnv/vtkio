@@ -650,53 +650,23 @@ impl<BO: ByteOrder + 'static> VtkParser<BO> {
             let (input, topo4) = opt(|i| Self::poly_data_topo(i, ft))(input)?;
             let (input, data) = Self::attributes(input, ft)?;
 
-            // The following algorithm is just to avoid unnecessary cloning.
-            // There may be a simpler way to do this.
+            // Avoid clones of the topology data by "taking" them out of the (unordered) options
             let mut topos = [topo1, topo2, topo3, topo4];
-            let vertsi = topos
-                .iter()
-                .position(|x| x.as_ref().map(|x| x.0) == Some(PolyDataTopology::Verts));
-            let linesi = topos
-                .iter()
-                .position(|x| x.as_ref().map(|x| x.0) == Some(PolyDataTopology::Lines));
-            let polysi = topos
-                .iter()
-                .position(|x| x.as_ref().map(|x| x.0) == Some(PolyDataTopology::Polys));
-            let stripsi = topos
-                .iter()
-                .position(|x| x.as_ref().map(|x| x.0) == Some(PolyDataTopology::Strips));
-            let mut indices = [0, 1, 2, 3];
-
-            vertsi.map(|i| {
-                indices.swap(i, 0);
-                topos.swap(i, 0)
-            });
-            linesi.map(|i| {
-                let i = indices[i];
-                indices.swap(i, 1);
-                topos.swap(i, 1)
-            });
-            polysi.map(|i| {
-                let i = indices[i];
-                indices.swap(i, 2);
-                topos.swap(i, 2)
-            });
-            stripsi.map(|i| {
-                let i = indices[i];
-                indices.swap(i, 3);
-                topos.swap(i, 3)
-            });
-
-            let [verts, lines, polys, strips] = topos;
+            let take_topo = |topos: &mut [Option<(PolyDataTopology, VertexNumbers)>], topo_type| {
+                topos
+                    .iter()
+                    .position(|x| matches!(x, Some((tt, _)) if tt == &topo_type))
+                    .and_then(|pos| topos[pos].take().map(|(_, topo)| topo))
+            };
 
             Ok((
                 input,
                 DataSet::inline(PolyDataPiece {
                     points,
-                    verts: verts.map(|x| x.1),
-                    lines: lines.map(|x| x.1),
-                    polys: polys.map(|x| x.1),
-                    strips: strips.map(|x| x.1),
+                    verts: take_topo(&mut topos, PolyDataTopology::Verts),
+                    lines: take_topo(&mut topos, PolyDataTopology::Lines),
+                    polys: take_topo(&mut topos, PolyDataTopology::Polys),
+                    strips: take_topo(&mut topos, PolyDataTopology::Strips),
                     data,
                 }),
             ))
