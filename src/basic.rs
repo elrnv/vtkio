@@ -8,7 +8,7 @@ use num_traits::Zero;
 use nom::branch::alt;
 use nom::bytes::streaming::{tag, tag_no_case};
 use nom::character::complete::{digit1, line_ending, multispace0, space0};
-use nom::combinator::{complete, cut, eof, map, map_opt, map_res, opt, recognize};
+use nom::combinator::{complete, cut, eof, map, map_opt, opt, recognize};
 use nom::error::ParseError;
 use nom::multi::many_m_n;
 use nom::sequence::{delimited, preceded, terminated, tuple};
@@ -111,12 +111,12 @@ macro_rules! impl_from_binary {
     ($type:ty) => {
         impl FromBinary for $type {
             fn from_binary<T: ByteOrder>(input: &[u8]) -> IResult<&[u8], $type> {
-                debug_assert_eq!(::std::mem::size_of::<$type>(), 1);
+                debug_assert_eq!(std::mem::size_of::<$type>(), 1);
                 if input.len() < 1 {
                     // SAFETY: Called with nonzero value
                     unsafe {
                         Err(nom::Err::Incomplete(Needed::Size(
-                            ::std::num::NonZeroUsize::new_unchecked(1),
+                            std::num::NonZeroUsize::new_unchecked(1),
                         )))
                     }
                 } else {
@@ -128,12 +128,12 @@ macro_rules! impl_from_binary {
     ($type:ty, $read_fn:ident) => {
         impl FromBinary for $type {
             fn from_binary<T: ByteOrder>(input: &[u8]) -> IResult<&[u8], $type> {
-                let size: usize = ::std::mem::size_of::<$type>();
+                let size: usize = std::mem::size_of::<$type>();
                 if input.len() < size {
                     // SAFETY: Can only be called for `size` > 0 as `input.len()` and `size` are both usize
                     unsafe {
                         Err(nom::Err::Incomplete(Needed::Size(
-                            ::std::num::NonZeroUsize::new_unchecked(size),
+                            std::num::NonZeroUsize::new_unchecked(size),
                         )))
                     }
                 } else {
@@ -165,7 +165,7 @@ where
 }
 
 macro_rules! impl_from_ascii {
-    ($type:ty, $fn:ident) => {
+    ($type:ty, $fn:path) => {
         impl FromAscii for $type {
             fn from_ascii(input: &[u8]) -> IResult<&[u8], $type> {
                 $fn(input)
@@ -174,35 +174,16 @@ macro_rules! impl_from_ascii {
     };
 }
 
-impl_from_ascii!(u8, unsigned);
-impl_from_ascii!(i8, integer);
-impl_from_ascii!(u16, unsigned);
-impl_from_ascii!(i16, integer);
-impl_from_ascii!(u32, unsigned);
-impl_from_ascii!(i32, integer);
-impl_from_ascii!(u64, unsigned);
-impl_from_ascii!(i64, integer);
+impl_from_ascii!(u8, nom::character::complete::u8);
+impl_from_ascii!(i8, nom::character::complete::i8);
+impl_from_ascii!(u16, nom::character::complete::u16);
+impl_from_ascii!(i16, nom::character::complete::i16);
+impl_from_ascii!(u32, nom::character::complete::u32);
+impl_from_ascii!(i32, nom::character::complete::i32);
+impl_from_ascii!(u64, nom::character::complete::u64);
+impl_from_ascii!(i64, nom::character::complete::i64);
 impl_from_ascii!(f32, real);
 impl_from_ascii!(f64, real);
-
-/// Parse a formatted unsigned integer.
-pub fn unsigned<T>(input: &[u8]) -> IResult<&[u8], T>
-where
-    T: FromStr,
-{
-    map_res(map_res(digit1, std::str::from_utf8), FromStr::from_str)(input)
-}
-
-/// Parse a formatted signed integer.
-pub fn integer<T>(input: &[u8]) -> IResult<&[u8], T>
-where
-    T: FromStr,
-{
-    map_opt(
-        recognize(tuple((opt(alt((tag("+"), tag("-")))), digit1))),
-        |i: &[u8]| i.parse_to(),
-    )(input)
-}
 
 /// Parse a floating point number from a byte array.
 /// This extends `nom`'s implementation by allowing floats without a decimal point (e.g. `3e3`).
@@ -360,13 +341,6 @@ mod tests {
         assert_eq!(real::<f32>(&b"-.3"[..]).unwrap().1, -0.3);
         assert_eq!(real::<f32>(&b"3e3"[..]).unwrap().1, 3000.0);
         assert_eq!(real::<f32>(&b"-3.2e2"[..]).unwrap().1, -320.0);
-    }
-    #[test]
-    fn can_parse_int() {
-        assert_eq!(integer::<i32>(&b"-1"[..]).unwrap().1, -1);
-        assert_eq!(integer::<i32>(&b"1"[..]).unwrap().1, 1);
-        assert_eq!(integer::<i32>(&b"43242"[..]).unwrap().1, 43242);
-        assert_eq!(integer::<u8>(&b"255"[..]).unwrap().1, 255);
     }
     #[test]
     fn can_parse_binary_float() {
