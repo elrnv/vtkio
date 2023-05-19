@@ -1454,18 +1454,13 @@ impl From<Extent> for model::Extent {
     }
 }
 
-// Helper for serializing number_of_cells
-fn is_zero(n: &u32) -> bool {
-    *n == 0
-}
-
 #[derive(Clone, Debug, PartialEq, Default, Serialize)]
 #[serde(rename_all = "PascalCase")]
 pub struct Piece {
     pub extent: Option<Extent>,
     #[serde(default)]
     pub number_of_points: u32,
-    #[serde(default, skip_serializing_if = "is_zero")]
+    #[serde(default)]
     pub number_of_cells: u32,
     #[serde(default)]
     pub number_of_lines: u32,
