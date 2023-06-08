@@ -34,17 +34,16 @@ Below we load a VTK file named `tet.vtk`, modify it and write it back in Legacy 
 
 ```rust
 use vtkio::model::*; // import model definition of a VTK file
-use vtkio::{import, export_ascii};
 fn main() {
     use std::path::PathBuf;
     let file_path = PathBuf::from("assets/tet.vtk");
 
-    let mut vtk_file = import(&file_path)
+    let mut vtk_file = Vtk::import(&file_path)
         .expect(&format!("Failed to load file: {:?}", file_path));
 
     vtk_file.version = Version::new((4,2)); // arbitrary change
 
-    export_ascii(vtk_file, &file_path)
+    vtk_file.export_ascii(&file_path)
         .expect(&format!("Failed to save file: {:?}", file_path));
 }
 ```
