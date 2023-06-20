@@ -931,7 +931,7 @@ fn dodecagon_with_meta_line_endings_test() {
     let in1_crlf = in1_lf.replace("\n", "\r\n");
 
     let out1 = Vtk {
-        version: Version::new((4, 2)),
+        version: Version::new_legacy(4, 2),
         byte_order: ByteOrder::BigEndian,
         title: String::from("Dodecagon example"),
         file_path: None,

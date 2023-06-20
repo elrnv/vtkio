@@ -3582,13 +3582,13 @@ impl VTKFile {
 
     /// Parse an XML VTK file from the given reader.
     pub fn parse(reader: impl BufRead) -> Result<VTKFile> {
-        let mut reader = quick_xml::Reader::from_reader(reader);
-        reader
-            .expand_empty_elements(true)
-            .check_end_names(true)
-            .trim_text(true)
-            .trim_text_end(false);
-        let mut de = de::Deserializer::from_custom_reader(reader);
+        // let mut reader = quick_xml::Reader::from_reader(reader);
+        // reader
+        //     .expand_empty_elements(true)
+        //     .check_end_names(true)
+        //     .trim_text(true)
+        //     .trim_text_end(false);
+        let mut de = de::Deserializer::from_reader(reader);
         Ok(VTKFile::deserialize(&mut de)?)
     }
 
@@ -3599,7 +3599,7 @@ impl VTKFile {
     }
 
     /// Write an XML VTK file to the specified writer.
-    pub fn write(&self, writer: impl quick_xml::se::Write) -> Result<()> {
+    pub fn write(&self, writer: impl std::io::Write) -> Result<()> {
         se::to_writer(writer, self)?;
         Ok(())
     }
