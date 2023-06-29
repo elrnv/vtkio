@@ -1053,3 +1053,55 @@ fn binary_dodecagon_test() {
     test_b!(parse_be(in1) => out1);
     test_b!(parse_be(in2) => out1);
 }
+
+#[test]
+fn triangle_vtkidtype_test() {
+    let in1 = include_bytes!("../assets/triangle_vtkidtype.vtk");
+    let out1 = Vtk {
+        version: Version::new_legacy(5, 1),
+        byte_order: ByteOrder::BigEndian,
+        title: String::from("vtk output"),
+        file_path: None,
+        data: DataSet::inline(UnstructuredGridPiece {
+            points: vec![
+                1.837499976158142,
+                2.9874446392059326,
+                0.23750001192092896,
+                1.8249998092651367,
+                2.9850914478302,
+                0.23750001192092896,
+                1.8249998092651367,
+                2.985128402709961,
+                0.25,
+            ]
+            .into(),
+            cells: Cells {
+                cell_verts: VertexNumbers::XML {
+                    connectivity: vec![1, 2, 0],
+                    offsets: vec![0, 3],
+                },
+                types: vec![CellType::Triangle],
+            },
+            data: Attributes {
+                point: vec![Attribute::Field {
+                    name: String::from("FieldData"),
+                    data_array: vec![DataArrayBase {
+                        name: String::from("vtkOriginalPointIds"),
+                        elem: 1,
+                        data: vec![95364, 95538, 95691].into(),
+                    }],
+                }],
+                cell: vec![Attribute::Field {
+                    name: String::from("FieldData"),
+                    data_array: vec![DataArrayBase {
+                        name: String::from("vtkOriginalCellIds"),
+                        elem: 1,
+                        data: vec![186229].into(),
+                    }],
+                }],
+            },
+        }),
+    };
+
+    test_b!(parse_be(in1) => out1);
+}

@@ -66,6 +66,7 @@ fn data_type(input: &[u8]) -> IResult<&[u8], ScalarType> {
         map(tag_no_case("unsigned_int"), |_| ScalarType::U32),
         map(tag_no_case("unsigned_char"), |_| ScalarType::U8),
         map(tag_no_case("unsigned_long"), |_| ScalarType::U64),
+        map(tag_no_case("vtkIdType"), |_| ScalarType::I32),
     ))(input)
 }
 
