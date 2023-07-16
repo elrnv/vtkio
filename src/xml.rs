@@ -1087,7 +1087,7 @@ impl Default for VTKFile {
     }
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Copy, Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub enum Compressor {
     #[serde(rename = "vtkLZ4DataCompressor")]
     LZ4,
@@ -1096,18 +1096,13 @@ pub enum Compressor {
     #[serde(rename = "vtkLZMADataCompressor")]
     LZMA,
     #[serde(other)]
+    #[default]
     None,
 }
 
 impl Compressor {
     pub fn is_none(&self) -> bool {
         matches!(self, Compressor::None)
-    }
-}
-
-impl Default for Compressor {
-    fn default() -> Compressor {
-        Compressor::None
     }
 }
 
