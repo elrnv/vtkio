@@ -235,9 +235,10 @@ impl Vtk {
 ///
 /// Legacy and XML versions are distinct, and this enum splits the two into distinct variants.
 /// New files can use the `Auto` variant, which will default to the minimum version supporting the latest features in `vtkio`.
-#[derive(Copy, Clone, PartialEq, Debug)]
+#[derive(Copy, Clone, PartialEq, Debug, Default)]
 pub enum Version {
     /// Automatically handle versioning on write for both Legacy and XML formats.
+    #[default]
     Auto,
     /// Loaded Legacy format with this version. Writing in XML format is handled as with the `Auto` variant.
     Legacy { major: u32, minor: u32 },
