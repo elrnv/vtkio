@@ -33,7 +33,7 @@ fn version(input: &[u8]) -> IResult<&[u8], Version> {
 
 fn file_type(input: &[u8]) -> IResult<&[u8], FileType> {
     alt((
-        map(sp(tag_no_case("ASCII")), |_| FileType::ASCII),
+        map(sp(tag_no_case("ASCII")), |_| FileType::Ascii),
         map(sp(tag_no_case("BINARY")), |_| FileType::Binary),
     ))(input)
 }
@@ -312,7 +312,7 @@ impl<BO: ByteOrder + 'static> VtkParser<BO> {
         ft: FileType,
     ) -> IResult<&[u8], IOBuffer> {
         match ft {
-            FileType::ASCII => Self::attribute_data(input, n, ScalarType::F32, ft),
+            FileType::Ascii => Self::attribute_data(input, n, ScalarType::F32, ft),
             FileType::Binary => Self::attribute_data(input, n, ScalarType::U8, ft),
         }
     }
@@ -581,7 +581,7 @@ impl<BO: ByteOrder + 'static> VtkParser<BO> {
 
     fn cell_type_data(input: &[u8], n: usize, ft: FileType) -> IResult<&[u8], Vec<CellType>> {
         match ft {
-            FileType::ASCII => many_m_n(n, n, ws(Self::cell_type))(input),
+            FileType::Ascii => many_m_n(n, n, ws(Self::cell_type))(input),
             FileType::Binary => many_m_n(n, n, Self::cell_type_binary)(input),
         }
     }
@@ -739,7 +739,7 @@ mod tests {
         let f = file_type("BINARY".as_bytes());
         assert_eq!(f, Ok((&b""[..], FileType::Binary)));
         let f = file_type("ASCII".as_bytes());
-        assert_eq!(f, Ok((&b""[..], FileType::ASCII)));
+        assert_eq!(f, Ok((&b""[..], FileType::Ascii)));
     }
     #[test]
     fn version_test() {
@@ -789,9 +789,9 @@ mod tests {
     fn points_test() {
         let in1 = "POINTS 0 float\n";
         let in2 = "POINTS 3 float\n2 45 2 3 4 1 46 2 0\nother";
-        let f = VtkParser::<NativeEndian>::points(in1.as_bytes(), FileType::ASCII);
+        let f = VtkParser::<NativeEndian>::points(in1.as_bytes(), FileType::Ascii);
         assert_eq!(f, Ok(("".as_bytes(), Vec::<f32>::new().into())));
-        let f = VtkParser::<NativeEndian>::points(in2.as_bytes(), FileType::ASCII);
+        let f = VtkParser::<NativeEndian>::points(in2.as_bytes(), FileType::Ascii);
         assert_eq!(
             f,
             Ok((
@@ -805,7 +805,7 @@ mod tests {
         let in1 = "CELLS 0 0\n";
         let in2 = "CELLS 1 3\n2 1 2\nother";
 
-        let f = VtkParser::<NativeEndian>::cell_verts(in1.as_bytes(), "CELLS", FileType::ASCII);
+        let f = VtkParser::<NativeEndian>::cell_verts(in1.as_bytes(), "CELLS", FileType::Ascii);
         assert_eq!(
             f,
             Ok((
@@ -816,7 +816,7 @@ mod tests {
                 }
             ))
         );
-        let f = VtkParser::<NativeEndian>::cell_verts(in2.as_bytes(), "CELLS", FileType::ASCII);
+        let f = VtkParser::<NativeEndian>::cell_verts(in2.as_bytes(), "CELLS", FileType::Ascii);
         assert_eq!(
             f,
             Ok((
@@ -857,8 +857,8 @@ mod tests {
         let out1 = Vec::<CellType>::new();
         let in2 = "CELL_TYPES 3\n2 1 10\nother";
         let out2 = vec![CellType::PolyVertex, CellType::Vertex, CellType::Tetra];
-        test!(cell_types(in1, FileType::ASCII) => ("other", out1));
-        test!(cell_types(in2, FileType::ASCII) => ("other", out2));
+        test!(cell_types(in1, FileType::Ascii) => ("other", out1));
+        test!(cell_types(in2, FileType::Ascii) => ("other", out2));
     }
 
     #[test]
@@ -878,7 +878,7 @@ mod tests {
             data: Attributes::new(),
         });
 
-        test!(unstructured_grid(in1, FileType::ASCII) => ("other", out1));
+        test!(unstructured_grid(in1, FileType::Ascii) => ("other", out1));
     }
     #[test]
     fn attribute_test() {
@@ -892,16 +892,16 @@ mod tests {
             },
             data: vec![0, 1, 2, 3, 4, 5].into(),
         });
-        test!(attribute(in1, 6, FileType::ASCII) => ("", out1));
+        test!(attribute(in1, 6, FileType::Ascii) => ("", out1));
     }
     #[test]
     fn attributes_test() {
         // empty cell attributes
-        test!(point_or_cell_attributes("\n", "CELL_DATA", FileType::ASCII) => Vec::new());
+        test!(point_or_cell_attributes("\n", "CELL_DATA", FileType::Ascii) => Vec::new());
         // empty point attributes
-        test!(point_or_cell_attributes("", "POINT_DATA", FileType::ASCII) => Vec::new());
+        test!(point_or_cell_attributes("", "POINT_DATA", FileType::Ascii) => Vec::new());
         // empty
-        test!(attributes("\n", FileType::ASCII) => Attributes::new());
+        test!(attributes("\n", FileType::Ascii) => Attributes::new());
         // scalar cell attribute
         let in1 = "CELL_DATA 6\nSCALARS cell_scalars int 1\n0 1 2 3 4 5\n";
         let scalar_data = DataArray {
@@ -916,7 +916,7 @@ mod tests {
             name: String::from("cell_scalars"),
             ..scalar_data.clone()
         })];
-        test!(point_or_cell_attributes(in1, "CELL_DATA", FileType::ASCII) => out1);
+        test!(point_or_cell_attributes(in1, "CELL_DATA", FileType::Ascii) => out1);
         // scalar point and cell attributes
         let in2 = "POINT_DATA 6\n SCALARS point_scalars int 1\n0 1 2 3 4 5\n
                    CELL_DATA 6\n SCALARS cell_scalars int 1\n0 1 2 3 4 5";
@@ -932,7 +932,7 @@ mod tests {
             point: pt_res,
             cell: cl_res,
         };
-        test!(attributes(in2, FileType::ASCII) => out2);
+        test!(attributes(in2, FileType::Ascii) => out2);
     }
     #[test]
     fn dataset_simple_test() {
@@ -948,7 +948,7 @@ mod tests {
             },
             data: Attributes::new(),
         });
-        test!(dataset(in1, FileType::ASCII) => out1);
+        test!(dataset(in1, FileType::Ascii) => out1);
     }
     #[test]
     fn dataset_test() {
@@ -965,7 +965,7 @@ mod tests {
             },
             data: Attributes::new(),
         });
-        test!(dataset(in1, FileType::ASCII) => out1);
+        test!(dataset(in1, FileType::Ascii) => out1);
     }
     #[test]
     fn dataset_crlf_test() {
@@ -982,6 +982,6 @@ mod tests {
             },
             data: Attributes::new(),
         });
-        test!(dataset(in1, FileType::ASCII) => out1);
+        test!(dataset(in1, FileType::Ascii) => out1);
     }
 }

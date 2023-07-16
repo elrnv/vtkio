@@ -25,7 +25,7 @@ use crate::model::IOBuffer;
 #[derive(Copy, Clone, PartialEq, Debug)]
 pub enum FileType {
     Binary,
-    ASCII,
+    Ascii,
 }
 
 /*
@@ -258,7 +258,7 @@ where
     BO: ByteOrder,
 {
     match ft {
-        FileType::ASCII => many_m_n(n, n, ws(T::from_ascii))(input),
+        FileType::Ascii => many_m_n(n, n, ws(T::from_ascii))(input),
         FileType::Binary => many_m_n(n, n, T::from_binary::<BO>)(input),
     }
 }
@@ -266,7 +266,7 @@ where
 /// Parse a set of unsigned bytes into a `Vec`.
 pub fn parse_data_vec_u8(input: &[u8], n: usize, ft: FileType) -> IResult<&[u8], Vec<u8>> {
     match ft {
-        FileType::ASCII => many_m_n(n, n, ws(u8::from_ascii))(input),
+        FileType::Ascii => many_m_n(n, n, ws(u8::from_ascii))(input),
         FileType::Binary => {
             // If expecting bytes, byte order doesn't matter, just return the entire block.
             if input.len() < n {
@@ -286,7 +286,7 @@ pub fn parse_data_vec_u8(input: &[u8], n: usize, ft: FileType) -> IResult<&[u8],
 /// Parse a set of signed bytes into a `Vec`.
 pub fn parse_data_vec_i8(input: &[u8], n: usize, ft: FileType) -> IResult<&[u8], Vec<i8>> {
     match ft {
-        FileType::ASCII => many_m_n(n, n, ws(i8::from_ascii))(input),
+        FileType::Ascii => many_m_n(n, n, ws(i8::from_ascii))(input),
         FileType::Binary => {
             // If expecting bytes, byte order doesn't matter, just return the entire block.
             // Unsafety is used here to avoid having to iterate.
@@ -311,7 +311,7 @@ pub fn parse_data_vec_i8(input: &[u8], n: usize, ft: FileType) -> IResult<&[u8],
 
 pub fn parse_data_bit_vec(input: &[u8], n: usize, ft: FileType) -> IResult<&[u8], Vec<u8>> {
     match ft {
-        FileType::ASCII => many_m_n(n, n, ws(u8::from_ascii))(input),
+        FileType::Ascii => many_m_n(n, n, ws(u8::from_ascii))(input),
         FileType::Binary => {
             let nbytes = n / 8 + usize::from(n % 8 != 0);
             if input.len() < nbytes {
@@ -355,13 +355,13 @@ mod tests {
     }
     #[test]
     fn data_test() {
-        let f = parse_data_buffer::<f32, BigEndian>("".as_bytes(), 0, FileType::ASCII);
+        let f = parse_data_buffer::<f32, BigEndian>("".as_bytes(), 0, FileType::Ascii);
         assert_eq!(f, Ok(("".as_bytes(), IOBuffer::from(Vec::<f32>::new()))));
-        let f = parse_data_buffer::<f32, BigEndian>("3".as_bytes(), 1, FileType::ASCII);
+        let f = parse_data_buffer::<f32, BigEndian>("3".as_bytes(), 1, FileType::Ascii);
         assert_eq!(f, Ok(("".as_bytes(), IOBuffer::from(vec![3.0f32]))));
-        let f = parse_data_buffer::<f32, BigEndian>("3 32".as_bytes(), 2, FileType::ASCII);
+        let f = parse_data_buffer::<f32, BigEndian>("3 32".as_bytes(), 2, FileType::Ascii);
         assert_eq!(f, Ok(("".as_bytes(), IOBuffer::from(vec![3.0f32, 32.0]))));
-        let f = parse_data_buffer::<f32, BigEndian>("3 32 32.0 4e3".as_bytes(), 4, FileType::ASCII);
+        let f = parse_data_buffer::<f32, BigEndian>("3 32 32.0 4e3".as_bytes(), 4, FileType::Ascii);
         assert_eq!(
             f,
             Ok((
@@ -369,7 +369,7 @@ mod tests {
                 IOBuffer::from(vec![3.0f32, 32.0, 32.0, 4.0e3])
             ))
         );
-        let f = parse_data_buffer::<f64, BigEndian>("3 32 32.0 4e3".as_bytes(), 4, FileType::ASCII);
+        let f = parse_data_buffer::<f64, BigEndian>("3 32 32.0 4e3".as_bytes(), 4, FileType::Ascii);
         assert_eq!(
             f,
             Ok((
