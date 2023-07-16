@@ -224,6 +224,7 @@ fn hexahedron_appended() -> Result {
     Ok(())
 }
 
+#[cfg(feature = "binary")]
 #[test]
 fn hexahedron_pvtu() -> Result {
     let mut vtu = Vtk::import("./assets/hexahedron_parallel.pvtu")?;
@@ -256,6 +257,7 @@ fn hexahedron_zlib() -> Result {
     Ok(())
 }
 
+#[cfg(feature = "binary")]
 #[cfg(feature = "flate2")]
 #[test]
 fn hexahedron_zlib_binary() -> Result {
@@ -331,6 +333,7 @@ fn hexahedron_lzma_inline_binary() -> Result {
     Ok(())
 }
 
+#[cfg(feature = "binary")]
 #[test]
 fn hexahedron_binary() -> Result {
     let mut vtu = Vtk::import("./assets/hexahedron_binary.vtu")?;
@@ -339,6 +342,7 @@ fn hexahedron_binary() -> Result {
     Ok(())
 }
 
+#[cfg(feature = "binary")]
 fn make_tet_vtu() -> Vtk {
     Vtk {
         version: Version::new_xml(1, 0),
@@ -382,6 +386,7 @@ fn make_tet_vtu() -> Vtk {
     }
 }
 
+#[cfg(feature = "binary")]
 #[test]
 fn single_tet_vtu() -> Result {
     let mut vtu = Vtk::import("./assets/tet.vtu")?;
