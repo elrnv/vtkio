@@ -85,7 +85,6 @@
 //!
 //! assert_eq!(data.as_slice(), &[0.0]);
 //! ```
-extern crate nom;
 
 pub(crate) mod basic;
 #[macro_use]
