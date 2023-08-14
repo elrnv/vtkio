@@ -13,9 +13,6 @@ documentation = "https://docs.rs/vtkio"
 
 keywords = ["vtk", "parser", "writer", "io", "mesh"]
 
-[badges]
-travis-ci = { repository = "elrnv/vtkio", branch = "master" }
-
 [dependencies]
 nom = "7"
 num-traits = "0.2"
