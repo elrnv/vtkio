@@ -168,7 +168,7 @@ impl Vtk {
                         Piece::Loaded(data_set) => (pick_data_set_pieces(*data_set), None),
                         p => (None, Some(p)),
                     };
-                    loaded.into_iter().flatten().chain(rest.into_iter())
+                    loaded.into_iter().flatten().chain(rest)
                 })
                 .collect();
         }
@@ -1616,7 +1616,7 @@ impl Attribute {
     /// ```
     pub fn with_field_data(mut self, arrays: impl IntoIterator<Item = FieldArray>) -> Self {
         if let Attribute::Field { data_array, .. } = &mut self {
-            data_array.extend(arrays.into_iter());
+            data_array.extend(arrays);
         }
         self
     }
