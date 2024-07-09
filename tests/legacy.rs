@@ -1105,3 +1105,26 @@ fn triangle_vtkidtype_test() {
 
     test_b!(parse_be(in1) => out1);
 }
+
+#[test]
+fn point_cloud() -> Result {
+    let in1 = include_bytes!("../assets/point_cloud.vtk");
+    let vtk = Vtk {
+        version: Version::new_legacy(2, 0),
+        byte_order: ByteOrder::BigEndian,
+        title: String::from("PointCloud example"),
+        file_path: None,
+        data: DataSet::inline(PolyDataPiece {
+            points: vec![0.0f32, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, -1.0].into(),
+            verts: Some(VertexNumbers::Legacy {
+                num_cells: 3,
+                vertices: vec![1, 0, 1, 1, 1, 2],
+            }),
+            data: Attributes::new(),
+            ..Default::default()
+        }),
+    };
+    test_b!(parse_be(in1) => vtk);
+    test_b!(parse_be(Vec::<u8>::new().write_vtk(vtk.clone())?) => vtk);
+    Ok(())
+}

@@ -333,6 +333,33 @@ fn hexahedron_lzma_inline_binary() -> Result {
     Ok(())
 }
 
+#[test]
+fn point_cloud() -> Result {
+    init();
+    let vtk = Vtk {
+        version: Version::new_xml(1, 0),
+        byte_order: ByteOrder::BigEndian,
+        title: String::from("PointCloud example"),
+        file_path: None,
+        data: DataSet::inline(PolyDataPiece {
+            points: vec![0.0f32, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, -1.0].into(),
+            verts: Some(VertexNumbers::Legacy {
+                num_cells: 3,
+                vertices: vec![1, 0, 1, 1, 1, 2],
+            }),
+            data: Attributes::new(),
+            ..Default::default()
+        }),
+    };
+    let path = "./assets/point_cloud.vtp";
+    let orig_vtkfile = vtkio::xml::VTKFile::import(path)?;
+    assert_eq!(
+        vtk.try_into_xml_format(vtkio::xml::Compressor::None, 0)?,
+        orig_vtkfile
+    ); // Checks that compression is the same.
+    Ok(())
+}
+
 #[cfg(feature = "binary")]
 #[test]
 fn hexahedron_binary() -> Result {

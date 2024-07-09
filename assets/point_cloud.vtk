@@ -1,0 +1,17 @@
+# vtk DataFile Version 2.0
+PointCloud example
+ASCII
+
+DATASET POLYDATA
+POINTS 3 float
+0 0 0 1 0 0 0 0 -1
+
+VERTICES 3 6
+1 0
+1 1
+1 2
+
+POINT_DATA 3
+
+CELL_DATA 3
+
