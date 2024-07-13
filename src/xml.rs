@@ -119,35 +119,6 @@ impl From<std::io::Error> for Error {
     }
 }
 
-/// Module used to serialize and deserialize the compressor enum.
-mod compressor {
-    use super::Compressor;
-    use serde::de::{self, Visitor};
-    use std::fmt;
-
-    struct CompressorVisitor;
-
-    impl<'de> Visitor<'de> for CompressorVisitor {
-        type Value = Compressor;
-
-        fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-            formatter.write_str("a string identifying the vtk data compressor")
-        }
-
-        fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
-        where
-            E: de::Error,
-        {
-            Ok(match v {
-                "vtkZLibDataCompressor" => Compressor::ZLib,
-                "vtkLZ4DataCompressor" => Compressor::LZ4,
-                "vtkLZMADataCompressor" => Compressor::LZMA,
-                _ => Compressor::None,
-            })
-        }
-    }
-}
-
 /// Module used to serialize and deserialize whitespace separated sequences of 6 integers.
 mod extent {
     use super::Extent;
@@ -327,144 +298,13 @@ mod version {
     }
 }
 
-mod pcoordinates {
-    use super::{PCoordinates, PDataArray};
-    use serde::de::{Deserialize, Deserializer, MapAccess, Visitor};
-    use serde::ser::{Serialize, Serializer};
-    use std::fmt;
-
-    #[derive(Debug, serde::Deserialize)]
-    #[serde(field_identifier)]
-    enum Field {
-        PDataArray,
-    }
-
-    struct PCoordinatesVisitor;
-
-    impl<'de> Visitor<'de> for PCoordinatesVisitor {
-        type Value = PCoordinates;
-
-        fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-            formatter.write_str("an array of 3 PDataArrays")
-        }
-
-        fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error>
-        where
-            A: MapAccess<'de>,
-        {
-            let invalid_len_err = |n| <A::Error as serde::de::Error>::invalid_length(n, &self);
-            let (_, x) = map
-                .next_entry::<Field, PDataArray>()?
-                .ok_or_else(|| invalid_len_err(0))?;
-            let (_, y) = map
-                .next_entry::<Field, PDataArray>()?
-                .ok_or_else(|| invalid_len_err(1))?;
-            let (_, z) = map
-                .next_entry::<Field, PDataArray>()?
-                .ok_or_else(|| invalid_len_err(2))?;
-            Ok(PCoordinates([x, y, z]))
-        }
-    }
-
-    impl Serialize for PCoordinates {
-        fn serialize<S>(&self, s: S) -> Result<S::Ok, S::Error>
-        where
-            S: Serializer,
-        {
-            use serde::ser::SerializeStruct;
-            let PCoordinates([x, y, z]) = self;
-            let mut ss = s.serialize_struct("PCoordinates", 3)?;
-            ss.serialize_field("PDataArray", x)?;
-            ss.serialize_field("PDataArray", y)?;
-            ss.serialize_field("PDataArray", z)?;
-            ss.end()
-        }
-    }
-    impl<'de> Deserialize<'de> for PCoordinates {
-        fn deserialize<D>(d: D) -> Result<PCoordinates, D::Error>
-        where
-            D: Deserializer<'de>,
-        {
-            d.deserialize_struct("PCoordinates", &["PDataArray"; 3], PCoordinatesVisitor)
-        }
-    }
-}
-
-mod coordinates {
-    use super::{Coordinates, DataArray};
-    use serde::de::{Deserialize, Deserializer, MapAccess, Visitor};
-    use serde::ser::{Serialize, Serializer};
-    use std::fmt;
-
-    #[derive(Debug, serde::Deserialize)]
-    #[serde(field_identifier)]
-    enum Field {
-        DataArray,
-    }
-
-    struct CoordinatesVisitor;
-
-    impl<'de> Visitor<'de> for CoordinatesVisitor {
-        type Value = Coordinates;
-
-        fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-            formatter.write_str("an array of 3 DataArrays")
-        }
-
-        fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error>
-        where
-            A: MapAccess<'de>,
-        {
-            let invalid_len_err = |n| <A::Error as serde::de::Error>::invalid_length(n, &self);
-            // TODO: These should not be positional. (See VTKFile deserialization for reference)
-            let (_, x) = map
-                .next_entry::<Field, DataArray>()?
-                .ok_or_else(|| invalid_len_err(0))?;
-            let (_, y) = map
-                .next_entry::<Field, DataArray>()?
-                .ok_or_else(|| invalid_len_err(1))?;
-            let (_, z) = map
-                .next_entry::<Field, DataArray>()?
-                .ok_or_else(|| invalid_len_err(2))?;
-            Ok(Coordinates([x, y, z]))
-        }
-    }
-
-    impl Serialize for Coordinates {
-        fn serialize<S>(&self, s: S) -> Result<S::Ok, S::Error>
-        where
-            S: Serializer,
-        {
-            use serde::ser::SerializeStruct;
-            let Coordinates([x, y, z]) = self;
-            let mut ss = s.serialize_struct("Coordinates", 3)?;
-            ss.serialize_field("DataArray", x)?;
-            ss.serialize_field("DataArray", y)?;
-            ss.serialize_field("DataArray", z)?;
-            ss.end()
-        }
-    }
-    impl<'de> Deserialize<'de> for Coordinates {
-        fn deserialize<D>(d: D) -> Result<Coordinates, D::Error>
-        where
-            D: Deserializer<'de>,
-        {
-            d.deserialize_struct("Coordinates", &["DataArray"; 3], CoordinatesVisitor)
-        }
-    }
-}
-
 mod data {
-    use super::{AppendedData, Data, Encoding, RawData};
+    use super::{Data, RawData};
     use serde::{
-        de::{Deserialize, DeserializeSeed, Deserializer, MapAccess, Visitor},
+        de::{Deserialize, Deserializer, Visitor},
         Serialize, Serializer,
     };
     use std::fmt;
-    // A helper function to detect whitespace bytes.
-    fn is_whitespace(b: u8) -> bool {
-        matches!(b, b' ' | b'\r' | b'\n' | b'\t')
-    }
 
     #[derive(Debug, serde::Deserialize)]
     #[serde(field_identifier)]
@@ -488,70 +328,6 @@ mod data {
     }
 
     /*
-     * AppendedData Element
-     */
-    struct AppendedDataVisitor;
-
-    impl<'de> Visitor<'de> for AppendedDataVisitor {
-        type Value = AppendedData;
-
-        fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-            formatter.write_str("Appended bytes or base64 data")
-        }
-
-        fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error>
-        where
-            A: MapAccess<'de>,
-        {
-            let make_err = || {
-                <A::Error as serde::de::Error>::custom(
-                    "AppendedData element must contain only a single \"encoding\" attribute",
-                )
-            };
-            let mut encoding = None;
-            let mut data = RawData::default();
-            if let Some((key, value)) = map.next_entry::<Field, Encoding>()? {
-                match key {
-                    Field::Encoding => encoding = Some(value),
-                    _ => return Err(make_err()),
-                }
-            }
-            if let Some((key, value)) = map.next_entry::<Field, RawData>()? {
-                match key {
-                    Field::Value => data = value,
-                    _ => return Err(make_err()),
-                }
-            }
-            if let Some(Encoding::Base64) = encoding {
-                // TODO: Is this needed?
-                // In base64 encoding we can trim whitespace from the end.
-                if let Some(end) = data.0.bytes().rposition(|b| !is_whitespace(b)) {
-                    data = RawData(data.0[..=end].to_string());
-                }
-            }
-            Ok(AppendedData {
-                encoding: encoding.unwrap_or(Encoding::Raw),
-                data,
-            })
-        }
-    }
-
-    /* Serialization of AppendedData is derived. */
-
-    impl<'de> Deserialize<'de> for AppendedData {
-        fn deserialize<D>(d: D) -> Result<Self, D::Error>
-        where
-            D: Deserializer<'de>,
-        {
-            d.deserialize_struct(
-                "AppendedData",
-                &["@encoding", "$value"],
-                AppendedDataVisitor,
-            )
-        }
-    }
-
-    /*
      * Data in an AppendedData element
      */
 
@@ -561,7 +337,7 @@ mod data {
         bytes: &'a mut Vec<u8>,
     }
 
-    impl<'de, 'a> DeserializeSeed<'de> for ByteData<'a> {
+    impl<'de, 'a> serde::de::DeserializeSeed<'de> for ByteData<'a> {
         type Value = ();
         fn deserialize<D>(self, deserializer: D) -> Result<Self::Value, D::Error>
         where
@@ -837,312 +613,6 @@ pub struct Element {
     pub data: Vec<Data>,
 }
 
-mod piece {
-    use super::{AttributeData, Cells, Coordinates, Extent, Piece, Points, Topo};
-    use serde::de::{MapAccess, Visitor};
-    use std::fmt;
-
-    #[derive(Debug, serde::Deserialize)]
-    #[serde(field_identifier)]
-    enum Field {
-        Extent,
-        NumberOfPoints,
-        NumberOfCells,
-        NumberOfLines,
-        NumberOfStrips,
-        NumberOfPolys,
-        NumberOfVerts,
-        PointData,
-        CellData,
-        Polys,
-        Points,
-        Cells,
-        Verts,
-        Lines,
-        Strips,
-        Coordinates,
-    }
-
-    struct PieceVisitor;
-
-    impl<'de> Visitor<'de> for PieceVisitor {
-        type Value = Piece;
-
-        fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-            formatter.write_str("piece data")
-        }
-
-        fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error>
-        where
-            A: MapAccess<'de>,
-        {
-            let mut piece = Piece {
-                extent: None,
-                number_of_points: 0,
-                number_of_cells: 0,
-                number_of_lines: 0,
-                number_of_strips: 0,
-                number_of_polys: 0,
-                number_of_verts: 0,
-                point_data: AttributeData::default(),
-                cell_data: AttributeData::default(),
-                polys: None,
-                points: None,
-                cells: None,
-                verts: None,
-                lines: None,
-                strips: None,
-                coordinates: None,
-            };
-
-            while let Some(key) = map.next_key::<Field>()? {
-                match key {
-                    Field::Extent => {
-                        piece.extent = map.next_value::<Option<Extent>>()?;
-                    }
-                    Field::NumberOfPoints => {
-                        piece.number_of_points = map.next_value::<u32>()?;
-                    }
-                    Field::NumberOfCells => {
-                        piece.number_of_cells = map.next_value::<u32>()?;
-                    }
-                    Field::NumberOfLines => {
-                        piece.number_of_lines = map.next_value::<u32>()?;
-                    }
-                    Field::NumberOfStrips => {
-                        piece.number_of_strips = map.next_value::<u32>()?;
-                    }
-                    Field::NumberOfPolys => {
-                        piece.number_of_polys = map.next_value::<u32>()?;
-                    }
-                    Field::NumberOfVerts => {
-                        piece.number_of_verts = map.next_value::<u32>()?;
-                    }
-                    Field::PointData => {
-                        piece.point_data = map.next_value::<AttributeData>()?;
-                    }
-                    Field::CellData => {
-                        piece.cell_data = map.next_value::<AttributeData>()?;
-                    }
-                    Field::Polys => {
-                        piece.polys = map.next_value::<Option<Topo>>()?;
-                    }
-                    Field::Points => {
-                        piece.points = map.next_value::<Option<Points>>()?;
-                    }
-                    Field::Cells => {
-                        piece.cells = map.next_value::<Option<Cells>>()?;
-                    }
-                    Field::Verts => {
-                        piece.verts = map.next_value::<Option<Topo>>()?;
-                    }
-                    Field::Lines => {
-                        piece.lines = map.next_value::<Option<Topo>>()?;
-                    }
-                    Field::Strips => {
-                        piece.strips = map.next_value::<Option<Topo>>()?;
-                    }
-                    Field::Coordinates => {
-                        piece.coordinates = map.next_value::<Option<Coordinates>>()?;
-                    }
-                }
-            }
-
-            Ok(piece)
-        }
-    }
-
-    // impl<'de> Deserialize<'de> for Piece {
-    //     fn deserialize<D>(d: D) -> Result<Self, D::Error>
-    //     where
-    //         D: Deserializer<'de>,
-    //     {
-    //         Ok(d.deserialize_struct(
-    //             "Piece",
-    //             &[
-    //                 "@Extent",
-    //                 "@NumberOfPoints",
-    //                 "@NumberOfCells",
-    //                 "@NumberOfLines",
-    //                 "@NumberOfStrips",
-    //                 "@NumberOfPolys",
-    //                 "@NumberOfVerts",
-    //                 "@PointData",
-    //                 "CellData",
-    //                 "Polys",
-    //                 "Points",
-    //                 "Cells",
-    //                 "Verts",
-    //                 "Lines",
-    //                 "Strips",
-    //                 "Coordinates",
-    //             ],
-    //             PieceVisitor,
-    //         )?)
-    //     }
-    // }
-}
-
-mod vtkfile {
-    use super::{
-        model, AppendedData, Compressor, DataSet, DataSetType, ScalarType, Unstructured, VTKFile,
-    };
-    use serde::de::{MapAccess, Visitor};
-    use std::fmt;
-
-    //impl Serialize for VTKFile {
-    //    fn serialize<S>(&self, s: S) -> std::result::Result<S::Ok, S::Error>
-    //    where
-    //        S: Serializer,
-    //    {
-    //        use serde::ser::SerializeStruct;
-    //        let mut ss = s.serialize_struct("VTKFile", 7)?;
-    //        ss.serialize_field("type", &self.data_set_type)?;
-    //        ss.serialize_field("version", &self.version)?;
-    //        ss.serialize_field("byte_order", &self.byte_order)?;
-    //        ss.serialize_field("header_type", &self.header_type)?;
-    //        ss.serialize_field("compressor", &self.compressor)?;
-    //        ss.serialize_field("AppendedData", &self.appended_data)?;
-    //        match &self.data_set {
-    //            DataSet::ImageData(image_data) => ss.serialize_field("ImageData", image_data)?,
-    //            DataSet::PolyData(unstructured) => ss.serialize_field("PolyData", unstructured)?,
-    //            DataSet::RectilinearGrid(grid) => ss.serialize_field("RectilinearGrid", grid)?,
-    //            DataSet::StructuredGrid(grid) => ss.serialize_field("StructuredGrid", grid)?,
-    //            DataSet::UnstructuredGrid(grid) => ss.serialize_field("UnstructuredGrid", grid)?,
-    //            DataSet::PImageData(image_data) => ss.serialize_field("PImageData", image_data)?,
-    //            DataSet::PPolyData(unstructured) => {
-    //                ss.serialize_field("PPolyData", unstructured)?
-    //            }
-    //            DataSet::PRectilinearGrid(grid) => ss.serialize_field("PRectilinearGrid", grid)?,
-    //            DataSet::PStructuredGrid(grid) => ss.serialize_field("PStructuredGrid", grid)?,
-    //            DataSet::PUnstructuredGrid(grid) => {
-    //                ss.serialize_field("PUnstructuredGrid", grid)?
-    //            }
-    //        }
-
-    //        ss.end()
-    //    }
-    //}
-
-    #[derive(Debug, serde::Deserialize)]
-    #[serde(field_identifier)]
-    enum Field {
-        #[serde(rename = "type")]
-        Type,
-        #[serde(rename = "version")]
-        Version,
-        #[serde(rename = "byte_order")]
-        ByteOrder,
-        #[serde(rename = "header_type")]
-        HeaderType,
-        #[serde(rename = "compressor")]
-        Compressor,
-        AppendedData,
-        ImageData,
-        PolyData,
-        RectilinearGrid,
-        StructuredGrid,
-        UnstructuredGrid,
-        PImageData,
-        PPolyData,
-        PRectilinearGrid,
-        PStructuredGrid,
-        PUnstructuredGrid,
-    }
-
-    struct VTKFileVisitor;
-
-    impl<'de> Visitor<'de> for VTKFileVisitor {
-        type Value = VTKFile;
-
-        fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-            formatter.write_str("vtk xml file data")
-        }
-
-        fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error>
-        where
-            A: MapAccess<'de>,
-        {
-            let mut vtk = VTKFile {
-                data_set_type: DataSetType::UnstructuredGrid,
-                version: model::Version::new_xml(0, 1),
-                byte_order: model::ByteOrder::BigEndian,
-                header_type: None,
-                compressor: Compressor::None,
-                appended_data: None,
-                data_set: DataSet::UnstructuredGrid(Unstructured { pieces: Vec::new() }),
-            };
-
-            while let Some(key) = map.next_key::<Field>()? {
-                match key {
-                    Field::Type => {
-                        vtk.data_set_type = map.next_value::<DataSetType>()?;
-                    }
-                    Field::Version => {
-                        vtk.version = map.next_value::<model::Version>()?;
-                    }
-                    Field::ByteOrder => {
-                        vtk.byte_order = map.next_value::<model::ByteOrder>()?;
-                    }
-                    Field::HeaderType => {
-                        vtk.header_type = map.next_value::<Option<ScalarType>>()?;
-                    }
-                    Field::Compressor => {
-                        vtk.compressor = map.next_value::<Compressor>()?;
-                    }
-                    Field::AppendedData => {
-                        vtk.appended_data = map.next_value::<Option<AppendedData>>()?;
-                    }
-                    Field::ImageData
-                    | Field::PolyData
-                    | Field::RectilinearGrid
-                    | Field::StructuredGrid
-                    | Field::UnstructuredGrid
-                    | Field::PImageData
-                    | Field::PPolyData
-                    | Field::PRectilinearGrid
-                    | Field::PStructuredGrid
-                    | Field::PUnstructuredGrid => {
-                        vtk.data_set = map.next_value::<DataSet>()?;
-                    }
-                }
-            }
-
-            Ok(vtk)
-        }
-    }
-
-    // impl<'de> Deserialize<'de> for VTKFile {
-    //     fn deserialize<D>(d: D) -> Result<Self, D::Error>
-    //     where
-    //         D: Deserializer<'de>,
-    //     {
-    //         Ok(d.deserialize_struct(
-    //             "VTKFile",
-    //             &[
-    //                 "type",
-    //                 "version",
-    //                 "byte_order",
-    //                 "header_type",
-    //                 "compressor",
-    //                 "AppendedData",
-    //                 "ImageData",
-    //                 "PolyData",
-    //                 "RectilinearGrid",
-    //                 "StructuredGrid",
-    //                 "UnstructuredGrid",
-    //                 "PImageData",
-    //                 "PPolyData",
-    //                 "PRectilinearGrid",
-    //                 "PStructuredGrid",
-    //                 "PUnstructuredGrid",
-    //             ],
-    //             VTKFileVisitor,
-    //         )?)
-    //     }
-    // }
-}
-
 /*
  * The following defines the VTK XML model as Rust types, which is then serialized and deserialized
  * using serde.
@@ -1275,7 +745,7 @@ pub struct PRectilinearGrid {
     #[serde(rename = "PCellData", skip_serializing_if = "Option::is_none")]
     cell_data: Option<PAttributeData>,
     #[serde(rename = "PCoordinates")]
-    coords: PCoordinates,
+    coordinates: PCoordinates,
     #[serde(rename = "Piece")]
     pieces: Vec<PieceSource>,
 }
@@ -1362,8 +832,11 @@ impl PAttributeData {
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
-pub struct PCoordinates([PDataArray; 3]);
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct PCoordinates {
+    #[serde(rename = "PDataArray")]
+    pub pdata_array: [PDataArray; 3],
+}
 
 impl Default for PCoordinates {
     fn default() -> PCoordinates {
@@ -1372,7 +845,9 @@ impl Default for PCoordinates {
             name: String::new(),
             num_comp: 1,
         };
-        PCoordinates([coord.clone(), coord.clone(), coord])
+        PCoordinates {
+            pdata_array: [coord.clone(), coord.clone(), coord],
+        }
     }
 }
 
@@ -1777,17 +1252,22 @@ impl AttributeData {
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
-pub struct Coordinates([DataArray; 3]);
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct Coordinates {
+    #[serde(rename = "DataArray")]
+    pub data_array: [DataArray; 3],
+}
 
 impl Coordinates {
     /// Construct `Coordinates` from `model::Coordinates`.
     pub fn from_model_coords(coords: model::Coordinates, ei: EncodingInfo) -> Result<Self> {
-        Ok(Coordinates([
-            DataArray::from_io_buffer(coords.x, ei)?,
-            DataArray::from_io_buffer(coords.y, ei)?,
-            DataArray::from_io_buffer(coords.z, ei)?,
-        ]))
+        Ok(Coordinates {
+            data_array: [
+                DataArray::from_io_buffer(coords.x, ei)?,
+                DataArray::from_io_buffer(coords.y, ei)?,
+                DataArray::from_io_buffer(coords.z, ei)?,
+            ],
+        })
     }
 
     /// Given the expected number of elements and an optional appended data,
@@ -1798,7 +1278,9 @@ impl Coordinates {
         appended: Option<&AppendedData>,
         ei: EncodingInfo,
     ) -> std::result::Result<model::Coordinates, ValidationError> {
-        let Coordinates([x, y, z]) = self;
+        let Coordinates {
+            data_array: [x, y, z],
+        } = self;
         let x = x.into_io_buffer(nx, appended, ei)?;
         let y = y.into_io_buffer(ny, appended, ei)?;
         let z = z.into_io_buffer(nz, appended, ei)?;
@@ -1845,6 +1327,18 @@ impl PDataArray {
     }
 }
 
+fn deserialize_option_float<'de, D: serde::Deserializer<'de>>(
+    d: D,
+) -> std::result::Result<Option<f64>, D::Error> {
+    let opt: Option<String> = Option::deserialize(d).unwrap_or_default();
+    match opt.as_ref().map(String::as_str) {
+        None | Some("") => Ok(None),
+        Some(s) => str::parse::<f64>(s)
+            .map(Some)
+            .map_err(serde::de::Error::custom),
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct DataArray {
     #[serde(rename = "@type")]
@@ -1861,9 +1355,19 @@ pub struct DataArray {
     pub format: DataArrayFormat,
     #[serde(rename = "@offset", skip_serializing_if = "Option::is_none")]
     pub offset: Option<u32>,
-    #[serde(rename = "@RangeMin", skip_serializing_if = "Option::is_none")]
+    #[serde(
+        rename = "@RangeMin",
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "deserialize_option_float"
+    )]
     pub range_min: Option<f64>,
-    #[serde(rename = "@RangeMax", skip_serializing_if = "Option::is_none")]
+    #[serde(
+        rename = "@RangeMax",
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "deserialize_option_float"
+    )]
     pub range_max: Option<f64>,
     #[serde(rename = "$value", default)]
     pub data: Vec<Data>,
@@ -2224,7 +1728,7 @@ pub enum DataArrayFormat {
     Ascii,
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct AppendedData {
     /// Encoding used in the `data` field.
     #[serde(rename = "@encoding")]
@@ -3282,16 +2786,16 @@ impl TryFrom<VTKFile> for model::Vtk {
                 whole_extent,
                 point_data,
                 cell_data,
-                coords,
+                coordinates,
                 pieces,
             }) => model::DataSet::RectilinearGrid {
                 extent: whole_extent.into(),
                 meta: Some(Box::new(model::MetaData::RectilinearGrid {
                     ghost_level,
                     coords: [
-                        coords.0[0].scalar_type.into(),
-                        coords.0[1].scalar_type.into(),
-                        coords.0[2].scalar_type.into(),
+                        coordinates.pdata_array[0].scalar_type.into(),
+                        coordinates.pdata_array[1].scalar_type.into(),
+                        coordinates.pdata_array[2].scalar_type.into(),
                     ],
                     attributes: model::AttributesMetaData {
                         point_data: point_data
