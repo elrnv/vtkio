@@ -333,45 +333,45 @@ mod data {
 
     struct RawDataVisitor;
 
-    struct ByteData<'a> {
-        bytes: &'a mut Vec<u8>,
-    }
+    // struct ByteData<'a> {
+    //     bytes: &'a mut Vec<u8>,
+    // }
 
-    impl<'de, 'a> serde::de::DeserializeSeed<'de> for ByteData<'a> {
-        type Value = ();
-        fn deserialize<D>(self, deserializer: D) -> Result<Self::Value, D::Error>
-        where
-            D: Deserializer<'de>,
-        {
-            struct BytesDataVisitor<'a>(&'a mut Vec<u8>);
+    // impl<'de, 'a> serde::de::DeserializeSeed<'de> for ByteData<'a> {
+    //     type Value = ();
+    //     fn deserialize<D>(self, deserializer: D) -> Result<Self::Value, D::Error>
+    //     where
+    //         D: Deserializer<'de>,
+    //     {
+    //         struct BytesDataVisitor<'a>(&'a mut Vec<u8>);
 
-            impl<'de, 'a> Visitor<'de> for BytesDataVisitor<'a> {
-                type Value = ();
+    //         impl<'de, 'a> Visitor<'de> for BytesDataVisitor<'a> {
+    //             type Value = ();
 
-                fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-                    write!(formatter, "an array of integers")
-                }
+    //             fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+    //                 write!(formatter, "an array of integers")
+    //             }
 
-                fn visit_seq<A>(self, mut seq: A) -> Result<(), A::Error>
-                where
-                    A: serde::de::SeqAccess<'de>,
-                {
-                    // Decrease the number of reallocations if there are many elements
-                    if let Some(size_hint) = seq.size_hint() {
-                        self.0.reserve(size_hint);
-                    }
+    //             fn visit_seq<A>(self, mut seq: A) -> Result<(), A::Error>
+    //             where
+    //                 A: serde::de::SeqAccess<'de>,
+    //             {
+    //                 // Decrease the number of reallocations if there are many elements
+    //                 if let Some(size_hint) = seq.size_hint() {
+    //                     self.0.reserve(size_hint);
+    //                 }
 
-                    // Visit each element in the inner array and push it onto
-                    // the existing vector.
-                    while let Some(elem) = seq.next_element()? {
-                        self.0.push(elem);
-                    }
-                    Ok(())
-                }
-            }
-            deserializer.deserialize_seq(BytesDataVisitor(self.bytes))
-        }
-    }
+    //                 // Visit each element in the inner array and push it onto
+    //                 // the existing vector.
+    //                 while let Some(elem) = seq.next_element()? {
+    //                     self.0.push(elem);
+    //                 }
+    //                 Ok(())
+    //             }
+    //         }
+    //         deserializer.deserialize_seq(BytesDataVisitor(self.bytes))
+    //     }
+    // }
 
     impl<'de> Visitor<'de> for RawDataVisitor {
         type Value = RawData;
@@ -380,7 +380,7 @@ mod data {
             formatter.write_str("Raw byte data")
         }
 
-        #[cfg(not(feature = "binary"))]
+        // #[cfg(not(feature = "binary"))]
         fn visit_string<E>(self, v: String) -> Result<Self::Value, E>
         where
             E: serde::de::Error,
@@ -392,10 +392,10 @@ mod data {
             if !v.starts_with('_') {
                 return Err(serde::de::Error::custom("Missing preceeding underscore"));
             }
-            Ok(RawData(v[1..].to_string()))
+            Ok(RawData(v[1..].to_string().into_bytes()))
         }
 
-        #[cfg(not(feature = "binary"))]
+        // #[cfg(not(feature = "binary"))]
         fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
         where
             E: serde::de::Error,
@@ -407,10 +407,10 @@ mod data {
             if !v.starts_with('_') {
                 return Err(serde::de::Error::custom("Missing preceeding underscore"));
             }
-            Ok(RawData(v[1..].to_string()))
+            Ok(RawData(v[1..].to_string().into_bytes()))
         }
 
-        #[cfg(not(feature = "binary"))]
+        // #[cfg(not(feature = "binary"))]
         fn visit_borrowed_str<E>(self, v: &'de str) -> Result<Self::Value, E>
         where
             E: serde::de::Error,
@@ -422,7 +422,7 @@ mod data {
             if !v.starts_with('_') {
                 return Err(serde::de::Error::custom("Missing preceeding underscore"));
             }
-            Ok(RawData(v[1..].to_string()))
+            Ok(RawData(v[1..].to_string().into_bytes()))
         }
 
         #[cfg(feature = "binary")]
@@ -1741,18 +1741,15 @@ pub struct AppendedData {
     pub data: RawData,
 }
 
-#[cfg(feature = "binary")]
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct RawData(Vec<u8>);
-#[cfg(not(feature = "binary"))]
-#[derive(Clone, Debug, Default, PartialEq)]
-pub struct RawData(String);
 
 /// Supported binary encoding formats.
 #[derive(Copy, Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Encoding {
     Base64,
+    #[cfg(feature = "binary")]
     Raw,
 }
 
@@ -2045,6 +2042,7 @@ impl AppendedData {
 
         if ei.compressor == Compressor::None {
             return match self.encoding {
+                #[cfg(feature = "binary")]
                 Encoding::Raw => {
                     // The first 64/32 bits gives the size of each component in bytes.
                     let given_num_bytes = read_header_num(
@@ -2058,10 +2056,7 @@ impl AppendedData {
                         ));
                     }
                     start += header_bytes;
-                    #[cfg(feature = "binary")]
                     let bytes = &self.data.0[start..start + expected_num_bytes];
-                    #[cfg(not(feature = "binary"))]
-                    let bytes = &self.data.0.as_bytes()[start..start + expected_num_bytes];
                     Ok(model::IOBuffer::from_bytes(
                         bytes,
                         scalar_type.into(),
@@ -2085,16 +2080,14 @@ impl AppendedData {
         }
 
         let out = match self.encoding {
+            #[cfg(feature = "binary")]
             Encoding::Raw => {
                 let mut buf = Vec::new();
                 decode_and_decompress(
                     &mut buf,
                     |header, _| Ok(header),
                     |x| x,
-                    #[cfg(feature = "binary")]
                     &self.data.0[offset..],
-                    #[cfg(not(feature = "binary"))]
-                    &self.data.0.as_bytes()[offset..],
                     header_bytes,
                     ei,
                 )?
@@ -2105,10 +2098,7 @@ impl AppendedData {
                     &mut buf,
                     base64_decode_buf,
                     to_b64,
-                    #[cfg(feature = "binary")]
                     &self.data.0[offset..],
-                    #[cfg(not(feature = "binary"))]
-                    &self.data.0.as_bytes()[offset..],
                     header_bytes,
                     ei,
                 )?
@@ -2920,8 +2910,6 @@ impl model::Vtk {
             compression_level,
         };
 
-        let appended_data = Vec::new();
-
         let data_set = match data_set {
             model::DataSet::ImageData {
                 extent,
@@ -3145,17 +3133,6 @@ impl model::Vtk {
         };
 
         let data_set_type = DataSetType::from(&data_set);
-        let appended_data = if appended_data.is_empty() {
-            None
-        } else {
-            Some(AppendedData {
-                encoding: Encoding::Raw,
-                #[cfg(feature = "binary")]
-                data: RawData(appended_data),
-                #[cfg(not(feature = "binary"))]
-                data: RawData(String::from_utf8(appended_data).map_err(|_| Error::Unknown)?),
-            })
-        };
 
         Ok(VTKFile {
             data_set_type,
@@ -3163,7 +3140,7 @@ impl model::Vtk {
             byte_order,
             header_type: Some(header_type),
             compressor,
-            appended_data,
+            appended_data: None,
             data_set,
         })
     }
@@ -3184,27 +3161,27 @@ pub(crate) async fn import_async(file_path: impl AsRef<Path>) -> Result<VTKFile>
     Ok(VTKFile::parse(std::io::BufReader::new(f))?)
 }
 
-#[cfg(feature = "binary")]
-struct Context {
-    num: usize,
-}
+// #[cfg(feature = "binary")]
+// struct Context {
+//     num: usize,
+// }
 
-#[cfg(feature = "binary")]
-impl Context {
-    fn new() -> Self {
-        Context { num: 0 }
-    }
-}
+// #[cfg(feature = "binary")]
+// impl Context {
+//     fn new() -> Self {
+//         Context { num: 0 }
+//     }
+// }
 
-#[cfg(feature = "binary")]
-impl quick_xml::reader::Context for Context {
-    fn num_bytes_required(&mut self, look_ahead: &[u8]) -> usize {
-        // if look_ahead[0] == '_' {
-        //     let size = look_ahead[1];
-        // }
-        0
-    }
-}
+// #[cfg(feature = "binary")]
+// impl quick_xml::reader::Context for Context {
+//     fn num_bytes_required(&mut self, look_ahead: &[u8]) -> usize {
+//         // if look_ahead[0] == '_' {
+//         //     let size = look_ahead[1];
+//         // }
+//         0
+//     }
+// }
 
 impl VTKFile {
     /// Import an XML VTK file from the specified path.
@@ -3215,16 +3192,13 @@ impl VTKFile {
 
     /// Parse an XML VTK file from the given reader.
     pub fn parse(reader: impl BufRead) -> Result<VTKFile> {
-        // let mut reader = quick_xml::Reader::from_reader(reader);
-        // reader
-        //     .expand_empty_elements(true)
-        //     .check_end_names(true)
-        //     .trim_text(true)
-        //     .trim_text_end(false);
-        #[cfg(feature = "binary")]
-        let mut de = de::Deserializer::from_reader_with_context(reader, Context::new());
-        #[cfg(not(feature = "binary"))]
-        let mut de = de::Deserializer::from_reader(reader);
+        let mut reader = quick_xml::Reader::from_reader(reader);
+        let config = reader.config_mut();
+        config.expand_empty_elements = true;
+        config.check_end_names = true;
+        config.trim_text_start = true;
+        config.trim_text_end = false;
+        let mut de = de::Deserializer::from_custom_reader(reader);
         Ok(VTKFile::deserialize(&mut de)?)
     }
 
@@ -3495,9 +3469,9 @@ mod tests {
     #[test]
     fn rectilinear_grid_appended_base64() -> Result<()> {
         let vtk = VTKFile::import("assets/RectilinearGridAppendedBase64.vtr")?;
-        //eprintln!("{:#?}", &vtk);
+        // eprintln!("{:#?}", &vtk);
         let as_bytes = se::to_bytes(&vtk)?;
-        //eprintln!("{:?}", &as_bytes);
+        // eprintln!("{}", String::from_utf8_lossy(&as_bytes));
         let vtk_roundtrip = VTKFile::parse(as_bytes.as_slice()).unwrap();
         assert_eq!(vtk, vtk_roundtrip);
         Ok(())
@@ -3507,9 +3481,9 @@ mod tests {
     #[test]
     fn rectilinear_grid_appended_raw_binary() -> Result<()> {
         let vtk = VTKFile::import("assets/RectilinearGridRawBinary.vtr")?;
-        //eprintln!("{:#?}", &vtk);
+        // eprintln!("{:#?}", &vtk);
         let as_bytes = se::to_bytes(&vtk)?;
-        //eprintln!("{:?}", &as_bytes);
+        // // eprintln!("{}", String::from_utf8_lossy(&as_bytes));
         let vtk_roundtrip = VTKFile::parse(as_bytes.as_slice()).unwrap();
         assert_eq!(vtk, vtk_roundtrip);
         Ok(())
