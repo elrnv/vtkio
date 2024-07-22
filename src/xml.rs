@@ -3235,13 +3235,14 @@ impl VTKFile {
 
     /// Parse an XML VTK file from the given reader.
     pub fn parse(reader: impl BufRead) -> Result<VTKFile> {
-        let mut reader = quick_xml::Reader::from_reader(reader);
-        let config = reader.config_mut();
-        config.expand_empty_elements = true;
-        config.check_end_names = true;
-        config.trim_text_start = true;
-        config.trim_text_end = false;
-        let mut de = de::Deserializer::from_custom_reader(reader);
+        // let mut reader = quick_xml::Reader::from_reader(reader);
+        // let config = reader.config_mut();
+        // config.expand_empty_elements = true;
+        // config.check_end_names = true;
+        // config.trim_text_start = true;
+        // config.trim_text_end = false;
+        // let mut de = de::Deserializer::from_custom_reader(reader);
+        let mut de = de::Deserializer::from_reader(reader);
         Ok(VTKFile::deserialize(&mut de)?)
     }
 
