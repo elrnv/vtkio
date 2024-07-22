@@ -6,7 +6,7 @@
 //! details on the xml format.
 //!
 
-mod se;
+pub mod se;
 
 use quick_xml::de;
 use std::convert::{TryFrom, TryInto};
@@ -299,7 +299,7 @@ mod version {
 }
 
 mod data {
-    use super::{Data, RawData};
+    use super::{AppendedData, Data, Encoding, RawData};
     use serde::{
         de::{Deserialize, Deserializer, Visitor},
         Serialize, Serializer,
@@ -333,45 +333,35 @@ mod data {
 
     struct RawDataVisitor;
 
-    // struct ByteData<'a> {
-    //     bytes: &'a mut Vec<u8>,
-    // }
+    // Adopted from the nightly-only Rust standard library.
+    #[cfg(feature = "binary")]
+    #[inline]
+    pub const fn trim_ascii_start(mut bytes: &[u8]) -> &[u8] {
+        // Note: A pattern matching based approach (instead of indexing) allows
+        // making the function const.
+        while let [first, rest @ ..] = bytes {
+            if first.is_ascii_whitespace() {
+                bytes = rest;
+            } else {
+                break;
+            }
+        }
+        bytes
+    }
 
-    // impl<'de, 'a> serde::de::DeserializeSeed<'de> for ByteData<'a> {
-    //     type Value = ();
-    //     fn deserialize<D>(self, deserializer: D) -> Result<Self::Value, D::Error>
-    //     where
-    //         D: Deserializer<'de>,
-    //     {
-    //         struct BytesDataVisitor<'a>(&'a mut Vec<u8>);
+    #[cfg(feature = "binary")]
+    fn trim_start_in_place(vec: &mut Vec<u8>) {
+        let trimmed = trim_ascii_start(&vec);
 
-    //         impl<'de, 'a> Visitor<'de> for BytesDataVisitor<'a> {
-    //             type Value = ();
+        let trimmed_start_pointer = trimmed.as_ptr();
+        let trimmed_length = trimmed.len();
 
-    //             fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-    //                 write!(formatter, "an array of integers")
-    //             }
+        unsafe {
+            core::ptr::copy(trimmed_start_pointer, vec.as_mut_ptr(), trimmed_length);
 
-    //             fn visit_seq<A>(self, mut seq: A) -> Result<(), A::Error>
-    //             where
-    //                 A: serde::de::SeqAccess<'de>,
-    //             {
-    //                 // Decrease the number of reallocations if there are many elements
-    //                 if let Some(size_hint) = seq.size_hint() {
-    //                     self.0.reserve(size_hint);
-    //                 }
-
-    //                 // Visit each element in the inner array and push it onto
-    //                 // the existing vector.
-    //                 while let Some(elem) = seq.next_element()? {
-    //                     self.0.push(elem);
-    //                 }
-    //                 Ok(())
-    //             }
-    //         }
-    //         deserializer.deserialize_seq(BytesDataVisitor(self.bytes))
-    //     }
-    // }
+            vec.set_len(trimmed_length);
+        }
+    }
 
     impl<'de> Visitor<'de> for RawDataVisitor {
         type Value = RawData;
@@ -381,10 +371,13 @@ mod data {
         }
 
         // #[cfg(not(feature = "binary"))]
-        fn visit_string<E>(self, v: String) -> Result<Self::Value, E>
+        fn visit_string<E>(self, mut v: String) -> Result<Self::Value, E>
         where
             E: serde::de::Error,
         {
+            use trim_in_place::TrimInPlace;
+            v.trim_in_place();
+
             // Skip the first byte which always corresponds to the preceeding underscore
             if v.is_empty() {
                 return Ok(RawData::default());
@@ -395,11 +388,12 @@ mod data {
             Ok(RawData(v[1..].to_string().into_bytes()))
         }
 
-        // #[cfg(not(feature = "binary"))]
         fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
         where
             E: serde::de::Error,
         {
+            let v = v.trim();
+
             // Skip the first byte which always corresponds to the preceeding underscore
             if v.is_empty() {
                 return Ok(RawData::default());
@@ -410,11 +404,12 @@ mod data {
             Ok(RawData(v[1..].to_string().into_bytes()))
         }
 
-        // #[cfg(not(feature = "binary"))]
         fn visit_borrowed_str<E>(self, v: &'de str) -> Result<Self::Value, E>
         where
             E: serde::de::Error,
         {
+            let v = v.trim();
+
             // Skip the first byte which always corresponds to the preceeding underscore
             if v.is_empty() {
                 return Ok(RawData::default());
@@ -427,6 +422,8 @@ mod data {
 
         #[cfg(feature = "binary")]
         fn visit_bytes<E: serde::de::Error>(self, v: &[u8]) -> Result<Self::Value, E> {
+            let v = trim_ascii_start(v);
+
             // Skip the first byte which always corresponds to the preceeding underscore
             if v.is_empty() {
                 return Ok(RawData::default());
@@ -441,6 +438,8 @@ mod data {
         where
             E: serde::de::Error,
         {
+            trim_start_in_place(&mut v);
+
             // Skip the first byte which always corresponds to the preceeding underscore
             if v.is_empty() {
                 return Ok(RawData::default());
@@ -451,32 +450,6 @@ mod data {
 
             v.remove(0);
             Ok(RawData(v))
-        }
-    }
-
-    impl Serialize for RawData {
-        fn serialize<S>(&self, s: S) -> Result<S::Ok, S::Error>
-        where
-            S: Serializer,
-        {
-            #[cfg(feature = "binary")]
-            if !self.0.is_empty() {
-                let mut v = Vec::with_capacity(self.0.len() + 1);
-                v.push(b'_');
-                v.extend_from_slice(&self.0);
-                s.serialize_bytes(&v)
-            } else {
-                s.serialize_bytes(&[])
-            }
-            #[cfg(not(feature = "binary"))]
-            if !self.0.is_empty() {
-                let mut v = String::with_capacity(self.0.len() + 1);
-                v.push('_');
-                v += &self.0;
-                s.serialize_str(&v)
-            } else {
-                s.serialize_str("")
-            }
         }
     }
 
@@ -493,6 +466,66 @@ mod data {
             {
                 d.deserialize_str(RawDataVisitor)
             }
+        }
+    }
+
+    enum EncodedRawData<'a> {
+        Base64(&'a [u8]),
+        #[cfg(feature = "binary")]
+        Raw(&'a [u8]),
+    }
+
+    impl Serialize for EncodedRawData<'_> {
+        fn serialize<S>(&self, s: S) -> Result<S::Ok, S::Error>
+        where
+            S: Serializer,
+        {
+            use serde::ser::Error;
+            match self {
+                EncodedRawData::Base64(data) => {
+                    if !data.is_empty() {
+                        let mut sbuf = String::from("_");
+                        sbuf.push_str(&std::str::from_utf8(data).map_err(|err| {
+                            S::Error::custom(format!(
+                                "Invalid base64 encoding. UTF8 error: {}",
+                                err
+                            ))
+                        })?);
+                        s.serialize_str(&sbuf)
+                    } else {
+                        s.serialize_str("")
+                    }
+                }
+                #[cfg(feature = "binary")]
+                EncodedRawData::Raw(ref data) => {
+                    if !data.is_empty() {
+                        let mut v = Vec::with_capacity(data.len() + 1);
+                        v.push(b'_');
+                        v.extend_from_slice(&data);
+                        s.serialize_bytes(&v)
+                    } else {
+                        s.serialize_bytes(&[])
+                    }
+                }
+            }
+        }
+    }
+
+    impl Serialize for AppendedData {
+        fn serialize<S>(&self, s: S) -> Result<S::Ok, S::Error>
+        where
+            S: Serializer,
+        {
+            use serde::ser::SerializeStruct;
+            let mut state = s.serialize_struct("AppendedData", 2)?;
+            state.serialize_field("@encoding", &self.encoding)?;
+            if matches!(self.encoding, Encoding::Base64) {
+                state.serialize_field("$value", &EncodedRawData::Base64(&self.data.0))?;
+            } else {
+                #[cfg(feature = "binary")]
+                state.serialize_field("$value", &EncodedRawData::Raw(&self.data.0))?;
+            }
+            state.end()
         }
     }
 }
@@ -1623,6 +1656,16 @@ fn default_num_comp() -> u32 {
     1
 }
 
+pub fn deserialize_string_trim<'de, D>(d: D) -> std::result::Result<String, D::Error>
+where
+    D: serde::de::Deserializer<'de>,
+{
+    use trim_in_place::TrimInPlace;
+    let mut de_string = String::deserialize(d)?;
+    de_string.trim_in_place();
+    Ok(de_string)
+}
+
 /// The contents of a `DataArray` element.
 ///
 /// Some VTK tools like ParaView may produce undocumented tags inside this
@@ -1630,7 +1673,7 @@ fn default_num_comp() -> u32 {
 /// is treated as a data string.
 #[derive(Clone, Debug, PartialEq, Deserialize)]
 pub enum Data {
-    #[serde(rename = "$text")]
+    #[serde(rename = "$text", deserialize_with = "deserialize_string_trim")]
     Data(String),
     #[serde(other)]
     Other,
@@ -1728,7 +1771,7 @@ pub enum DataArrayFormat {
     Ascii,
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Deserialize)]
 pub struct AppendedData {
     /// Encoding used in the `data` field.
     #[serde(rename = "@encoding")]
@@ -2038,7 +2081,7 @@ impl AppendedData {
     ) -> std::result::Result<model::IOBuffer, ValidationError> {
         let header_bytes = ei.header_type.size();
         let expected_num_bytes = num_elements * scalar_type.size();
-        let mut start = offset;
+        let start = offset;
 
         if ei.compressor == Compressor::None {
             return match self.encoding {
@@ -2055,7 +2098,7 @@ impl AppendedData {
                             given_num_bytes as u64,
                         ));
                     }
-                    start += header_bytes;
+                    let start = start + header_bytes;
                     let bytes = &self.data.0[start..start + expected_num_bytes];
                     Ok(model::IOBuffer::from_bytes(
                         bytes,
@@ -3225,6 +3268,23 @@ impl std::fmt::Display for VTKFile {
 mod tests {
     use super::*;
     use pretty_assertions::assert_eq;
+    use quick_xml::reader::Reader;
+
+    fn custom_reader(input: &str) -> Reader<&[u8]> {
+        let mut reader = Reader::from_str(input);
+        let config = reader.config_mut();
+        config.expand_empty_elements = true;
+        config.trim_text_end = true;
+        config.trim_text_start = true;
+        reader
+    }
+
+    fn from_str<T>(input: &str) -> std::result::Result<T, de::DeError>
+    where
+        T: serde::de::DeserializeOwned,
+    {
+        de::from_custom_reader(custom_reader(input))
+    }
 
     // Helper to compress the human readable and indented examples below
     // into what we expect the serializer to output.
@@ -3245,11 +3305,11 @@ mod tests {
             <PointData Scalars="Temperature" Vectors="Velocity"/>
             <CellData Tensors="Stress"/>
         </Piece>"#;
-        let piece: Piece = de::from_str(piece_str).unwrap();
+        let piece: Piece = from_str(piece_str).unwrap();
         // eprintln!("{:#?}", &piece);
         let as_str = se::to_string(&piece).unwrap();
         assert_eq!(as_str, compress_xml_str(piece_str));
-        let piece_roundtrip = de::from_str(&as_str).unwrap();
+        let piece_roundtrip = from_str(&as_str).unwrap();
         assert_eq!(piece, piece_roundtrip);
     }
 
@@ -3264,12 +3324,12 @@ mod tests {
             </Piece>
         </ImageData>"#;
 
-        let img: ImageData = de::from_str(image_data_str).unwrap();
+        let img: ImageData = from_str(image_data_str).unwrap();
         // eprintln!("{:#?}", &img);
         let as_str = se::to_string(&img).unwrap();
         assert_eq!(as_str, compress_xml_str(image_data_str));
         // eprintln!("{:?}", &as_str);
-        let img_roundtrip = de::from_str(&as_str).unwrap();
+        let img_roundtrip = from_str(&as_str).unwrap();
         assert_eq!(img, img_roundtrip);
     }
 
@@ -3286,12 +3346,12 @@ mod tests {
             </ImageData>
         </VTKFile>"#;
 
-        let vtk: VTKFile = de::from_str(vtk_str).unwrap();
+        let vtk: VTKFile = from_str(vtk_str).unwrap();
         // eprintln!("{:#?}", &vtk);
         let as_str = se::to_string(&vtk).unwrap();
         assert_eq!(as_str, compress_xml_str(vtk_str));
         // eprintln!("{:?}", &as_str);
-        let vtk_roundtrip = de::from_str(&as_str).unwrap();
+        let vtk_roundtrip = from_str(&as_str).unwrap();
         assert_eq!(vtk, vtk_roundtrip);
     }
 
@@ -3311,12 +3371,12 @@ mod tests {
         </ImageData>
         </VTKFile>"#;
 
-        let vtk: VTKFile = de::from_str(vtk_str).unwrap();
+        let vtk: VTKFile = from_str(vtk_str).unwrap();
         // eprintln!("{:#?}", &vtk);
         let as_str = se::to_string(&vtk).unwrap();
         assert_eq!(as_str, compress_xml_str(vtk_str));
         //eprintln!("{}", &as_str);
-        let vtk_roundtrip = de::from_str(&as_str).unwrap();
+        let vtk_roundtrip = from_str(&as_str).unwrap();
         assert_eq!(vtk, vtk_roundtrip);
     }
 
@@ -3331,12 +3391,12 @@ mod tests {
           </DataArray>
         </Topo>"#;
 
-        let vtk: Topo = de::from_str(polys)?;
+        let vtk: Topo = from_str(polys)?;
         //eprintln!("{:#?}", &vtk);
         let as_str = se::to_string(&vtk)?;
         assert_eq!(as_str, compress_xml_str(polys));
         //eprintln!("{}", &as_str);
-        let vtk_roundtrip = de::from_str(&as_str)?;
+        let vtk_roundtrip = from_str(&as_str)?;
         assert_eq!(vtk, vtk_roundtrip);
         Ok(())
     }
@@ -3350,10 +3410,10 @@ mod tests {
           </DataArray>
         </Points>"#;
 
-        let vtk: Points = de::from_str(points)?;
+        let vtk: Points = from_str(points)?;
         let as_str = se::to_string(&vtk)?;
         assert_eq!(as_str, compress_xml_str(points));
-        let vtk_roundtrip = de::from_str(&as_str)?;
+        let vtk_roundtrip = from_str(&as_str)?;
         assert_eq!(vtk, vtk_roundtrip);
         Ok(())
     }
@@ -3369,12 +3429,17 @@ mod tests {
         </PointData>
         </Piece>"#;
 
-        let vtk: Piece = de::from_str(piece)?;
+        let mut reader = quick_xml::reader::Reader::from_str(piece);
+        let config = reader.config_mut();
+        config.expand_empty_elements = true;
+        config.trim_text_end = true;
+        config.trim_text_start = true;
+        let vtk: Piece = de::from_custom_reader(reader)?;
         // eprintln!("{:#?}", &vtk);
         let as_str = se::to_string(&vtk)?;
         assert_eq!(as_str, compress_xml_str(piece));
         //eprintln!("{}", &as_str);
-        let vtk_roundtrip = de::from_str(&as_str)?;
+        let vtk_roundtrip = from_str(&as_str)?;
         assert_eq!(vtk, vtk_roundtrip);
         Ok(())
     }
@@ -3411,12 +3476,12 @@ mod tests {
         </Polys>
         </Piece>"#;
 
-        let vtk: Piece = de::from_str(piece)?;
+        let vtk: Piece = from_str(piece)?;
         //eprintln!("{:#?}", &vtk);
         let as_str = se::to_string(&vtk)?;
         assert_eq!(as_str, compress_xml_str(piece));
         //eprintln!("{}", &as_str);
-        let vtk_roundtrip = de::from_str(&as_str)?;
+        let vtk_roundtrip = from_str(&as_str)?;
         assert_eq!(vtk, vtk_roundtrip);
         Ok(())
     }
@@ -3427,7 +3492,7 @@ mod tests {
         //eprintln!("{:#?}", &vtk);
         let as_str = se::to_string(&vtk).unwrap();
         //eprintln!("{}", &as_str);
-        let vtk_roundtrip = de::from_str(&as_str).unwrap();
+        let vtk_roundtrip = from_str(&as_str).unwrap();
         assert_eq!(vtk, vtk_roundtrip);
         Ok(())
     }
@@ -3445,12 +3510,12 @@ mod tests {
             _AQAAAAAAAAAAgAAAAAAAAAwAAAAAAAAACwAAAAAAAAA=eJxjYEAAAAAMAAE=AQAAAAAAAAAAgAAAAAAAAAwAAAAAAAAAEgAAAAAAAAA=eJxjYGiwZ2BgAOIGewAJvQG+AQAAAAAAAAAAgAAAAAAAAAwAAAAAAAAADwAAAAAAAAA=eJxjYIAAY+PN9gADFgFZAQAAAAAAAAAAgAAAAAAAAAwAAAAAAAAADQAAAAAAAAA=eJxjYICBBnsAAUsAwA==AQAAAAAAAAAAgAAAAAAAAAwAAAAAAAAADgAAAAAAAAA=eJxjYAADexABAAFHAEA=AQAAAAAAAAAAgAAAAAAAACAAAAAAAAAAGAAAAAAAAAA=eJxjYAABjgNgiuHDfihtD6E5HAA9JgPvAQAAAAAAAAAAgAAAAAAAABAAAAAAAAAADQAAAAAAAAA=eJxjYEAGH+wBAi8BMA==AQAAAAAAAAAAgAAAAAAAABAAAAAAAAAAEQAAAAAAAAA=eJxjYACBD/sZILQ9ABJGAt8=
             </AppendedData>
             </VTKFile>"#;
-        let vtk: VTKFile = de::from_str(vtk_str)?;
+        let vtk: VTKFile = from_str(vtk_str)?;
         // eprintln!("{:#?}", &vtk);
         let as_str = se::to_string(&vtk).unwrap();
         assert_eq!(as_str, compress_xml_str(vtk_str));
         // eprintln!("{}", &as_str);
-        let vtk_roundtrip = de::from_str(&as_str).unwrap();
+        let vtk_roundtrip = from_str(&as_str).unwrap();
         assert_eq!(vtk, vtk_roundtrip);
         Ok(())
     }
@@ -3461,7 +3526,7 @@ mod tests {
         //eprintln!("{:#?}", &vtk);
         let as_str = se::to_string(&vtk).unwrap();
         //eprintln!("{}", &as_str);
-        let vtk_roundtrip = de::from_str(&as_str).unwrap();
+        let vtk_roundtrip = from_str(&as_str).unwrap();
         assert_eq!(vtk, vtk_roundtrip);
         Ok(())
     }
@@ -3481,9 +3546,9 @@ mod tests {
     #[test]
     fn rectilinear_grid_appended_raw_binary() -> Result<()> {
         let vtk = VTKFile::import("assets/RectilinearGridRawBinary.vtr")?;
-        // eprintln!("{:#?}", &vtk);
+        eprintln!("{:#?}", &vtk);
         let as_bytes = se::to_bytes(&vtk)?;
-        // // eprintln!("{}", String::from_utf8_lossy(&as_bytes));
+        eprintln!("{}", String::from_utf8_lossy(&as_bytes));
         let vtk_roundtrip = VTKFile::parse(as_bytes.as_slice()).unwrap();
         assert_eq!(vtk, vtk_roundtrip);
         Ok(())
@@ -3532,7 +3597,7 @@ mod tests {
         //eprintln!("{:#?}", &vtk);
         let as_str = se::to_string(&vtk).unwrap();
         //eprintln!("{}", &as_str);
-        let vtk_roundtrip = de::from_str(&as_str).unwrap();
+        let vtk_roundtrip = from_str(&as_str).unwrap();
         assert_eq!(vtk, vtk_roundtrip);
         Ok(())
     }
@@ -3543,7 +3608,7 @@ mod tests {
         //eprintln!("{:#?}", &vtk);
         let as_str = se::to_string(&vtk).unwrap();
         //eprintln!("{}", &as_str);
-        let vtk_roundtrip = de::from_str(&as_str).unwrap();
+        let vtk_roundtrip = from_str(&as_str).unwrap();
         assert_eq!(vtk, vtk_roundtrip);
         Ok(())
     }
@@ -3554,7 +3619,7 @@ mod tests {
         //eprintln!("{:#?}", &vtk);
         let as_str = se::to_string(&vtk).unwrap();
         //eprintln!("{}", &as_str);
-        let vtk_roundtrip = de::from_str(&as_str).unwrap();
+        let vtk_roundtrip = from_str(&as_str).unwrap();
         assert_eq!(vtk, vtk_roundtrip);
         Ok(())
     }
@@ -3565,7 +3630,7 @@ mod tests {
         //eprintln!("{:#?}", &vtk);
         let as_str = se::to_string(&vtk).unwrap();
         //eprintln!("{}", &as_str);
-        let vtk_roundtrip = de::from_str(&as_str).unwrap();
+        let vtk_roundtrip = from_str(&as_str).unwrap();
         assert_eq!(vtk, vtk_roundtrip);
         Ok(())
     }
@@ -3576,7 +3641,7 @@ mod tests {
         //eprintln!("{:#?}", &vtk);
         let as_str = se::to_string(&vtk).unwrap();
         //eprintln!("{}", &as_str);
-        let vtk_roundtrip = de::from_str(&as_str).unwrap();
+        let vtk_roundtrip = from_str(&as_str).unwrap();
         assert_eq!(vtk, vtk_roundtrip);
         Ok(())
     }
@@ -3587,7 +3652,7 @@ mod tests {
         //eprintln!("{:#?}", &vtk);
         let as_str = se::to_string(&vtk).unwrap();
         //eprintln!("{}", &as_str);
-        let vtk_roundtrip = de::from_str(&as_str).unwrap();
+        let vtk_roundtrip = from_str(&as_str).unwrap();
         assert_eq!(vtk, vtk_roundtrip);
         let vtk_ascii = VTKFile::import("assets/hexahedron_ascii.vtu")?;
         //eprintln!("{:#?}", &vtk_ascii);
@@ -3605,9 +3670,9 @@ mod tests {
             <DataArray type="Float32" format="ascii">1 2 3</DataArray>
             <DataArray type="Float32" format="ascii">1 2 3</DataArray>
             </Coordinates>"#;
-        let coords: Coordinates = de::from_str(xml)?;
+        let coords: Coordinates = from_str(xml)?;
         let xml_round_trip = se::to_string(&coords)?;
-        let round_trip: Coordinates = de::from_str(&xml_round_trip)?;
+        let round_trip: Coordinates = from_str(&xml_round_trip)?;
         assert_eq!(round_trip, coords);
         Ok(())
     }
@@ -3617,9 +3682,9 @@ mod tests {
         let appended_xml = "<DataArray type=\"Float32\" Name=\"vectors\" \
                             NumberOfComponents=\"3\" format=\"appended\" offset=\"0\" \
                             RangeMin=\"1.2\" RangeMax=\"4.3\"/>";
-        let appended: DataArray = de::from_str(appended_xml)?;
+        let appended: DataArray = from_str(appended_xml)?;
         let appended_xml_round_trip = se::to_string(&appended)?;
-        let appended_round_trip: DataArray = de::from_str(&appended_xml_round_trip)?;
+        let appended_round_trip: DataArray = from_str(&appended_xml_round_trip)?;
         assert_eq!(appended_round_trip, appended);
         Ok(())
     }
@@ -3629,10 +3694,10 @@ mod tests {
         let binary_xml = "<DataArray type=\"Float32\" Name=\"scalars\" format=\"binary\"> \
                           _bAAAAAAAAAAAAIA/AAAAQAAAQEAAAIBA </DataArray>";
 
-        let binary: DataArray = de::from_str(binary_xml)?;
+        let binary: DataArray = from_str(binary_xml)?;
         //eprintln!("bin:{:?}", binary.data);
         let binary_xml_round_trip = se::to_string(&binary)?;
-        let binary_round_trip: DataArray = de::from_str(&binary_xml_round_trip)?;
+        let binary_round_trip: DataArray = from_str(&binary_xml_round_trip)?;
         assert_eq!(binary_round_trip, binary);
         Ok(())
     }
@@ -3642,9 +3707,9 @@ mod tests {
         let ascii_xml =
             "<DataArray type=\"Int32\" Name=\"offsets\" format=\"ascii\"> 10 20 30 </DataArray>";
 
-        let ascii: DataArray = de::from_str(ascii_xml)?;
+        let ascii: DataArray = from_str(ascii_xml)?;
         let ascii_xml_round_trip = se::to_string(&ascii)?;
-        let ascii_round_trip: DataArray = de::from_str(&ascii_xml_round_trip)?;
+        let ascii_round_trip: DataArray = from_str(&ascii_xml_round_trip)?;
         assert_eq!(ascii_round_trip, ascii);
         Ok(())
     }
@@ -3673,9 +3738,9 @@ mod tests {
           </InformationKey>
         </DataArray>"#;
 
-        let arr: DataArray = de::from_str(xml)?;
+        let arr: DataArray = from_str(xml)?;
         let xml_round_trip = se::to_string(&arr)?;
-        let round_trip: DataArray = de::from_str(&xml_round_trip)?;
+        let round_trip: DataArray = from_str(&xml_round_trip)?;
         assert_eq!(round_trip, arr);
         Ok(())
     }
