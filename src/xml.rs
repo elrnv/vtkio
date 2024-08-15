@@ -2574,42 +2574,74 @@ impl TryFrom<VTKFile> for model::Vtk {
                                 + number_of_strips
                                 + number_of_polys
                                 + number_of_verts;
-                            let verts = verts
-                                .map(|verts| {
-                                    verts.into_vertex_numbers(
-                                        number_of_verts,
-                                        appended_data,
-                                        encoding_info,
-                                    )
-                                })
-                                .transpose()?;
-                            let lines = lines
-                                .map(|lines| {
-                                    lines.into_vertex_numbers(
-                                        number_of_lines,
-                                        appended_data,
-                                        encoding_info,
-                                    )
-                                })
-                                .transpose()?;
-                            let strips = strips
-                                .map(|strips| {
-                                    strips.into_vertex_numbers(
-                                        number_of_strips,
-                                        appended_data,
-                                        encoding_info,
-                                    )
-                                })
-                                .transpose()?;
-                            let polys = polys
-                                .map(|polys| {
-                                    polys.into_vertex_numbers(
-                                        number_of_polys,
-                                        appended_data,
-                                        encoding_info,
-                                    )
-                                })
-                                .transpose()?;
+                            let verts = match verts {
+                                Some(Topo {
+                                    ref connectivity,
+                                    ref offsets,
+                                }) if !connectivity.data.is_empty() && !offsets.data.is_empty() => {
+                                    verts
+                                        .map(|verts| {
+                                            verts.into_vertex_numbers(
+                                                number_of_verts,
+                                                appended_data,
+                                                encoding_info,
+                                            )
+                                        })
+                                        .transpose()?
+                                }
+                                _ => None,
+                            };
+                            let lines = match lines {
+                                Some(Topo {
+                                    ref connectivity,
+                                    ref offsets,
+                                }) if !connectivity.data.is_empty() && !offsets.data.is_empty() => {
+                                    lines
+                                        .map(|lines| {
+                                            lines.into_vertex_numbers(
+                                                number_of_lines,
+                                                appended_data,
+                                                encoding_info,
+                                            )
+                                        })
+                                        .transpose()?
+                                }
+                                _ => None,
+                            };
+                            let strips = match strips {
+                                Some(Topo {
+                                    ref connectivity,
+                                    ref offsets,
+                                }) if !connectivity.data.is_empty() && !offsets.data.is_empty() => {
+                                    strips
+                                        .map(|strips| {
+                                            strips.into_vertex_numbers(
+                                                number_of_strips,
+                                                appended_data,
+                                                encoding_info,
+                                            )
+                                        })
+                                        .transpose()?
+                                }
+                                _ => None,
+                            };
+                            let polys = match polys {
+                                Some(Topo {
+                                    ref connectivity,
+                                    ref offsets,
+                                }) if !connectivity.data.is_empty() && !offsets.data.is_empty() => {
+                                    polys
+                                        .map(|polys| {
+                                            polys.into_vertex_numbers(
+                                                number_of_polys,
+                                                appended_data,
+                                                encoding_info,
+                                            )
+                                        })
+                                        .transpose()?
+                                }
+                                _ => None,
+                            };
                             Ok(model::Piece::Inline(Box::new(model::PolyDataPiece {
                                 points: points.unwrap().data.into_io_buffer(
                                     number_of_points,
