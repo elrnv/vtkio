@@ -1566,7 +1566,11 @@ impl DataArray {
                 buf
             }
             DataArrayFormat::Ascii => {
-                let string = data[0].clone().into_string();
+                let string = if data.is_empty() {
+                    "".to_string()
+                } else {
+                    data[0].clone().into_string()
+                };
                 let slice = string.as_str();
                 fn parse_num_seq<E, T>(s: &str) -> std::result::Result<Vec<T>, ValidationError>
                 where
@@ -3796,5 +3800,42 @@ mod tests {
         assert_eq!(vtk.clone(), vtk_round_trip,);
         assert_eq!(xml_round_trip.clone(), vtk_round_trip.try_into()?);
         Ok(())
+    }
+
+    #[test]
+    fn empty_polydata_topology() {
+        use super::Data::Data;
+        use super::DataArray as XMLDataArray;
+        use crate::IOBuffer;
+        let data = XMLDataArray {
+            name: "PolyData".to_string(),
+            scalar_type: ScalarType::Float32,
+            format: DataArrayFormat::Ascii,
+            offset: None,
+            num_comp: 1,
+            range_min: Some(0.1),
+            range_max: Some(0.3),
+            data: vec![Data("0.1 0.2 0.3".to_string())],
+        };
+        let data_empty = XMLDataArray {
+            name: "PolyData".to_string(),
+            scalar_type: ScalarType::Float32,
+            format: DataArrayFormat::Ascii,
+            offset: None,
+            num_comp: 1,
+            range_min: None,
+            range_max: None,
+            data: vec![],
+        };
+        let encoding_info = EncodingInfo {
+            byte_order: model::ByteOrder::BigEndian,
+            header_type: ScalarType::Float64,
+            compressor: Compressor::None,
+            compression_level: 0,
+        };
+        let data_fa = data.into_field_array(3, None, encoding_info);
+        let data_empty_fa = data_empty.into_field_array(0, None, encoding_info);
+        assert_eq!(data_fa.unwrap().data, IOBuffer::F32(vec![0.1, 0.2, 0.3]));
+        assert_eq!(data_empty_fa.unwrap().data, IOBuffer::F32(vec![]));
     }
 }
