@@ -290,8 +290,14 @@ impl<BO: ByteOrder + 'static> VtkParser<BO> {
     fn attribute_lookup_table(input: &[u8], ft: FileType) -> IResult<&[u8], Attribute> {
         tagged_block(tag_no_case("LOOKUP_TABLE"), |input| {
             let (input, (name, num_elements)) = line(tuple((sp(name), sp(parse_u32))))(input)?;
-            let (input, data) =
-                Self::attribute_data(input, 4 * num_elements as usize, ScalarType::U8, ft)?;
+            let (input, data) = match ft {
+                FileType::Ascii => {
+                    Self::attribute_data(input, 4 * num_elements as usize, ScalarType::F32, ft)?
+                }
+                FileType::Binary => {
+                    Self::attribute_data(input, 4 * num_elements as usize, ScalarType::U8, ft)?
+                }
+            };
             let (input, _) = opt(meta)(input)?;
 
             Ok((

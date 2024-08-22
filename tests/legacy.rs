@@ -530,7 +530,14 @@ fn cube_complex_test() -> Result {
         ],
     });
 
-    let mut attributes = Attributes {
+    let to_bin = |v: Vec<f32>| -> Vec<u8> { v.into_iter().map(|x| (x * 255.0) as u8).collect() };
+
+    let my_table = vec![
+        0.0f32, 0.0, 0.0, 1.0, 1.0, 0.0, 0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 1.0, 1.0, 0.0, 1.0, 0.0,
+        0.0, 1.0, 1.0, 1.0, 0.0, 1.0, 1.0, 0.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0,
+    ];
+
+    let make_attributes = |is_bin: bool| Attributes {
         point: vec![
             Attribute::DataArray(DataArray {
                 name: String::from("sample_scalars"),
@@ -543,12 +550,11 @@ fn cube_complex_test() -> Result {
             Attribute::DataArray(DataArray {
                 name: String::from("my_table"),
                 elem: ElementType::LookupTable,
-                data: vec![
-                    0.0f32, 0.0, 0.0, 1.0, 1.0, 0.0, 0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 1.0, 1.0, 0.0,
-                    1.0, 0.0, 0.0, 1.0, 1.0, 1.0, 0.0, 1.0, 1.0, 0.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0,
-                    1.0,
-                ]
-                .into(),
+                data: if is_bin {
+                    to_bin(my_table.clone()).into()
+                } else {
+                    my_table.clone().into()
+                },
             }),
         ],
         cell: vec![
@@ -585,6 +591,9 @@ fn cube_complex_test() -> Result {
             },
         ],
     };
+    let mut attributes = make_attributes(false);
+    let mut attributes_bin = make_attributes(true);
+
     let points: IOBuffer = vec![
         0.0, 0.0, 0.0, 1.0, 0.0, 0.0f32, 1.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 1.0, 0.0,
         1.0, 1.0, 1.0, 1.0, 0.0, 1.0, 1.0,
@@ -601,6 +610,19 @@ fn cube_complex_test() -> Result {
             points: points.clone(),
             polys: polys.clone(),
             data: attributes.clone(),
+            ..Default::default()
+        }),
+    };
+
+    let out1_bin = Vtk {
+        version: Version::new_legacy(2, 0),
+        byte_order: ByteOrder::BigEndian,
+        title: String::from("Cube example"),
+        file_path: None,
+        data: DataSet::inline(PolyDataPiece {
+            points: points.clone(),
+            polys: polys.clone(),
+            data: attributes_bin.clone(),
             ..Default::default()
         }),
     };
@@ -650,6 +672,8 @@ fn cube_complex_test() -> Result {
         },
     ];
 
+    attributes_bin.cell = attributes.cell.clone();
+
     let out2 = Vtk {
         data: DataSet::inline(PolyDataPiece {
             points: points.clone(),
@@ -660,16 +684,26 @@ fn cube_complex_test() -> Result {
         }),
         ..out1.clone()
     };
+    let out2_bin = Vtk {
+        data: DataSet::inline(PolyDataPiece {
+            points: points.clone(),
+            polys: polys.clone(),
+            verts: verts.clone(),
+            data: attributes_bin.clone(),
+            ..Default::default()
+        }),
+        ..out1.clone()
+    };
 
     test!(parse_ne(in1) => ne(&out1));
     test_b!(parse_ne(String::new().write_vtk_ne(out1.clone())?.as_bytes()) => ne(&out1));
-    test_b!(parse_ne(Vec::<u8>::new().write_vtk_ne(out1.clone())?) => ne(&out1));
-    test_b!(parse_le(Vec::<u8>::new().write_vtk_le(out1.clone())?) => le(&out1));
-    test_b!(parse_be(Vec::<u8>::new().write_vtk_be(out1.clone())?) => out1);
+    test_b!(parse_ne(Vec::<u8>::new().write_vtk_ne(out1_bin.clone())?) => ne(&out1_bin));
+    test_b!(parse_le(Vec::<u8>::new().write_vtk_le(out1_bin.clone())?) => le(&out1_bin));
+    test_b!(parse_be(Vec::<u8>::new().write_vtk_be(out1_bin.clone())?) => out1_bin);
     test_b!(parse_ne(in2) => ne(&out2));
     test_b!(parse_ne(String::new().write_vtk_ne(out2.clone())?.as_bytes()) => ne(&out2));
-    test_b!(parse_le(Vec::<u8>::new().write_vtk_le(out2.clone())?) => le(&out2));
-    test_b!(parse_be(Vec::<u8>::new().write_vtk_be(out2.clone())?) => out2);
+    test_b!(parse_le(Vec::<u8>::new().write_vtk_le(out2_bin.clone())?) => le(&out2_bin));
+    test_b!(parse_be(Vec::<u8>::new().write_vtk_be(out2_bin.clone())?) => out2_bin);
     Ok(())
 }
 
