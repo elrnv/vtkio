@@ -608,7 +608,11 @@ impl<BO: ByteOrder + 'static> VtkParser<BO> {
                 input,
                 DataSet::inline(UnstructuredGridPiece {
                     points: p,
-                    cells: Cells { cell_verts, types },
+                    cells: Cells {
+                        cell_verts,
+                        types,
+                        faces: None,
+                    },
                     data,
                 }),
             ))

@@ -1805,6 +1805,12 @@ impl VertexNumbers {
     }
 }
 
+#[derive(Clone, PartialEq, Debug, Default)]
+pub struct FaceData {
+    pub faces: Vec<u32>,
+    pub faceoffsets: Vec<u32>,
+}
+
 /// Cells with variable types.
 ///
 /// This struct corresponds to the `Cells` XML element or the CELLS and CELL_TYPES entries in the
@@ -1819,6 +1825,8 @@ pub struct Cells {
     pub cell_verts: VertexNumbers,
     /// The type of each cell represented in `cell_verts`.
     pub types: Vec<CellType>,
+
+    pub faces: Option<FaceData>,
 }
 
 impl Cells {

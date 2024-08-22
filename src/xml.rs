@@ -532,6 +532,7 @@ mod data {
 
 mod topo {
     use super::{Cells, DataArray, Topo};
+    use crate::xml;
     use serde::de::{Deserialize, Deserializer, MapAccess, Visitor};
     use std::fmt;
 
@@ -599,30 +600,74 @@ mod topo {
         where
             A: MapAccess<'de>,
         {
-            let make_err = || {
-                <A::Error as serde::de::Error>::custom(
-                "Cells data arrays must contain three DataArrays named \"connectivity\", \"offsets\" and \"types\""
-            )
-            };
+            let error_str = format!("Cells data arrays must contain at least three DataArrays named \"connectivity\", \"offsets\" and \"types\";");
+
             let mut connectivity = None;
             let mut offsets = None;
             let mut types = None;
+            let mut faces = None;
+            let mut faceoffsets = None;
             while let Some((_, field)) = map.next_entry::<Field, DataArray>()? {
                 match field.name.as_str() {
                     "connectivity" => connectivity = Some(field),
                     "offsets" => offsets = Some(field),
                     "types" => types = Some(field),
-                    _ => return Err(make_err()),
+                    "faces" => faces = Some(field),
+                    "faceoffsets" => faceoffsets = Some(field),
+                    _ => {
+                        return Err(<A::Error as serde::de::Error>::custom(format!(
+                            "{} field '{}' is not supported by vtkio.",
+                            error_str,
+                            field.name.as_str()
+                        )));
+                    }
                 }
             }
 
-            let connectivity = connectivity.ok_or_else(make_err)?;
-            let offsets = offsets.ok_or_else(make_err)?;
-            let types = types.ok_or_else(make_err)?;
+            let connectivity = connectivity.ok_or_else(|| {
+                <A::Error as serde::de::Error>::custom(format!(
+                    "{}, conectivity field is missing!",
+                    error_str
+                ))
+            })?;
+            let offsets = offsets.ok_or_else(|| {
+                <A::Error as serde::de::Error>::custom(format!(
+                    "{}, offsets field is missing!",
+                    error_str
+                ))
+            })?;
+            let types = types.ok_or_else(|| {
+                <A::Error as serde::de::Error>::custom(format!(
+                    "{}, types field is missing!",
+                    error_str
+                ))
+            })?;
+            println!(
+                "connectivity: {:?}",
+                connectivity.data[0].clone().into_string().len()
+            );
+            println!("offsets: {:?}", offsets.data[0].clone().into_string().len());
+            println!("types: {:?}", types.data[0].clone().into_string().len());
+            println!(
+                "faces: {:?}",
+                faces
+                    .as_ref()
+                    .map(|f| f.data[0].clone().into_string().len())
+                    .unwrap_or(0)
+            );
+            println!(
+                "faceoffsets: {:?}",
+                &faceoffsets
+                    .as_ref()
+                    .map(|f| f.data[0].clone().into_string().len())
+                    .unwrap_or(0)
+            );
             Ok(Cells {
                 connectivity,
                 offsets,
                 types,
+                faces,
+                faceoffsets,
             })
         }
     }
@@ -1013,11 +1058,19 @@ pub struct Cells {
     offsets: DataArray,
     #[serde(rename = "DataArray")]
     types: DataArray,
+    #[serde(rename = "DataArray")]
+    faces: DataArray,
+    #[serde(rename = "DataArray")]
+    faceoffsets: DataArray,
 }
 
 impl Cells {
     fn from_model_cells(cells: model::Cells, ei: EncodingInfo) -> Result<Cells> {
-        let model::Cells { cell_verts, types } = cells;
+        let model::Cells {
+            cell_verts,
+            types,
+            faces,
+        } = cells;
         let (connectivity, offsets) = cell_verts.into_xml();
         Ok(Cells {
             connectivity: DataArray::from_io_buffer(connectivity.into(), ei)?
@@ -1031,6 +1084,8 @@ impl Cells {
                 ei,
             )?
             .with_name("types"),
+            faces: None,
+            faceoffsets: None,
         })
     }
 
@@ -1072,12 +1127,20 @@ impl Cells {
             .into_io_buffer(num_vertices, appended, ei)?
             .cast_into();
         let connectivity = connectivity.ok_or(ValidationError::InvalidDataFormat)?;
+
+        /*if let Some(faces) = self.faces{
+            faces.into_field_array()
+        }
+
+        let faces =*/
+
         Ok(model::Cells {
             cell_verts: model::VertexNumbers::XML {
                 connectivity,
                 offsets,
             },
             types,
+            faces: None,
         })
     }
 }
