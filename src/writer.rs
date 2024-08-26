@@ -724,9 +724,9 @@ mod write_vtk_impl {
                                 EntryPart::Data(e.into()),
                             )))
                         })?;
-
+                        let num_cells = ((dims[0] - 1) * (dims[1] - 1) * (dims[2] - 1)) as usize;
                         assert_eq!((dims[0] * dims[1] * dims[2]) as usize, num_points);
-                        self.write_attributes::<BO>(data, num_points, 1)?;
+                        self.write_attributes::<BO>(data, num_points, num_cells)?;
                     }
                 }
 
