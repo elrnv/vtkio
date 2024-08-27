@@ -19,6 +19,7 @@ use log;
 use serde::{Deserialize, Serialize};
 
 use crate::model;
+use crate::model::FaceData;
 
 type Result<T> = std::result::Result<T, Error>;
 
@@ -1059,9 +1060,9 @@ pub struct Cells {
     #[serde(rename = "DataArray")]
     types: DataArray,
     #[serde(rename = "DataArray")]
-    faces: DataArray,
+    faces: Option<DataArray>,
     #[serde(rename = "DataArray")]
-    faceoffsets: DataArray,
+    faceoffsets: Option<DataArray>,
 }
 
 impl Cells {
@@ -1128,11 +1129,20 @@ impl Cells {
             .cast_into();
         let connectivity = connectivity.ok_or(ValidationError::InvalidDataFormat)?;
 
-        /*if let Some(faces) = self.faces{
-            faces.into_field_array()
-        }
-
-        let faces =*/
+        let faces = if let Some(faces) = self.faces {
+            Some(FaceData {
+                faces: faces
+                    .into_io_buffer(num_vertices, appended, ei)?
+                    .cast_into()
+                    .context("face data cast failure")?,
+                faceoffsets: faces
+                    .into_io_buffer(num_vertices, appended, ei)?
+                    .cast_into()
+                    .unwrap(),
+            })
+        } else {
+            None
+        };
 
         Ok(model::Cells {
             cell_verts: model::VertexNumbers::XML {
