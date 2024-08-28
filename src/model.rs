@@ -627,7 +627,7 @@ impl IOBuffer {
                     }
                 }
                 Compressor::LZMA => {
-                    #[cfg(feature = "xz2")]
+                    #[cfg(feature = "liblzma")]
                     {
                         let mut bufs = vec![];
                         for i in 0..num_blocks {
@@ -636,7 +636,7 @@ impl IOBuffer {
                             } else {
                                 partial_block_bytes
                             };
-                            let mut e = xz2::write::XzEncoder::new(Vec::new(), ei.compression_level);
+                            let mut e = liblzma::write::XzEncoder::new(Vec::new(), ei.compression_level);
                             self.write_bytes_block(&mut e, ei.byte_order, (i*block_size)/self.scalar_size(), cur_block_size/self.scalar_size());
                             let buf = e.finish().map_err(CompressionError::from)?;
                             let num_compressed_bytes = buf.len();

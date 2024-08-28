@@ -1863,13 +1863,13 @@ impl<'a> DecoderKit<'a> for flate2::bufread::ZlibDecoder<&'a [u8]> {
     }
 }
 
-#[cfg(feature = "xz2")]
-impl<'a> DecoderKit<'a> for xz2::read::XzDecoder<&'a [u8]> {
+#[cfg(feature = "liblzma")]
+impl<'a> DecoderKit<'a> for liblzma::read::XzDecoder<&'a [u8]> {
     fn read(&mut self, out: &mut [u8]) -> std::result::Result<usize, ValidationError> {
         Ok(std::io::Read::read(self, out)?)
     }
     fn make(input: &'a [u8]) -> Self {
-        xz2::read::XzDecoder::new(input)
+        liblzma::read::XzDecoder::new(input)
     }
 }
 
@@ -2050,13 +2050,13 @@ where
             }
         }
         Compressor::LZMA => {
-            #[cfg(not(feature = "xz2"))]
+            #[cfg(not(feature = "liblzma"))]
             {
                 return Err(ValidationError::MissingCompressionLibrary(ei.compressor));
             }
-            #[cfg(feature = "xz2")]
+            #[cfg(feature = "liblzma")]
             {
-                decompress::<xz2::read::XzDecoder<&'a [u8]>>(
+                decompress::<liblzma::read::XzDecoder<&'a [u8]>>(
                     [num_blocks, nu, np],
                     &compressed_block_offsets,
                     decoded_data,

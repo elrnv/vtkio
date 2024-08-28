@@ -234,7 +234,7 @@ fn hexahedron_pvtu() -> Result {
     Ok(())
 }
 
-#[cfg(feature = "xz2")]
+#[cfg(feature = "liblzma")]
 #[test]
 fn hexahedron_lzma_pvtu() -> Result {
     let mut vtu = Vtk::import("./assets/hexahedron_parallel_lzma.pvtu")?;
@@ -314,7 +314,7 @@ fn hexahedron_lz4() -> Result {
     Ok(())
 }
 
-#[cfg(feature = "xz2")]
+#[cfg(feature = "liblzma")]
 #[test]
 fn hexahedron_lzma_inline_binary() -> Result {
     init();
