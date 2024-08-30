@@ -1130,15 +1130,18 @@ impl Cells {
         let connectivity = connectivity.ok_or(ValidationError::InvalidDataFormat)?;
 
         let faces = if let Some(faces) = self.faces {
+            let face_offsets = self.faceoffsets.ok_or(ValidationError::InvalidDataFormat)?;
+            let num_faces: usize = face_offsets.last().map(|&x| x as usize).unwrap_or(0);
             Some(FaceData {
                 faces: faces
-                    .into_io_buffer(num_vertices, appended, ei)?
+                    .into_io_buffer(num_faces, appended, ei)?
                     .cast_into()
-                    .context("face data cast failure")?,
-                faceoffsets: faces
-                    .into_io_buffer(num_vertices, appended, ei)?
-                    .cast_into()
-                    .unwrap(),
+                    .ok_or(ValidationError::InvalidDataFormat)?,
+                faceoffsets: vec![], //self
+                                     //
+                                     // .into_io_buffer(num_vertices, appended, ei)?
+                                     // .cast_into()
+                                     // .ok_or(ValidationError::InvalidDataFormat)?,
             })
         } else {
             None
