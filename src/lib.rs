@@ -1,4 +1,5 @@
 #![allow(clippy::all)]
+#![allow(rustfmt::all)]
 //! Import and export library for Visualization Toolkit (VTK)
 //! [files](https://kitware.github.io/vtk-examples/site/VTKFileFormats/).
 //!
