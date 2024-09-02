@@ -176,6 +176,8 @@ mod write_vtk_impl {
             DataSet(DataSetError),
             NewLine,
 
+            InvalidColorScalarsType,
+
             /// Generic formatting error originating from [`std::fmt::Error`].
             FormatError,
             /// Generic IO error originating from [`std::io::Error`].
@@ -191,6 +193,10 @@ mod write_vtk_impl {
                     Error::Header(header_err) => write!(f, "Header: {}", header_err),
                     Error::DataSet(data_set_err) => write!(f, "Data set: {}", data_set_err),
                     Error::NewLine => write!(f, "New line"),
+                    Error::InvalidColorScalarsType => write!(
+                        f,
+                        "Invalid color scalars type, must be unsigned char or float"
+                    ),
                     Error::FormatError => write!(f, "Format error"),
                     Error::IOError(kind) => write!(f, "IO Error: {:?}", kind),
                 }
@@ -247,6 +253,9 @@ mod write_vtk_impl {
             data: Vec<T>,
         ) -> Result;
         fn write_buf<BO: ByteOrder>(&mut self, data: IOBuffer) -> Result;
+        fn write_color_scalars_buf<BO: ByteOrder>(&mut self, buf: IOBuffer) -> Result {
+            self.write_buf::<BO>(buf)
+        }
 
         fn write_attributes<BO: ByteOrder>(
             &mut self,
@@ -296,7 +305,7 @@ mod write_vtk_impl {
                                     ))
                                 },
                             )?;
-                            self.write_buf::<BO>(data).map_err(|e| {
+                            self.write_color_scalars_buf::<BO>(data).map_err(|e| {
                                 Error::Attribute(AttributeError::ColorScalars(EntryPart::Data(
                                     e.into(),
                                 )))
@@ -308,7 +317,7 @@ mod write_vtk_impl {
                                     Error::Attribute(AttributeError::LookupTable(EntryPart::Header))
                                 },
                             )?;
-                            self.write_buf::<BO>(data).map_err(|e| {
+                            self.write_color_scalars_buf::<BO>(data).map_err(|e| {
                                 Error::Attribute(AttributeError::LookupTable(EntryPart::Data(
                                     e.into(),
                                 )))
@@ -844,6 +853,54 @@ mod write_vtk_impl {
             let buf = IOBuffer::from(data);
             self.write_buf::<BO>(buf)
         }
+        fn write_color_scalars_buf<BO: ByteOrder>(&mut self, buf: IOBuffer) -> Result {
+            fn write_buf_impl<T, W, F>(vec: Vec<T>, writer: &mut W, convert_to_u8: F) -> Result
+            where
+                W: WriteBytesExt,
+                F: Fn(T) -> u8,
+            {
+                for elem in vec {
+                    W::write_u8(writer, convert_to_u8(elem))?;
+                }
+                Ok(())
+            }
+            fn convert_float<T: Into<f64>>(input: T) -> u8 {
+                (input.into() * 255.0).round().clamp(0.0, 255.0) as u8
+            }
+
+            match buf {
+                IOBuffer::Bit(v) => write_buf_impl(v, &mut self.0, |x| x * 255 as u8)?,
+                IOBuffer::U8(v) => write_buf_impl(v, &mut self.0, |x| x as u8)?,
+                IOBuffer::I8(v) => write_buf_impl(v, &mut self.0, |x| x as u8)?,
+                IOBuffer::U16(v) => {
+                    write_buf_impl(v, &mut self.0, |x| x as u8)?;
+                }
+                IOBuffer::I16(v) => {
+                    write_buf_impl(v, &mut self.0, |x| x as u8)?;
+                }
+                IOBuffer::U32(v) => {
+                    write_buf_impl(v, &mut self.0, |x| x as u8)?;
+                }
+                IOBuffer::I32(v) => {
+                    write_buf_impl(v, &mut self.0, |x| x as u8)?;
+                }
+                IOBuffer::U64(v) => {
+                    write_buf_impl(v, &mut self.0, |x| x as u8)?;
+                }
+                IOBuffer::I64(v) => {
+                    write_buf_impl(v, &mut self.0, |x| x as u8)?;
+                }
+                IOBuffer::F32(v) => {
+                    write_buf_impl(v, &mut self.0, convert_float)?;
+                }
+                IOBuffer::F64(v) => {
+                    write_buf_impl(v, &mut self.0, convert_float)?;
+                }
+            }
+
+            writeln!(&mut self.0)?;
+            Ok(())
+        }
         fn write_buf<BO: ByteOrder>(&mut self, buf: IOBuffer) -> Result {
             fn write_buf_impl<T, W, E>(vec: Vec<T>, writer: &mut W, elem_writer: E) -> Result
             where
@@ -910,6 +967,9 @@ mod write_vtk_impl {
         fn write_buf<BO: ByteOrder>(&mut self, buf: IOBuffer) -> Result {
             BinaryWriter(self).write_buf::<BO>(buf)
         }
+        fn write_color_scalars_buf<BO: ByteOrder>(&mut self, buf: IOBuffer) -> Result {
+            BinaryWriter(self).write_color_scalars_buf::<BO>(buf)
+        }
     }
 
     impl<W: std::fmt::Write> WriteVtkImpl for AsciiWriter<W> {
@@ -948,6 +1008,56 @@ mod write_vtk_impl {
 
         fn write_buf<BO: ByteOrder>(&mut self, data: IOBuffer) -> Result {
             writeln!(&mut self.0, "{}", data)?;
+            Ok(())
+        }
+        fn write_color_scalars_buf<BO: ByteOrder>(&mut self, data: IOBuffer) -> Result {
+            fn write_buf_impl<T, W, F>(vec: Vec<T>, writer: &mut W, convert_to_float: F) -> Result
+            where
+                W: std::fmt::Write,
+                F: Fn(T) -> f32,
+            {
+                let mut iter = vec.into_iter().peekable();
+                while let Some(elem) = iter.next() {
+                    write!(writer, "{}", convert_to_float(elem))?;
+                    if iter.peek().is_some() {
+                        write!(writer, " ")?;
+                    }
+                }
+                Ok(())
+            }
+            fn convert_int<T: Into<i64>>(input: T) -> f32 {
+                0.max(input.into()) as f32 / 255.0
+            }
+
+            match data {
+                IOBuffer::Bit(v) => write_buf_impl(v, &mut self.0, convert_int)?,
+                IOBuffer::U8(v) => write_buf_impl(v, &mut self.0, convert_int)?,
+                IOBuffer::I8(v) => write_buf_impl(v, &mut self.0, convert_int)?,
+                IOBuffer::U16(v) => {
+                    write_buf_impl(v, &mut self.0, convert_int)?;
+                }
+                IOBuffer::I16(v) => {
+                    write_buf_impl(v, &mut self.0, convert_int)?;
+                }
+                IOBuffer::U32(v) => {
+                    write_buf_impl(v, &mut self.0, convert_int)?;
+                }
+                IOBuffer::I32(v) => {
+                    write_buf_impl(v, &mut self.0, convert_int)?;
+                }
+                IOBuffer::U64(v) => {
+                    write_buf_impl(v, &mut self.0, |x| 0.max(x) as f32 / 255.0)?;
+                }
+                IOBuffer::I64(v) => {
+                    write_buf_impl(v, &mut self.0, convert_int)?;
+                }
+                IOBuffer::F32(v) => write_buf_impl(v, &mut self.0, |x| x)?,
+                IOBuffer::F64(v) => {
+                    write_buf_impl(v, &mut self.0, |x| x as f32)?;
+                }
+            }
+
+            writeln!(&mut self.0)?;
             Ok(())
         }
     }
