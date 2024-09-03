@@ -42,9 +42,10 @@ liblzma = { version = "0.3.4", features = ["wasm"], optional = true }
 liblzma = { version = "0.3.4", optional = true }
 
 [features]
-default = ["xml", "compression"]
+default = ["xml", "compression", "binary"]
 async = ["tokio"]
 compression = ["lz4", "liblzma", "flate2"]
 parallel = ["rayon"]
 xml = ["quick-xml", "serde"]
-# binary = []
+binary = []
+unstable = []

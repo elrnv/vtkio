@@ -3200,14 +3200,6 @@ impl TryFrom<model::Vtk> for VTKFile {
     }
 }
 
-/// Import an XML VTK file from the specified path.
-#[cfg(feature = "async_blocked")]
-pub(crate) async fn import_async(file_path: impl AsRef<Path>) -> Result<VTKFile> {
-    let f = tokio::fs::File::open(file_path).await?;
-    // Blocked on async support from quick-xml (e.g. https://github.com/tafia/quick-xml/pull/233)
-    Ok(VTKFile::parse(std::io::BufReader::new(f))?)
-}
-
 // #[cfg(feature = "binary")]
 // struct Context {
 //     num: usize,
@@ -3235,6 +3227,14 @@ impl VTKFile {
     pub fn import(file_path: impl AsRef<Path>) -> Result<VTKFile> {
         let f = std::fs::File::open(file_path)?;
         Self::parse(std::io::BufReader::new(f))
+    }
+
+    /// Import an XML VTK file from the specified path.
+    #[cfg(feature = "async")]
+    pub async fn import_async(file_path: impl AsRef<Path>) -> Result<VTKFile> {
+        let f = tokio::fs::File::open(file_path).await?;
+        // Blocked on async support from quick-xml (e.g. https://github.com/tafia/quick-xml/pull/233)
+        Ok(Self::parse(std::io::BufReader::new(f))?)
     }
 
     /// Parse an XML VTK file from the given reader.
