@@ -472,7 +472,7 @@ impl Vtk {
 
     pub fn import_from_contents(
         file_path: impl AsRef<Path>,
-        contents: &[u8],
+        contents: impl BufRead,
     ) -> Result<Vtk, Error> {
         let path = file_path.as_ref();
         let ext = path
