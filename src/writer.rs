@@ -176,8 +176,6 @@ mod write_vtk_impl {
             DataSet(DataSetError),
             NewLine,
 
-            InvalidColorScalarsType,
-
             /// Generic formatting error originating from [`std::fmt::Error`].
             FormatError,
             /// Generic IO error originating from [`std::io::Error`].
@@ -193,10 +191,6 @@ mod write_vtk_impl {
                     Error::Header(header_err) => write!(f, "Header: {}", header_err),
                     Error::DataSet(data_set_err) => write!(f, "Data set: {}", data_set_err),
                     Error::NewLine => write!(f, "New line"),
-                    Error::InvalidColorScalarsType => write!(
-                        f,
-                        "Invalid color scalars type, must be unsigned char or float"
-                    ),
                     Error::FormatError => write!(f, "Format error"),
                     Error::IOError(kind) => write!(f, "IO Error: {:?}", kind),
                 }
@@ -869,8 +863,8 @@ mod write_vtk_impl {
             }
 
             match buf {
-                IOBuffer::Bit(v) => write_buf_impl(v, &mut self.0, |x| x * 255 as u8)?,
-                IOBuffer::U8(v) => write_buf_impl(v, &mut self.0, |x| x as u8)?,
+                IOBuffer::Bit(v) => write_buf_impl(v, &mut self.0, |x| x)?,
+                IOBuffer::U8(v) => write_buf_impl(v, &mut self.0, |x| x)?,
                 IOBuffer::I8(v) => write_buf_impl(v, &mut self.0, |x| x as u8)?,
                 IOBuffer::U16(v) => {
                     write_buf_impl(v, &mut self.0, |x| x as u8)?;
@@ -1080,6 +1074,10 @@ mod write_vtk_impl {
         }
         fn write_buf<BO: ByteOrder>(&mut self, buf: IOBuffer) -> Result {
             AsciiWriter(self).write_buf::<BO>(buf)
+        }
+
+        fn write_color_scalars_buf<BO: ByteOrder>(&mut self, buf: IOBuffer) -> Result {
+            AsciiWriter(self).write_color_scalars_buf::<BO>(buf)
         }
     }
 }

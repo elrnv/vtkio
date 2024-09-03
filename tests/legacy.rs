@@ -697,11 +697,13 @@ fn cube_complex_test() -> Result {
 
     test!(parse_ne(in1) => ne(&out1));
     test_b!(parse_ne(String::new().write_vtk_ne(out1.clone())?.as_bytes()) => ne(&out1));
+    test_b!(parse_ne(String::new().write_vtk_ne(out1_bin.clone())?.as_bytes()) => ne(&out1));
     test_b!(parse_ne(Vec::<u8>::new().write_vtk_ne(out1_bin.clone())?) => ne(&out1_bin));
     test_b!(parse_le(Vec::<u8>::new().write_vtk_le(out1_bin.clone())?) => le(&out1_bin));
     test_b!(parse_be(Vec::<u8>::new().write_vtk_be(out1_bin.clone())?) => out1_bin);
     test_b!(parse_ne(in2) => ne(&out2));
     test_b!(parse_ne(String::new().write_vtk_ne(out2.clone())?.as_bytes()) => ne(&out2));
+    test_b!(parse_ne(String::new().write_vtk_ne(out2_bin.clone())?.as_bytes()) => ne(&out2));
     test_b!(parse_le(Vec::<u8>::new().write_vtk_le(out2_bin.clone())?) => le(&out2_bin));
     test_b!(parse_be(Vec::<u8>::new().write_vtk_be(out2_bin.clone())?) => out2_bin);
     Ok(())
