@@ -472,7 +472,7 @@ impl Vtk {
 
     pub fn import_from_contents(
         file_path: impl AsRef<Path>,
-        contents: impl BufRead,
+        contents: impl Read,
     ) -> Result<Vtk, Error> {
         let path = file_path.as_ref();
         let ext = path
@@ -486,7 +486,7 @@ impl Vtk {
             ext => {
                 let ft = xml::FileType::try_from_ext(ext)
                     .ok_or(Error::UnknownFileExtension(Some(ext.to_string())))?;
-                let vtk_file = xml::VTKFile::parse(contents)?;
+                let vtk_file = xml::VTKFile::parse(std::io::BufReader::new(contents))?;
                 let exp_ft = xml::FileType::from(vtk_file.data_set_type);
                 if ft != exp_ft {
                     Err(Error::XML(xml::Error::TypeExtensionMismatch))
