@@ -1131,7 +1131,13 @@ impl Cells {
 
         let faces = if let Some(faces) = self.faces {
             let face_offsets = self.faceoffsets.ok_or(ValidationError::InvalidDataFormat)?;
-            let num_faces: usize = face_offsets.last().map(|&x| x as usize).unwrap_or(0);
+            let face_offsets: Option<Vec<u64>> = face_offsets
+                .parse_face_data(appended, ei)
+                .map(|model::FieldArray { data, .. }| data)?
+                .cast_into();
+
+            let num_faces: usize = 0; //face_offsets.last().map(|&x| x as usize).unwrap_or(0);
+
             Some(FaceData {
                 faces: faces
                     .into_io_buffer(num_faces, appended, ei)?
@@ -1679,6 +1685,70 @@ impl DataArray {
                 buf
             }
         };
+
+        Ok(model::FieldArray {
+            name,
+            data,
+            elem: num_comp,
+        })
+    }
+
+    pub fn parse_face_data(
+        self,
+        appended: Option<&AppendedData>,
+        ei: EncodingInfo,
+    ) -> std::result::Result<model::FieldArray, ValidationError> {
+        use model::IOBuffer;
+
+        let DataArray {
+            name,
+            scalar_type,
+            format,
+            offset,
+            num_comp,
+            data,
+            ..
+        } = self;
+
+        //eprintln!("name = {:?}", &name);
+        /*let data = match scalar_type {
+            ScalarType::Int8 => IOBuffer::I8(vec![]),
+            ScalarType::UInt8 => IOBuffer::U8(vec![]),
+            ScalarType::Int16 => IOBuffer::I16(vec![]),
+            ScalarType::UInt16 => IOBuffer::U16(vec![]),
+            ScalarType::Int32 => IOBuffer::I32(vec![]),
+            ScalarType::UInt32 => IOBuffer::U32(vec![]),
+            ScalarType::Int64 => IOBuffer::I64(vec![]),
+            ScalarType::UInt64 => IOBuffer::U64(vec![]),
+            ScalarType::Float32 => IOBuffer::F32(vec![]),
+            ScalarType::Float64 => IOBuffer::F64(vec![]),
+        };*/
+        let mut data = None;
+        match format {
+            DataArrayFormat::Appended => {
+                return Err(ValidationError::Unsupported);
+            }
+            DataArrayFormat::Binary => {
+                let header_bytes = ei.header_type.size();
+                use model::IOBuffer;
+                if matches!(ei.compressor, Compressor::None) {
+                    // First byte gives the bytes
+                    let bytes =
+                        BASE64_STANDARD.decode(data.into_iter().next().unwrap().into_string())?;
+                    // eprintln!("{:?}", &bytes[..header_bytes]);
+                    data = IOBuffer::from_bytes(
+                        &bytes[header_bytes..],
+                        scalar_type.into(),
+                        ei.byte_order,
+                    )?;
+                }
+
+                println!("Binary format");
+            }
+            DataArrayFormat::Ascii => {
+                return Err(ValidationError::Unsupported);
+            }
+        }
 
         Ok(model::FieldArray {
             name,
