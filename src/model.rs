@@ -1807,8 +1807,10 @@ impl VertexNumbers {
 
 #[derive(Clone, PartialEq, Debug, Default)]
 pub struct FaceData {
-    pub faces: Vec<u32>,
-    pub faceoffsets: Vec<u32>,
+    pub faces: Vec<i32>,
+    /// One faceoffset is stored per face.
+    /// For data inbetween faces, -1 is stored
+    pub faceoffsets: Vec<i32>,
 }
 
 /// Cells with variable types.
