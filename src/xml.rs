@@ -1134,14 +1134,6 @@ impl Cells {
             let face_offsets = face_offsets
                 .parse_face_offset_data(appended, ei)
                 .map(|model::FieldArray { data, .. }| data)?;
-            /*println!(
-                "fist 200: {:?}",
-                face_offsets
-                    .iter::<i32>()
-                    .unwrap()
-                    .take(200)
-                    .collect::<Vec<_>>()
-            );*/
 
             let face_offsets: Vec<i32> = face_offsets
                 .cast_into()
@@ -1749,20 +1741,12 @@ impl DataArray {
                     // First byte gives the bytes
                     let bytes =
                         BASE64_STANDARD.decode(data.into_iter().next().unwrap().into_string())?;
-                    // eprintln!("{:?}", &bytes[..header_bytes]);
                     final_data = Some(IOBuffer::from_bytes(
                         &bytes[header_bytes..],
                         scalar_type.into(),
                         ei.byte_order,
                     )?);
-                    println!("Binary format");
-                    println!("Scalartype: {:?}, ", scalar_type);
-                    println!("len: {}", final_data.as_ref().unwrap().len());
-                    //println!("Binary format");
-                    //println!("Scalartype: {:?}, ", scalar_type);
-                    //println!("len: {}", final_data.as_ref().unwrap().len());
                 } else {
-                    //println!("uses a compressor!")
                     return Err(ValidationError::Unsupported);
                 }
             }
@@ -1806,17 +1790,12 @@ impl DataArray {
                     // First byte gives the bytes
                     let bytes =
                         BASE64_STANDARD.decode(data.into_iter().next().unwrap().into_string())?;
-                    // eprintln!("{:?}", &bytes[..header_bytes]);
                     final_data = Some(IOBuffer::from_bytes(
                         &bytes[header_bytes..],
                         scalar_type.into(),
                         ei.byte_order,
                     )?);
-                    println!("Binary format");
-                    println!("Scalartype: {:?}, ", scalar_type);
-                    println!("len: {}", final_data.as_ref().unwrap().len());
                 } else {
-                    //println!("uses a compressor!")
                     return Err(ValidationError::Unsupported);
                 }
             }
