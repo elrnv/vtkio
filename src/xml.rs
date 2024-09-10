@@ -1156,10 +1156,11 @@ impl Cells {
                 .parse_face_data(appended, ei)
                 .map(|model::FieldArray { data, .. }| data)?;
 
-            let face_data: Vec<i32> = face_data
+            let mut face_data: Vec<i32> = face_data
                 .cast_into()
                 .ok_or(ValidationError::InvalidDataFormat)?;
 
+            face_data.push(0);
             println!(
                 "fist 200 facedata: {:?}",
                 face_data.iter().take(200).collect::<Vec<_>>()

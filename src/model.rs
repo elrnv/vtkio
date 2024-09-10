@@ -1810,6 +1810,9 @@ pub struct FaceData {
     /// stored like:
     ///
     /// number of faces in cell, number of verts in face, vert, vert.. number of verts, vert, etc.
+    ///
+    /// For convenience a zero is added at the end, as it is common for teh final faceoffsets value
+    /// to be the length of this vector (and thus out of bounds).
     pub faces: Vec<i32>,
     /// says where the cell is stored in faces, if it is, for every single cell stored in this object.
     /// if it is not a polyhedron cell, value will be negative 1
