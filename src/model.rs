@@ -627,7 +627,7 @@ impl IOBuffer {
                     }
                 }
                 Compressor::LZMA => {
-                    #[cfg(feature = "xz2")]
+                    #[cfg(feature = "liblzma")]
                     {
                         let mut bufs = vec![];
                         for i in 0..num_blocks {
@@ -636,7 +636,7 @@ impl IOBuffer {
                             } else {
                                 partial_block_bytes
                             };
-                            let mut e = xz2::write::XzEncoder::new(Vec::new(), ei.compression_level);
+                            let mut e = liblzma::write::XzEncoder::new(Vec::new(), ei.compression_level);
                             self.write_bytes_block(&mut e, ei.byte_order, (i*block_size)/self.scalar_size(), cur_block_size/self.scalar_size());
                             let buf = e.finish().map_err(CompressionError::from)?;
                             let num_compressed_bytes = buf.len();
@@ -2132,7 +2132,7 @@ impl<P: PieceData> Piece<P> {
     /// Consumes `self` and returns loaded piece data.
     ///
     /// This is the async version of `into_loaded_piece_data` function.
-    #[cfg(feature = "async_blocked")]
+    #[cfg(feature = "async")]
     pub async fn into_loaded_piece_data_async(
         mut self,
         source_path: Option<&Path>,
@@ -2140,7 +2140,7 @@ impl<P: PieceData> Piece<P> {
         match self {
             Piece::Source(path, _) => {
                 let piece_path = build_piece_path(path, source_path);
-                let piece_vtk = crate::import_async(&piece_path).await?;
+                let piece_vtk = crate::Vtk::import_async(&piece_path).await?;
                 P::from_data_set(piece_vtk.data, Some(piece_path.as_ref()))
             }
             Piece::Loaded(data_set) => P::from_data_set(*data_set, source_path),

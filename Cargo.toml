@@ -22,7 +22,6 @@ base64 = "0.22"
 bytemuck = { version = "1.5", features = ["extern_crate_alloc"] }
 lz4 = { package = "lz4_flex", version = "0.11", optional = true }
 flate2 = { version = "1.0.19", optional = true }
-xz2 = { version = "0.1.6", optional = true } # LZMA
 # quick-xml = { path = "../quick-xml", features = ["serialize"], optional = true }
 quick-xml = { git = "https://github.com/elrnv/quick-xml.git", branch = "binary-support4", version = "0.36", features = ["serialize"], optional = true }
 serde = { version = "1.0", features = ["derive"], optional = true }
@@ -36,10 +35,17 @@ regex = "1.0"
 pretty_assertions = "1.0"
 env_logger = "0.11"
 
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+liblzma = { version = "0.3.4", features = ["wasm"], optional = true }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+liblzma = { version = "0.3.4", optional = true }
+
 [features]
-default = ["xml", "compression"]
+default = ["xml", "compression", "binary"]
 async = ["tokio"]
-compression = ["lz4", "xz2", "flate2"]
+compression = ["lz4", "liblzma", "flate2"]
 parallel = ["rayon"]
 xml = ["quick-xml", "serde"]
-# binary = []
+binary = []
+unstable = []

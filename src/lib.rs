@@ -1,3 +1,5 @@
+#![allow(clippy::all)]
+#![allow(rustfmt::all)]
 //! Import and export library for Visualization Toolkit (VTK)
 //! [files](https://kitware.github.io/vtk-examples/site/VTKFileFormats/).
 //!
@@ -391,23 +393,19 @@ impl Vtk {
         Ok(vtk_file.try_into()?)
     }
 
-    #[cfg(feature = "async_blocked")]
+    #[cfg(feature = "async")]
     async fn import_vtk_async<F>(file_path: &Path, parse: F) -> Result<Vtk, Error>
     where
         F: Fn(&[u8]) -> nom::IResult<&[u8], Vtk>,
     {
-        use nom::IResult;
         use tokio::fs::File;
         use tokio::io::AsyncReadExt;
 
         let mut file = File::open(file_path).await?;
         let mut buf = Vec::new();
         file.read_to_end(&mut buf).await?;
-        match VTKFile::parse(&buf) {
-            IResult::Done(_, vtk) => Ok(vtk),
-            IResult::Error(e) => Err(Error::Parse(e.into_error_kind())),
-            IResult::Incomplete(_) => Err(Error::Unknown),
-        }
+
+        Vtk::parse_vtk(&*buf, parse, &mut Vec::new())
     }
 
     /// Import a VTK file at the specified path.
@@ -472,6 +470,37 @@ impl Vtk {
         }
     }
 
+    pub fn import_from_contents(
+        file_path: impl AsRef<Path>,
+        contents: impl Read,
+    ) -> Result<Vtk, Error> {
+        let path = file_path.as_ref();
+        let ext = path
+            .extension()
+            .and_then(|s| s.to_str())
+            .ok_or(Error::UnknownFileExtension(None))?;
+
+        match ext {
+            "vtk" => Vtk::parse_vtk(contents, parser::parse_be, &mut Vec::new()),
+            #[cfg(feature = "xml")]
+            ext => {
+                let ft = xml::FileType::try_from_ext(ext)
+                    .ok_or(Error::UnknownFileExtension(Some(ext.to_string())))?;
+                let vtk_file = xml::VTKFile::parse(std::io::BufReader::new(contents))?;
+                let exp_ft = xml::FileType::from(vtk_file.data_set_type);
+                if ft != exp_ft {
+                    Err(Error::XML(xml::Error::TypeExtensionMismatch))
+                } else {
+                    let mut vtk: Vtk = vtk_file.try_into()?;
+                    vtk.file_path = Some(path.into());
+                    Ok(vtk)
+                }
+            }
+            #[cfg(not(feature = "xml"))]
+            _ => Err(Error::UnknownFileExtension(None)),
+        }
+    }
+
     /// Import a VTK file at the specified path.
     ///
     /// This is the async version of [`import`](Vtk::import).
@@ -505,12 +534,15 @@ impl Vtk {
     /// let mut vtk_file = Vtk::import_async(&file_path).await
     ///     .expect(&format!("Failed to load file: {:?}", file_path));
     /// ```
-    #[cfg(feature = "async_blocked")]
+    #[cfg(feature = "async")]
     pub async fn import_async(file_path: impl AsRef<Path>) -> Result<Vtk, Error> {
         let path = file_path.as_ref();
-        let ext = path.extension().and_then(|s| s.to_str()).ok_or()?;
+        let ext = path
+            .extension()
+            .and_then(|s| s.to_str())
+            .ok_or(Error::UnknownFileExtension(None))?;
         match ext {
-            "vtk" => import_vtk_async(path, parser::parse_be).await,
+            "vtk" => Vtk::import_vtk_async(path, parser::parse_be).await,
             #[cfg(feature = "xml")]
             ext => {
                 let ft = xml::FileType::try_from_ext(ext)
@@ -552,7 +584,7 @@ impl Vtk {
         let _ = xml::FileType::try_from_ext(ext)
             .ok_or(Error::UnknownFileExtension(Some(ext.to_string())))?;
 
-        Ok(xml::import(path)?)
+        Ok(xml::VTKFile::import(path)?)
     }
 
     /// Import a legacy VTK file at the specified path.

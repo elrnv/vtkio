@@ -2064,13 +2064,13 @@ impl<'a> DecoderKit<'a> for flate2::bufread::ZlibDecoder<&'a [u8]> {
     }
 }
 
-#[cfg(feature = "xz2")]
-impl<'a> DecoderKit<'a> for xz2::read::XzDecoder<&'a [u8]> {
+#[cfg(feature = "liblzma")]
+impl<'a> DecoderKit<'a> for liblzma::read::XzDecoder<&'a [u8]> {
     fn read(&mut self, out: &mut [u8]) -> std::result::Result<usize, ValidationError> {
         Ok(std::io::Read::read(self, out)?)
     }
     fn make(input: &'a [u8]) -> Self {
-        xz2::read::XzDecoder::new(input)
+        liblzma::read::XzDecoder::new(input)
     }
 }
 
@@ -2251,13 +2251,13 @@ where
             }
         }
         Compressor::LZMA => {
-            #[cfg(not(feature = "xz2"))]
+            #[cfg(not(feature = "liblzma"))]
             {
                 return Err(ValidationError::MissingCompressionLibrary(ei.compressor));
             }
-            #[cfg(feature = "xz2")]
+            #[cfg(feature = "liblzma")]
             {
-                decompress::<xz2::read::XzDecoder<&'a [u8]>>(
+                decompress::<liblzma::read::XzDecoder<&'a [u8]>>(
                     [num_blocks, nu, np],
                     &compressed_block_offsets,
                     decoded_data,
@@ -3401,14 +3401,6 @@ impl TryFrom<model::Vtk> for VTKFile {
     }
 }
 
-/// Import an XML VTK file from the specified path.
-#[cfg(feature = "async_blocked")]
-pub(crate) async fn import_async(file_path: impl AsRef<Path>) -> Result<VTKFile> {
-    let f = tokio::fs::File::open(file_path).await?;
-    // Blocked on async support from quick-xml (e.g. https://github.com/tafia/quick-xml/pull/233)
-    Ok(VTKFile::parse(std::io::BufReader::new(f))?)
-}
-
 // #[cfg(feature = "binary")]
 // struct Context {
 //     num: usize,
@@ -3436,6 +3428,14 @@ impl VTKFile {
     pub fn import(file_path: impl AsRef<Path>) -> Result<VTKFile> {
         let f = std::fs::File::open(file_path)?;
         Self::parse(std::io::BufReader::new(f))
+    }
+
+    /// Import an XML VTK file from the specified path.
+    #[cfg(feature = "async")]
+    pub async fn import_async(file_path: impl AsRef<Path>) -> Result<VTKFile> {
+        let f = tokio::fs::File::open(file_path).await?;
+        // Blocked on async support from quick-xml (e.g. https://github.com/tafia/quick-xml/pull/233)
+        Ok(Self::parse(std::io::BufReader::new(f))?)
     }
 
     /// Parse an XML VTK file from the given reader.
