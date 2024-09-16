@@ -18,8 +18,8 @@ use base64::Engine as _;
 use log;
 use serde::{Deserialize, Serialize};
 
-use crate::model;
 use crate::model::FaceData;
+use crate::{model, xml};
 
 type Result<T> = std::result::Result<T, Error>;
 
@@ -533,7 +533,6 @@ mod data {
 
 mod topo {
     use super::{Cells, DataArray, Topo};
-    use crate::xml;
     use serde::de::{Deserialize, Deserializer, MapAccess, Visitor};
     use std::fmt;
 
@@ -1073,6 +1072,14 @@ impl Cells {
             faces,
         } = cells;
         let (connectivity, offsets) = cell_verts.into_xml();
+        let (faces, faceoffsets) = {
+            if let Some(_faces) = faces {
+                return Err(xml::Error::UnexpectedElement(
+                    "export of polyhedron cell types not yet supported!".to_string(),
+                ));
+            }
+            (None, None)
+        };
         Ok(Cells {
             connectivity: DataArray::from_io_buffer(connectivity.into(), ei)?
                 .with_name("connectivity"),
@@ -1085,8 +1092,8 @@ impl Cells {
                 ei,
             )?
             .with_name("types"),
-            faces: None,
-            faceoffsets: None,
+            faces,
+            faceoffsets,
         })
     }
 
@@ -1139,19 +1146,6 @@ impl Cells {
                 .cast_into()
                 .ok_or(ValidationError::InvalidDataFormat)?;
 
-            println!(
-                "fist 200: {:?}",
-                face_offsets.iter().take(200).collect::<Vec<_>>()
-            );
-
-            let num_faces: usize = face_offsets.iter().filter(|x| **x != -1).count();
-
-            println!(
-                "number of faces: {}, face_offset_data_points: {}",
-                num_faces,
-                face_offsets.len()
-            );
-
             let face_data = faces
                 .parse_face_data(appended, ei)
                 .map(|model::FieldArray { data, .. }| data)?;
@@ -1159,12 +1153,7 @@ impl Cells {
             let mut face_data: Vec<i32> = face_data
                 .cast_into()
                 .ok_or(ValidationError::InvalidDataFormat)?;
-
             face_data.push(0);
-            println!(
-                "fist 200 facedata: {:?}",
-                face_data.iter().take(200).collect::<Vec<_>>()
-            );
 
             Some(FaceData {
                 faces: face_data,
@@ -1716,21 +1705,18 @@ impl DataArray {
 
     pub fn parse_face_offset_data(
         self,
-        appended: Option<&AppendedData>,
+        _appended: Option<&AppendedData>,
         ei: EncodingInfo,
     ) -> std::result::Result<model::FieldArray, ValidationError> {
-        use model::IOBuffer;
-
         let DataArray {
             name,
             scalar_type,
             format,
-            offset,
             num_comp,
             data,
             ..
         } = self;
-        let mut final_data = None;
+        let final_data;
         match format {
             DataArrayFormat::Appended => {
                 return Err(ValidationError::Unsupported);
@@ -1742,11 +1728,11 @@ impl DataArray {
                     // First byte gives the bytes
                     let bytes =
                         BASE64_STANDARD.decode(data.into_iter().next().unwrap().into_string())?;
-                    final_data = Some(IOBuffer::from_bytes(
+                    final_data = IOBuffer::from_bytes(
                         &bytes[header_bytes..],
                         scalar_type.into(),
                         ei.byte_order,
-                    )?);
+                    )?;
                 } else {
                     return Err(ValidationError::Unsupported);
                 }
@@ -1758,28 +1744,25 @@ impl DataArray {
 
         Ok(model::FieldArray {
             name,
-            data: final_data.unwrap(),
+            data: final_data,
             elem: num_comp,
         })
     }
 
     pub fn parse_face_data(
         self,
-        appended: Option<&AppendedData>,
+        _appended: Option<&AppendedData>,
         ei: EncodingInfo,
     ) -> std::result::Result<model::FieldArray, ValidationError> {
-        use model::IOBuffer;
-
         let DataArray {
             name,
             scalar_type,
             format,
-            offset,
             num_comp,
             data,
             ..
         } = self;
-        let mut final_data = None;
+        let final_data;
         match format {
             DataArrayFormat::Appended => {
                 return Err(ValidationError::Unsupported);
@@ -1791,11 +1774,11 @@ impl DataArray {
                     // First byte gives the bytes
                     let bytes =
                         BASE64_STANDARD.decode(data.into_iter().next().unwrap().into_string())?;
-                    final_data = Some(IOBuffer::from_bytes(
+                    final_data = IOBuffer::from_bytes(
                         &bytes[header_bytes..],
                         scalar_type.into(),
                         ei.byte_order,
-                    )?);
+                    )?;
                 } else {
                     return Err(ValidationError::Unsupported);
                 }
@@ -1807,7 +1790,7 @@ impl DataArray {
 
         Ok(model::FieldArray {
             name,
-            data: final_data.unwrap(),
+            data: final_data,
             elem: num_comp,
         })
     }
