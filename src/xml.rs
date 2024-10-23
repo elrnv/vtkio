@@ -1772,6 +1772,7 @@ impl From<ScalarType> for model::ScalarType {
 pub enum DataArrayFormat {
     Appended,
     Binary,
+    #[serde(alias = "ascii", alias = "ASCII")]
     Ascii,
 }
 
