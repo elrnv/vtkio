@@ -14,7 +14,7 @@ documentation = "https://docs.rs/vtkio"
 keywords = ["vtk", "parser", "writer", "io", "mesh"]
 
 [dependencies]
-nom = "7"
+nom = "8"
 num-traits = "0.2"
 num-derive = "0.4"
 byteorder = "1.3"

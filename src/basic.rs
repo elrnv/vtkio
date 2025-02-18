@@ -11,7 +11,7 @@ use nom::character::complete::{digit1, line_ending, multispace0, space0};
 use nom::combinator::{complete, cut, eof, map, map_opt, opt, recognize};
 use nom::error::ParseError;
 use nom::multi::many_m_n;
-use nom::sequence::{delimited, preceded, terminated, tuple};
+use nom::sequence::{delimited, preceded, terminated};
 use nom::{IResult, Needed, ParseTo, Parser};
 
 use crate::model::IOBuffer;
@@ -36,9 +36,9 @@ pub enum FileType {
 /// trailing spaces, tabs, LFs, CRLFs, returning the output of `inner`.
 pub fn ws<'a, F, O, E: ParseError<&'a [u8]>>(
     inner: F,
-) -> impl FnMut(&'a [u8]) -> IResult<&'a [u8], O, E>
+) -> impl Parser<&'a [u8], Output = O, Error = E>
 where
-    F: FnMut(&'a [u8]) -> IResult<&'a [u8], O, E>,
+    F: Parser<&'a [u8], Output = O, Error = E>,
 {
     delimited(multispace0, inner, multispace0)
 }
@@ -47,25 +47,25 @@ where
 /// trailing space and tab characters (" " & "\t"), returning the output of `inner`.
 pub fn sp<'a, F, O, E: ParseError<&'a [u8]>>(
     inner: F,
-) -> impl FnMut(&'a [u8]) -> IResult<&'a [u8], O, E>
+) -> impl Parser<&'a [u8], Output = O, Error = E>
 where
-    F: FnMut(&'a [u8]) -> IResult<&'a [u8], O, E>,
+    F: Parser<&'a [u8], Output = O, Error = E>,
 {
     delimited(space0, inner, space0)
 }
 
 /// Recognizes a line ending or an eof.
 pub fn eol_or_eof<'a, E: ParseError<&'a [u8]>>(input: &'a [u8]) -> IResult<&'a [u8], &'a [u8], E> {
-    alt((line_ending, eof))(input)
+    alt((line_ending, eof)).parse(input)
 }
 
 /// A combinator that takes a parser `inner` and produces a parser that also consumes trailing
 /// line endings ("\r\n" & "\n"), returning the output of `inner`.
 pub fn line<'a, F, O, E: ParseError<&'a [u8]>>(
     inner: F,
-) -> impl FnMut(&'a [u8]) -> IResult<&'a [u8], O, E>
+) -> impl Parser<&'a [u8], Output = O, Error = E>
 where
-    F: FnMut(&'a [u8]) -> IResult<&'a [u8], O, E>,
+    F: Parser<&'a [u8], Output = O, Error = E>,
 {
     terminated(inner, eol_or_eof)
 }
@@ -73,19 +73,19 @@ where
 /// Parses a `tag_no_case` possibly surrounded by spaces (" " & "\t") and followed by a EOL.
 pub fn tag_no_case_line<'a, E: ParseError<&'a [u8]>>(
     tag: &'static str,
-) -> impl FnMut(&'a [u8]) -> IResult<&'a [u8], &'a [u8], E> {
+) -> impl Parser<&'a [u8], Output = &'a [u8], Error = E> {
     line(sp(tag_no_case(tag)))
 }
 
 /// Parses a "block" that is preceded by possibly multiple multispaces and a specific `block_tag`
 /// identified by the given parser, returns the result of applying `body` after the `block_tag`.
-pub fn tagged_block<'a, O1, O2, E: ParseError<&'a [u8]>, F, G>(
+pub fn tagged_block<'a, O, E: ParseError<&'a [u8]>, F, G>(
     block_tag: F,
     body: G,
-) -> impl FnMut(&'a [u8]) -> IResult<&'a [u8], O2, E>
+) -> impl Parser<&'a [u8], Output = O, Error = E>
 where
-    F: Parser<&'a [u8], O1, E>,
-    G: Parser<&'a [u8], O2, E>,
+    F: Parser<&'a [u8], Error = E>,
+    G: Parser<&'a [u8], Output = O, Error = E>,
 {
     preceded(
         preceded(multispace0, block_tag),
@@ -192,21 +192,22 @@ where
     T: FromStr,
 {
     map_opt(
-        recognize(tuple((
+        recognize((
             opt(alt((tag("+"), tag("-")))),
             alt((
                 complete(delimited(digit1, tag("."), opt(digit1))),
                 complete(delimited(opt(digit1), tag("."), digit1)),
                 complete(digit1),
             )),
-            opt(complete(tuple((
+            opt(complete((
                 alt((tag("e"), tag("E"))),
                 opt(alt((tag("+"), tag("-")))),
                 digit1,
-            )))),
-        ))),
+            ))),
+        )),
         |i: &[u8]| i.parse_to(),
-    )(input)
+    )
+    .parse(input)
 }
 
 /// A trait identifying all scalar types supported by VTK.
@@ -233,22 +234,22 @@ where
     BO: ByteOrder,
     IOBuffer: From<Vec<T>>,
 {
-    map(|i| parse_data_vec::<T, BO>(i, n, ft), IOBuffer::from)(input)
+    map(|i| parse_data_vec::<T, BO>(i, n, ft), IOBuffer::from).parse(input)
 }
 
 /// Parse a set of unsigned bytes into an `IOBuffer`.
 pub fn parse_data_buffer_u8(input: &[u8], n: usize, ft: FileType) -> IResult<&[u8], IOBuffer> {
-    map(|i| parse_data_vec_u8(i, n, ft), IOBuffer::from)(input)
+    map(|i| parse_data_vec_u8(i, n, ft), IOBuffer::from).parse(input)
 }
 
 /// Parse a set of signed bytes into an `IOBuffer`.
 pub fn parse_data_buffer_i8(input: &[u8], n: usize, ft: FileType) -> IResult<&[u8], IOBuffer> {
-    map(|i| parse_data_vec_i8(i, n, ft), IOBuffer::from)(input)
+    map(|i| parse_data_vec_i8(i, n, ft), IOBuffer::from).parse(input)
 }
 
 /// Parse a set of bits into an `IOBuffer`.
 pub fn parse_data_bit_buffer(input: &[u8], n: usize, ft: FileType) -> IResult<&[u8], IOBuffer> {
-    map(|i| parse_data_bit_vec(i, n, ft), IOBuffer::from)(input)
+    map(|i| parse_data_bit_vec(i, n, ft), IOBuffer::from).parse(input)
 }
 
 /// Parse a set of typed numbers into a `Vec`.
@@ -258,15 +259,15 @@ where
     BO: ByteOrder,
 {
     match ft {
-        FileType::Ascii => many_m_n(n, n, ws(T::from_ascii))(input),
-        FileType::Binary => many_m_n(n, n, T::from_binary::<BO>)(input),
+        FileType::Ascii => many_m_n(n, n, ws(T::from_ascii)).parse(input),
+        FileType::Binary => many_m_n(n, n, T::from_binary::<BO>).parse(input),
     }
 }
 
 /// Parse a set of unsigned bytes into a `Vec`.
 pub fn parse_data_vec_u8(input: &[u8], n: usize, ft: FileType) -> IResult<&[u8], Vec<u8>> {
     match ft {
-        FileType::Ascii => many_m_n(n, n, ws(u8::from_ascii))(input),
+        FileType::Ascii => many_m_n(n, n, ws(u8::from_ascii)).parse(input),
         FileType::Binary => {
             // If expecting bytes, byte order doesn't matter, just return the entire block.
             if input.len() < n {
@@ -286,7 +287,7 @@ pub fn parse_data_vec_u8(input: &[u8], n: usize, ft: FileType) -> IResult<&[u8],
 /// Parse a set of signed bytes into a `Vec`.
 pub fn parse_data_vec_i8(input: &[u8], n: usize, ft: FileType) -> IResult<&[u8], Vec<i8>> {
     match ft {
-        FileType::Ascii => many_m_n(n, n, ws(i8::from_ascii))(input),
+        FileType::Ascii => many_m_n(n, n, ws(i8::from_ascii)).parse(input),
         FileType::Binary => {
             // If expecting bytes, byte order doesn't matter, just return the entire block.
             // Unsafety is used here to avoid having to iterate.
@@ -311,7 +312,7 @@ pub fn parse_data_vec_i8(input: &[u8], n: usize, ft: FileType) -> IResult<&[u8],
 
 pub fn parse_data_bit_vec(input: &[u8], n: usize, ft: FileType) -> IResult<&[u8], Vec<u8>> {
     match ft {
-        FileType::Ascii => many_m_n(n, n, ws(u8::from_ascii))(input),
+        FileType::Ascii => many_m_n(n, n, ws(u8::from_ascii)).parse(input),
         FileType::Binary => {
             let nbytes = n / 8 + usize::from(n % 8 != 0);
             if input.len() < nbytes {
