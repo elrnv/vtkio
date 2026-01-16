@@ -1,7 +1,7 @@
 # vtkio
 
 A parser and writer for the Visualization Toolkit (VTK) [file
-formats](https://kitware.github.io/vtk-examples/site/VTKFileFormats/).
+formats](https://docs.vtk.org/en/latest/vtk_file_formats/index.html).
 
 [![On crates.io](https://img.shields.io/crates/v/vtkio.svg)](https://crates.io/crates/vtkio)
 [![On docs.rs](https://docs.rs/vtkio/badge.svg)](https://docs.rs/vtkio/)
